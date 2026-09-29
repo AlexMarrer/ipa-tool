@@ -151,6 +151,8 @@ export interface CaptureHooks {
 
 export interface CaptureOptions {
   kind: SnapshotKind;
+  /** `ipa baseline`: stored as a `rebaseline` gap (spec.md §11.5). */
+  reason?: string;
   hooks?: CaptureHooks;
   /** Receives German warnings for stderr, for example a missing user.email. */
   onWarning?: (message: string) => void;

@@ -3,6 +3,7 @@
  */
 import os from 'node:os';
 import path from 'node:path';
+import { dataRootNotWritableMessage } from './data-root.js';
 import { errnoCode, EXIT, IpaError, type LockInfo } from './errors.js';
 import { readJsonValidated, writeJsonAtomic } from './json.js';
 import { acquireLock } from './lock.js';
@@ -61,7 +62,8 @@ export async function readRegistry(dataRoot: string): Promise<Registry | null> {
   } catch (error) {
     if (error instanceof IpaError && error.code === 'file_not_found') return null;
     if (error instanceof IpaError && errnoCode(error.cause) === 'ENOTDIR') {
-      throw new IpaError('data_root_invalid', EXIT.usage, `Die Datenwurzel ist kein Ordner: ${dataRoot}`, { cause: error });
+      // Linux reports ENOTDIR where Windows reports ENOENT; both must name the ways out (§5.2).
+      throw new IpaError('data_root_invalid', EXIT.usage, dataRootNotWritableMessage(dataRoot, 'kein Ordner'), { cause: error });
     }
     throw error;
   }

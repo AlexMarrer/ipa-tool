@@ -342,7 +342,8 @@ Ein Befehl erscheint in `ipa --help` erst, wenn sein Paket ihn umsetzt.
 **`ipa baseline`**
 
 - Nur bei aktivem Halt erlaubt, sonst Exit-Code 2. Mit `--force` auch ohne Halt, zum Beispiel nach einer langen Pause.
-- `--reason` ist Pflicht.
+- `--reason` ist Pflicht. Ein leerer Grund oder einer mit Secret-Treffer ergibt Exit-Code 2, weil der Grund im Manifest steht (§18).
+- Ohne Ausgangs-Snapshot aus `init` endet `baseline` mit Exit-Code 2.
 
 **`ipa note`** (Details in Paket 04)
 
@@ -574,7 +575,7 @@ Die Felder sind hier verbindlich festgelegt. Das jeweilige Paket setzt sie 1:1 i
 | `lastSnapshotId` | string \| null | Zuletzt gespeicherter Snapshot und damit Vorgänger der nächsten Aufnahme |
 | `lastAnalysedSnapshotId` | string \| null | Analyse-Cursor (§12.3) |
 | `lastCommit` | string \| null | HEAD des Snapshots am Cursor |
-| `lastSuccessfulRun` | string \| null | Ende des letzten `capture` mit Exit-Code 0 |
+| `lastSuccessfulRun` | string \| null | Ende des letzten `capture` mit Exit-Code 0, auch bei `unchanged`. Es ist das einzige Feld, das eine Aufnahme ohne Snapshot ändert (§18). |
 | `nextSnapshotSeq` | integer ≥ 1 | Nächste Snapshot-Nummer |
 | `halt` | null \| `{ reason, detectedAt, expected: { branch, head }, observed: { branch, head } }` | `reason` ist `branch_changed`, `history_rewritten` oder `head_missing`. |
 
@@ -598,7 +599,7 @@ Die Felder sind hier verbindlich festgelegt. Das jeweilige Paket setzt sie 1:1 i
 | `fileStates[]` | `{ path, stage: clean\|staged\|unstaged\|mixed\|untracked, headBlob, indexBlob, worktreeBlob, symlink: boolean, copy: <relativer Pfad> \| null, copyOmitted: <Grund> \| null }`. Enthält jeden erlaubten Pfad, der nicht sauber ist oder durch neue Commits geändert wurde. Blobs sind `string \| null`. `worktreeBlob: null` mit `copyOmitted` `symlink` oder `unreadable` heisst „nicht ermittelt“, sonst „existiert nicht“. Bei Submodulen ist `worktreeBlob` der ausgecheckte Commit (§18). |
 | `evidence[]` | Belege (§9.4) |
 | `statusChanges[]` | `{ path, blob, from: <stage>, to: <stage> \| committed, commit: sha \| null, attribution: documented\|baseline\|unclear, previousEvidence: <qualifizierter Beleg>[] }` |
-| `testReports[]` | `{ path, label, sha256, mtime }` für alle aktuell vorhandenen konfigurierten Berichte. Dient als Vergleichsbasis. |
+| `testReports[]` | `{ path, label, sha256, mtime }` für alle aktuell vorhandenen konfigurierten Berichte, auch im Ausgangs-Snapshot. Dient als Vergleichsbasis. `path` ist relativ zur Repository-Wurzel, bei Berichten ausserhalb absolut, jeweils mit `/` (§18). |
 | `filterDecisions[]` | `{ path \| null, decision: excluded\|withheld\|omitted, reason, rule \| null, detector \| null, line \| null, evidence \| null }`, ohne Inhalte oder Werte. `line` ist die erste Zeile mit Secret-Treffer, `evidence` der betroffene Beleg (`null` bei Pfadausschluss und Kopien). Ausgeschlossene Pfade stehen einmal pro Snapshot (§18). |
 | `gaps[]` | `{ type: rebaseline\|previous_state_unavailable\|halt_detected, detail }` |
 | `stability` | `{ attempts, stable: true }` |
@@ -938,6 +939,8 @@ Reine Indexänderungen sind nicht relevant (D-07).
 
 Ausgangs-Snapshots haben immer `analysisRequired: false`.
 
+Ein Ausgangs-Snapshot erhält weder `state_delta` noch `test_report`; er hält nur den Stand und die vorhandenen Testberichte als Vergleichsbasis fest (§18).
+
 ### 11.4 Zustandsdelta und Zuordnung
 
 Diese Regeln verhindern, dass dieselbe Arbeit doppelt erfasst wird.
@@ -955,8 +958,10 @@ Diese Regeln verhindern, dass dieselbe Arbeit doppelt erfasst wird.
 **`state_delta`:**
 
 - Entsteht, wenn sich der vorige und der aktuelle wirksame Blob unterscheiden.
-- Der Patch wird mit `git diff --no-index` aus zwei Dateien in `<Arbeitsbereich>/tmp/` erzeugt. Die Kopfzeilen werden auf `a/<pfad>` und `b/<pfad>` umgeschrieben.
+- Der Patch wird mit `git diff --no-index` aus zwei Dateien in `<Arbeitsbereich>/tmp/` erzeugt. Die Kopfzeilen werden auf `a/<pfad>` und `b/<pfad>` umgeschrieben: Das Tool schreibt den Kopf (`diff --git`, `new file`/`deleted file`, `index <fromBlob>..<toBlob>`, `---`, `+++`) selbst und übernimmt von Git nur die Hunks. Diff-Optionen, die die Benutzerkonfiguration beeinflussen könnte, sind fest gesetzt (§18).
+- Beide Seiten liegen in Blob-Form vor: Worktree-Inhalte und Kopien werden bei `core.autocrlf` auf LF zurückgeführt, wenn das Ergebnis die bekannte Blob-ID ergibt (§18).
 - Es gelten dieselben Filter wie für alle Patches, einschliesslich der entfernten Zeilen.
+- Links ergeben ein Delta mit `omitted: symlink`, Binärinhalte eines mit `omitted: binary`, beide mit `fromBlob` und `toBlob`. Submodule erscheinen als `Subproject commit <id>` wie bei Git.
 
 **Kopien:** Für jeden Pfad in `fileStates`, dessen wirksamer Stand vom HEAD-Blob abweicht, wird der wirksame Inhalt nach der Prüfung unter `content/state/NNNN.dat` gespeichert. Diese Kopie ist der vorige Stand für die nächste Aufnahme.
 
@@ -965,7 +970,9 @@ Diese Regeln verhindern, dass dieselbe Arbeit doppelt erfasst wird.
 - `documented`, wenn er in einem früheren Snapshot derselben Folge seit dem letzten Ausgangs-Snapshot als `toBlob` eines `state_delta` vorkommt
 - `baseline`, wenn er im Ausgangs-Snapshot als wirksamer Stand oder als HEAD-Blob einer dort erfassten Datei vorkommt
 
-**Statusänderung:** Ist der wirksame Stand unverändert, aber die Stufe eine andere (zum Beispiel `unstaged` → `committed`), entsteht ein Eintrag in `statusChanges` mit der `attribution` `documented` (mit `previousEvidence`), `baseline` oder `unclear`. Es entsteht kein `state_delta` (I-08).
+Die Folge wird über `previousSnapshotId` rückwärts bis zum letzten Ausgangs-Snapshot gelesen. Treffer auf demselben Pfad haben Vorrang, sonst zählt der Blob auf jedem Pfad. Eine Löschung (`toBlob: null`) zählt nur auf demselben Pfad, ein fehlender HEAD-Blob im Ausgangs-Snapshot nie. `previousEvidence` nennt alle Treffer, älteste zuerst (§18).
+
+**Statusänderung:** Ist der wirksame Stand unverändert, aber die Stufe eine andere (zum Beispiel `unstaged` → `committed`), entsteht ein Eintrag in `statusChanges` mit der `attribution` `documented` (mit `previousEvidence`), `baseline` oder `unclear`. Es entsteht kein `state_delta` (I-08). `to` ist `committed`, wenn ein neuer Commit den Pfad geändert hat (bei einer Umbenennung auch den alten Pfad), der Pfad jetzt sauber ist und vorher nicht sauber war; `commit` ist dann der letzte dieser Commits. Sonst ist `to` die aktuelle Stufe (§18).
 
 **Commit-Dateien:**
 
@@ -986,6 +993,8 @@ Ein Halt wird in diesen Fällen erkannt:
 | Der Vorgänger-HEAD ist gesetzt, aber kein Vorfahre des aktuellen HEAD (Rebase, Amend, Reset) | `history_rewritten` |
 | Das Objekt des Vorgänger-HEAD fehlt | `head_missing` |
 
+Die Prüfung läuft in der Reihenfolge der Tabelle vor jedem Lesedurchgang einer Arbeitsaufnahme. Ist der Vorgänger-HEAD gesetzt und der aktuelle HEAD nicht (Branch ohne Commits), gilt `history_rewritten`. Weicht der gelesene Stand von dem geprüften ab, wird der Durchgang wiederholt (§18).
+
 Folgen eines Halts:
 
 - `state.halt` wird gesetzt, und `runs.jsonl` erhält einen Eintrag mit `outcome: halted`.
@@ -995,7 +1004,7 @@ Folgen eines Halts:
 
 `ipa baseline --reason <text>`:
 
-- nimmt einen Ausgangs-Snapshot mit `gaps: [{ type: "rebaseline", detail: <reason> }]` auf
+- nimmt einen Ausgangs-Snapshot mit `gaps: [{ type: "rebaseline", detail: <reason> }]` auf, bei aktivem Halt zusätzlich `{ type: "halt_detected", detail: "<halt.reason>, erkannt am <halt.detectedAt>" }`
 - setzt `state.halt = null` und `state.branch` auf den aktuellen Branch
 - beginnt damit eine neue Zuordnungsfolge
 
@@ -1279,7 +1288,7 @@ Kein Detektor gilt als vollständig. README und Ausgaben DÜRFEN keine Fehlerfre
 
 - Eine Einheit ist binär, wenn die ersten 8000 Bytes ein NUL-Byte enthalten oder Git-Numstat `-` meldet. Binäre Einheiten werden nur als Metadaten geführt.
 - Einheiten über `maxFileBytes` werden mit dem Grund `file_too_large` ausgelassen.
-- Würde die Summe der gespeicherten Inhalte `maxSnapshotBytes` überschreiten, werden alle weiteren Einheiten mit `snapshot_limit` ausgelassen. Die Reihenfolge ist deterministisch: zuerst die Kopien nach Pfad, dann die Belege in ID-Reihenfolge (§18).
+- Würde die Summe der gespeicherten Inhalte `maxSnapshotBytes` überschreiten, werden alle weiteren Einheiten mit `snapshot_limit` ausgelassen. Die Reihenfolge ist deterministisch: zuerst die Kopien nach Pfad, dann `state_delta` und `test_report` in ID-Reihenfolge, dann die übrigen Belege in ID-Reihenfolge (§18).
 - Liegt ein übergeordneter Ordner eines Pfads wegen eines Links oder einer Junction ausserhalb des Repositorys, wird der Inhalt nicht gelesen und mit `symlink` ausgelassen (D-20, §18).
 
 ### 14.6 Was an Claude übermittelt wird
@@ -1407,3 +1416,12 @@ Die Einträge entstehen während der Umsetzung. Jeder Eintrag nennt Datum, Paket
 | 2026-09-29 | 02 | **Annahme A-06** (Git 2.51.0.windows.1): `git diff --cached` in einem Repository ohne Commits. | **Bestätigt:** Git vergleicht dann gegen den leeren Baum, das Ergebnis entspricht dem Aufruf mit der ID des leeren Baums. Das Tool übergibt den leeren Baum trotzdem ausdrücklich und bestimmt seine ID mit `git hash-object -t tree --stdin` (ohne `-w`), damit sie auch im Hashformat SHA-256 stimmt. SHA-256-Repositories bleiben ungeprüft. | §3.3 |
 | 2026-09-29 | 02 | §14.4 beschreibt die Detektoren nur knapp; D-10 legt die Auswertung von Mustern ohne `/` fest, `picomatch` mit Option `basename` wendet sie aber auch auf Muster mit `/` an. | Detektoren: `assignment` erkennt einen Schlüssel, der auf `password`, `passwd`, `secret`, `token`, `api_key`, `apikey` oder `access_key` endet, mit Literalwert ab 8 Zeichen; Werte in Anführungszeichen überall, aber ohne Leerzeichen und ohne Platzhalter wie `${…}`; Werte ohne Anführungszeichen nur als ganze Konfigurationszeile und ohne `.`, Klammern oder Platzhalter. `github_token` erkennt zusätzlich `github_pat_…`. `custom` prüft zeilenweise. Alle Muster laufen auf langen Zeilen in linearer Zeit. Pfadfilter: Muster ohne `/` werden gegen den Dateinamen geprüft, eigene Umsetzung ohne `basename`. Regeln in `filterDecisions`: das Muster, `.git/**` (in jeder Tiefe), `<arbeitsbereich>/**` oder `paths.include`. | D-10, §14.3, §14.4 |
 | 2026-09-29 | 02 | §14.4: „Status und Journal weisen zurückgehaltene Einheiten als offene Prüfung aus“; §6.6 sieht dafür in `status --json` kein Feld vor. | Paket 02 meldet zurückgehaltene Einheiten nach `init` und `capture` als Hinweis auf stderr. Ein Feld in `ipa status` bleibt offen und wird mit Paket 06 oder 07 entschieden. | §6.6, §14.4; Pakete 06, 07 |
+| 2026-09-29 | 03 | **Befund Vorbedingung (Linux, Node.js 22, Git 2.43, Cloud-Umgebung):** AK-01-16 schlug fehl. Unter Linux liefert das Lesen von `<datei>/registry.json` `ENOTDIR` statt `ENOENT` wie unter Windows; `readRegistry` meldete dann „Datenwurzel ist kein Ordner“ ohne die Auswege aus §5.2. | Mit Zustimmung des Benutzers behoben: Die Meldung verwendet dieselben Auswege wie bei einer nicht beschreibbaren Datenwurzel (`src/core/registry.ts`). Linux bleibt ungeprüfte Plattform (§2.3). | §5.2 |
+| 2026-09-29 | 03 | Paketspezifikation 03 §4 verlangt bei `unchanged` ein unverändertes `state.json`, §9.1 definiert `lastSuccessfulRun` als Ende des letzten `capture` mit Exit-Code 0. | Bei `unchanged` ändert sich nur `lastSuccessfulRun`; Snapshot-Felder, `branch` und `halt` bleiben unverändert. `baseline` setzt `lastSuccessfulRun` nicht. | §9.1, §11.3 |
+| 2026-09-29 | 03 | Beleg-IDs und `snapshot_limit`: §14.5 zählte nach der Kopie alle Belege in ID-Reihenfolge. Dann könnten Commit-, Staged- und Unstaged-Diffs, die nie an Claude gehen (D-06), die Belege verdrängen, die an Claude gehen. | IDs: wie bisher Commits, Staged-, Unstaged-Diffs, danach `state_delta` nach Pfad und `test_report` in Konfigurationsreihenfolge; die Nummerierung aus Paket 02 bleibt stabil. Grenze: Kopien nach Pfad, dann `state_delta` und `test_report`, dann die übrigen Belege. | §14.5 |
+| 2026-09-29 | 03 | §11.4 lässt offen, wie ein Patch aus zwei Hilfsdateien entsteht, wenn eine Seite nicht existiert, beide Seiten aus verschiedenen Quellen stammen (Kopie oder Working Tree gegen Git-Objekt) oder die Benutzerkonfiguration die Diff-Ausgabe verändert. Unter Windows ist `core.autocrlf=true` üblich; ein Vergleich von CRLF-Worktree gegen LF-Blob zeigte jede Zeile als geändert. | Der Kopf des Patches wird vom Tool geschrieben (`index <fromBlob>..<toBlob>` mit vollen IDs, Nullen für fehlende Seiten, Modus 100644), Git liefert mit `git diff --no-index --no-color --no-renames -U3 --diff-algorithm=myers --indent-heuristic` nur die Hunks, eine fehlende Seite ist `/dev/null`. Worktree-Inhalte und Kopien werden auf LF zurückgeführt, wenn das die Blob-ID ergibt (SHA-1 oder SHA-256 im Speicher berechnet); andere Clean-Filter bleiben unberücksichtigt. Die Hilfsdateien liegen in `tmp/delta-<hex>/` und werden danach gelöscht. Link: `omitted: symlink`; Binärinhalt (auch eine als `binary` ausgelassene Kopie): `omitted: binary` ohne Lücke; aktueller Stand über `maxFileBytes`: `file_too_large`. | §11.4 |
+| 2026-09-29 | 03 | `previous_state_unavailable`: Welche fehlenden Vorstände ergeben eine Lücke? | Lücke, wenn die Kopie des Vorgängers wegen `secret_suspected`, `file_too_large` oder `snapshot_limit` fehlt, wenn der vorige Stand nicht ermittelt war (Link, unlesbar), wenn ein Git-Objekt fehlt oder grösser als `maxFileBytes` ist. Das Delta hat dann `fromBlob: null` und zeigt den aktuellen Stand als neue Datei; bei einer Löschung nur den Kopf. `detail` nennt Pfad und Grund. | §9.3, §11.4 |
+| 2026-09-29 | 03 | Dokumentierte Blobs: §11.4 sagt nicht, ob der Pfad übereinstimmen muss und wie eine Löschung dokumentiert ist. Statusänderungen: offen, wann `to` `committed` ist. | Siehe §11.4: Treffer auf demselben Pfad zuerst, sonst über den Blob; Löschungen nur pfadgleich; fehlender HEAD-Blob im Ausgangs-Snapshot zählt nie. `to: committed` nur, wenn ein neuer Commit den Pfad (oder bei Umbenennung dessen alten Pfad) geändert hat, der Pfad jetzt sauber und vorher nicht sauber war. Der vorige Stand eines Pfads ausserhalb der vorigen `fileStates` stammt aus `cat-file --batch-check <vorgänger.head>:<pfad>` (Pfade mit Zeilenumbruch einzeln über `rev-parse --verify -q`). | §11.4 |
+| 2026-09-29 | 03 | Halt: Reihenfolge der Prüfungen, HEAD ohne Commit nach einem gesetzten Vorgänger-HEAD, und ein Branchwechsel zwischen Prüfung und Lesedurchgang sind offen. | Reihenfolge `branch_changed`, `head_missing` (`cat-file -e <sha>^{commit}`), `history_rewritten` (`merge-base --is-ancestor`); aktueller HEAD `null` bei gesetztem Vorgänger ergibt `history_rewritten`. Die Prüfung läuft vor jedem Lesedurchgang; liest der Durchgang einen anderen HEAD oder Branch als geprüft, wird er wie ein instabiler Durchgang wiederholt. Der Halt wird unter dem Lock in `state.json` geschrieben; `runs.jsonl` hat `outcome: halted` mit leerem `errors`. | §11.5, §9.11 |
+| 2026-09-29 | 03 | `ipa baseline`: Der Grund steht im Manifest (I-12); unklar ist das Verhalten ohne Ausgangs-Snapshot aus `init` und das Format von `halt_detected`. | Leerer Grund oder Secret-Treffer im Grund: Exit-Code 2. Ohne Ausgangs-Snapshot: Exit-Code 2 mit Verweis auf `ipa init`. `halt_detected.detail` = `<reason>, erkannt am <detectedAt>`. `state.baselineSnapshotId` bleibt der erste Ausgangs-Snapshot; der letzte wird über `previousSnapshotId` gefunden. `CaptureOptions.reason` ergänzt. | §6.3, §9.3, §10, §11.5 |
+| 2026-09-29 | 03 | Testberichte: Pfadangabe im Manifest bei Berichten ausserhalb des Repositorys, nicht lesbare Berichte, grosse Berichte, Konsistenz und Grenzen des Intervalls für `fresh` sind offen. | `path` relativ zur Repository-Wurzel, ausserhalb absolut, mit `/`; verglichen wird über diesen Pfad. Nicht vorhandene, nicht lesbare oder nicht reguläre Dateien gelten als fehlend. Berichte über `maxFileBytes` werden gestreamt gehasht und mit `file_too_large` (oder `binary`) ausgelassen. Die Konsistenzprüfung liest die Berichte erneut und vergleicht SHA-256. `fresh`: untere Grenze `observedPeriod.from` (sekundengenau), obere Grenze der genaue Aufnahmezeitpunkt; `mtime` wird sekundengenau in der konfigurierten Zeitzone gespeichert. Konfigurierte Berichte werden auch über Links gelesen, weil sie ausdrücklich angegeben sind (D-17). Ausgangs-Snapshots erfassen nur `testReports[]`. | §9.3, §9.4, D-17 |

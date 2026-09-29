@@ -2,13 +2,14 @@
  * `ipa status [--json]`: read-only, without lock and without run log entry (spec.md §6.6).
  */
 import type { Command } from 'commander';
+import { describeHalt } from '../../collector/halt.js';
 import { listSnapshots, readManifest } from '../../collector/snapshots.js';
 import { resolveContext, type WorkspaceContext } from '../../core/context.js';
 import { EXIT, IpaError } from '../../core/errors.js';
 import { isStrictlyInside } from '../../core/paths.js';
 import { findRegistryEntry, readRegistry, type WorkspaceMode } from '../../core/registry.js';
 import { readRunRecords, type RunRecord } from '../../core/run-log.js';
-import { readState } from '../../core/state.js';
+import { type Halt, readState } from '../../core/state.js';
 import { describeWorkspaceMode, formatFields } from '../format.js';
 import type { CliIo, CliState, GlobalOptions } from '../io.js';
 
@@ -39,6 +40,7 @@ export interface StatusReport {
   lastSuccessfulRun: string | null;
   lastRun: StatusRun | null;
   snapshots: SnapshotCounts;
+  halt: Halt | null;
 }
 
 export interface StatusResult {
@@ -88,6 +90,7 @@ export async function collectStatus(ctx: WorkspaceContext): Promise<StatusResult
       lastSuccessfulRun: state.lastSuccessfulRun,
       lastRun,
       snapshots,
+      halt: state.halt,
     },
     warnings,
   };
@@ -119,6 +122,7 @@ export function formatStatus(report: StatusReport): string {
       'Snapshots',
       `${report.snapshots.total} (Ausgangs-Snapshots: ${report.snapshots.baseline}, Arbeits-Snapshots: ${report.snapshots.work})`,
     ],
+    ['Halt', report.halt === null ? NONE : `${describeHalt(report.halt)} ipa baseline --reason "<Grund>" erforderlich.`],
   ]);
 }
 

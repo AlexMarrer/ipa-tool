@@ -4,7 +4,7 @@ Lokales Kommandozeilenwerkzeug für die IPA. Es soll den Arbeitsstand eines beli
 
 Die Umsetzung erfolgt in Paketen, geplant in [`docs/implementation/`](docs/implementation/README.md).
 
-**Stand: Paket 02 (Snapshot-Erfassung).** Verfügbar sind `ipa init` mit Ausgangs-Snapshot, `ipa capture` ohne KI und `ipa status` sowie eine Claude-Vorabprüfung. Noch nicht umgesetzt sind die Zuordnung von Änderungen zum Vorgänger-Snapshot (Paket 03), Notizen, Analyse, Journal und Zeitsteuerung. Bis Paket 03 erzeugt deshalb jeder Aufruf von `ipa capture` einen Snapshot, auch ohne Änderungen.
+**Stand: Paket 03 (Änderungszuordnung).** Verfügbar sind `ipa init` mit Ausgangs-Snapshot, `ipa capture` ohne KI mit Zuordnung der Änderungen zum Vorgänger-Snapshot, `ipa baseline`, `ipa status` sowie eine Claude-Vorabprüfung. Noch nicht umgesetzt sind Notizen, Analyse, Journal und Zeitsteuerung.
 
 ## Voraussetzungen
 
@@ -122,7 +122,7 @@ Ausgangs-Snapshot: S000001
 
 ### `ipa capture [--no-analysis]`
 
-Nimmt einen Arbeits-Snapshot auf. Es gibt noch keine Analyse durch Claude; `--no-analysis` wird schon akzeptiert und hat bis Paket 06 keine Wirkung.
+Nimmt einen Arbeits-Snapshot auf, sofern seit dem letzten Snapshot neue Arbeit vorliegt (siehe [Zuordnung von Änderungen](#zuordnung-von-änderungen)). Es gibt noch keine Analyse durch Claude; `--no-analysis` wird schon akzeptiert und hat bis Paket 06 keine Wirkung.
 
 Erfasst werden getrennt:
 
@@ -139,20 +139,44 @@ Ablauf und Schutz:
 - Der Snapshot entsteht in einem temporären Ordner und wird erst vollständig unter seinem Namen abgelegt. Bricht ein Lauf danach ab, übernimmt der nächste schreibende Befehl den Snapshot ohne Duplikat und meldet das. Reste abgebrochener Läufe werden entfernt.
 - Das Repository wird nur gelesen. Git läuft ohne optionale Locks und ohne automatische Index-Aktualisierung, damit auch `.git/index` unverändert bleibt.
 - Vor dem ersten `capture` braucht es den Ausgangs-Snapshot von `ipa init`, sonst Exit-Code 2.
+- Ohne neue Arbeit wird kein Snapshot gespeichert: Exit-Code 0, Meldung „Keine neue Arbeit …“ und in `runs.jsonl` das Ergebnis `unchanged`.
+- Nach einem Branchwechsel oder bei umgeschriebener Historie hält `capture` an: Exit-Code 4, siehe [`ipa baseline`](#ipa-baseline---reason-text---force).
 
 ```text
 > ipa capture
 Snapshot S000002 gespeichert (Arbeits-Snapshot, ohne Analyse).
-Commits:        2
-Dateizustände:  5
-Belege:         9
-Ausgeschlossen: 1
-Zurückgehalten: 1
-Ausgelassen:    0
+Commits:          2
+Dateizustände:    5
+Belege:           12
+Zustandsdeltas:   3
+Statusänderungen: 1
+Testberichte:     0
+Lücken:           0
+Analyse nötig:    ja
+Ausgeschlossen:   1
+Zurückgehalten:   1
+Ausgelassen:      0
 Hinweis: 1 Einheit(en) wegen Secret-Verdacht zurückgehalten. Offene Prüfung: filterDecisions im Manifest von S000002 nennt Pfad, Detektor und Zeile, nie den Wert.
 ```
 
 Ohne `user.email` in der Git-Konfiguration gelten alle Commits als fremd, und `capture` gibt eine Warnung aus. Gespeichert wird nur, ob ein Commit vom konfigurierten Benutzer stammt, nie eine E-Mail-Adresse.
+
+### `ipa baseline --reason <text> [--force]`
+
+Setzt einen neuen Ausgangspunkt, nachdem `capture` angehalten hat. Vorher lohnt sich ein Blick auf `ipa status` und das Repository: Stimmt der Branch, ist der Rebase abgeschlossen?
+
+- `--reason` ist Pflicht und steht im Manifest. Ein Grund, der wie ein Zugangsdatum aussieht, wird mit Exit-Code 2 abgelehnt.
+- Nimmt den Lock und speichert einen Ausgangs-Snapshot (`kind: baseline`) mit der Lücke `rebaseline` und, falls ein Halt aktiv war, zusätzlich `halt_detected` mit Grund und Zeitpunkt des Halts.
+- Hebt den Halt auf und übernimmt den aktuellen Branch. Die Zuordnung beginnt dort neu; Arbeit zwischen dem letzten Snapshot und dem neuen Ausgangspunkt bleibt als Lücke sichtbar. Frühere Snapshots bleiben unverändert.
+- Ohne aktiven Halt endet der Befehl mit Exit-Code 2. Mit `--force` setzt er den Ausgangspunkt trotzdem, zum Beispiel nach einer langen Pause.
+- Ist der Arbeitsstand unruhig, endet er mit Exit-Code 5, und der Halt bleibt bestehen.
+
+```text
+> ipa baseline --reason "Rebase auf main abgeschlossen"
+Ausgangs-Snapshot S000007 gespeichert. Die Zuordnung beginnt dort neu.
+Aufgehobener Halt: Die Historie wurde umgeschrieben (…) (history_rewritten, erkannt am 2026-10-14T10:03:12+02:00). …
+Arbeit zwischen dem letzten Snapshot und diesem Ausgangspunkt bleibt als Lücke sichtbar.
+```
 
 ### `ipa status [--json]`
 
@@ -167,17 +191,65 @@ Mit `--json` erscheint ein JSON-Objekt. Dieses Format ist ein stabiler Vertrag. 
 | `baselineSnapshotId`, `lastSnapshotId`, `lastAnalysedSnapshotId`, `lastSuccessfulRun` | Zeichenkette oder `null` |
 | `lastRun` | letzter Eintrag aus `runs.jsonl` oder `null`; bei `errors` nur die Fehlercodes, ohne Meldungen. Hat der Lauf einen abgebrochenen Snapshot übernommen, steht dessen ID in `recovered`. |
 | `snapshots` | `{ total, baseline, work }`: Anzahl aller Snapshots, der Ausgangs- und der Arbeits-Snapshots |
+| `halt` | `null` oder `{ reason, detectedAt, expected: { branch, head }, observed: { branch, head } }` bei aktivem Halt |
 
 ### Exit-Codes
 
 | Code | Bedeutung |
 | --- | --- |
-| 0 | Erfolg |
+| 0 | Erfolg, auch wenn `capture` keine neue Arbeit findet |
 | 1 | Unerwarteter interner Fehler. Mit `IPA_DEBUG=1` wird der Stacktrace ausgegeben. |
 | 2 | Bedienungs- oder Konfigurationsfehler: ungültige Argumente oder Konfiguration, kein Git-Repository, nicht initialisiert, kein Ausgangs-Snapshot, unzulässige oder nicht beschreibbare Datenwurzel, unbekannte Schemaversion |
 | 3 | Ein anderer Lauf hält den Lock. |
+| 4 | Die Zuordnung ist wegen Branchwechsel oder umgeschriebener Historie angehalten. `ipa baseline` ist erforderlich. |
 | 5 | Der Arbeitsstand hat sich während der Aufnahme wiederholt verändert. Es wurde kein Snapshot gespeichert. |
-| 4, 6, 7 | vorgesehen für spätere Pakete (Halt, KI-Schritt, Voraussetzungsprüfung) |
+| 6, 7 | vorgesehen für spätere Pakete (KI-Schritt, Voraussetzungsprüfung) |
+
+## Zuordnung von Änderungen
+
+`capture` vergleicht jede Aufnahme mit dem letzten gespeicherten Snapshot, damit dieselbe Arbeit nicht doppelt erfasst wird.
+
+**Zustandsdelta:** Für jede Datei zählt ihr *wirksamer Stand*, also der Inhalt im Working Tree, unabhängig davon, ob er gestagt oder committet ist. Hat er sich seit dem letzten Snapshot verändert, entsteht ein Beleg `state_delta` mit einem Patch vom vorigen zum aktuellen Stand (`fromBlob` → `toBlob`). Er ist der inhaltliche Hauptbeleg für die spätere Analyse. Auch eine Rücknahme auf den committeten Stand ergibt ein Delta; eine gelöschte und identisch wieder angelegte Datei ergibt keines. Mehrere Commits zwischen zwei Aufnahmen zeigt das Delta als Nettoeffekt. Der Patch durchläuft dieselbe Secret-Prüfung wie alle Patches, einschliesslich entfernter Zeilen.
+
+**Statusänderungen:** Wird ein bereits erfasster Stand nur gestagt oder unverändert committet, entsteht kein neues Delta. Das Manifest führt dann in `statusChanges` einen Eintrag, zum Beispiel `unstaged` → `committed`, mit Verweis auf das frühere Delta (`previousEvidence`).
+
+**Commit-Dateien** erhalten in `attribution`:
+
+| Wert | Bedeutung |
+| --- | --- |
+| `documented` | Der committete Stand wurde schon früher als Delta erfasst (`previousEvidence`). |
+| `baseline` | Der committete Stand stammt aus dem Ausgangs-Snapshot. |
+| `new` | Ein Delta dieses Snapshots deckt die Datei ab (`coveredBy`). |
+| `unclear` | Keine der obigen Zuordnungen ist möglich, etwa bei einem Zwischenstand, der vor der nächsten Aufnahme zurückgenommen wurde. |
+
+**Kein Snapshot ohne neue Arbeit:** Ein Arbeits-Snapshot wird nur gespeichert, wenn sich HEAD geändert hat, ein Delta entstanden ist oder ein Testbericht neu ist oder sich geändert hat. Reines Stagen genügt nicht. Die eigenen Dateien eines Arbeitsbereichs im Repository wie `.ipa/` zählen nie. `analysisRequired` im Manifest ist `true`, wenn es ein Delta, einen neuen Testbericht oder eine Commit-Datei mit `new` oder `unclear` gibt; ein Snapshot nur mit Statusänderungen braucht später keine KI-Analyse.
+
+**Lücken:** Wurde die Kopie einer Datei im vorigen Snapshot zurückgehalten, etwa wegen Secret-Verdacht oder Grösse, fehlt der vorige Inhalt. Das Delta zeigt dann nur den aktuellen Stand, und `gaps` enthält `previous_state_unavailable`.
+
+**Halt:** Die Zuordnung setzt voraus, dass der neue Stand auf dem vorigen aufbaut. In diesen Fällen hält `capture` mit Exit-Code 4 an, speichert keinen Snapshot und setzt `halt` in `state.json`:
+
+| Grund | Fall |
+| --- | --- |
+| `branch_changed` | anderer Branch als bisher, auch Wechsel zu oder von detached HEAD (etwa während eines Rebase) |
+| `history_rewritten` | der vorige HEAD ist kein Vorfahre mehr, etwa nach `commit --amend`, Rebase oder `reset` |
+| `head_missing` | der Commit des vorigen Snapshots existiert nicht mehr, etwa nach Garbage Collection |
+
+Ein Merge, auch eines fremden Branches, ist kein Halt. Fremde Commits haben `authoredByConfiguredUser: false`. Jede weitere Aufnahme endet mit Exit-Code 4, bis `ipa baseline` einen neuen Ausgangspunkt setzt.
+
+**Zeilenenden:** Mit `core.autocrlf` vergleicht das Tool Inhalte so, wie Git sie speichert. Andere Clean-Filter wendet es für den Patch nicht an; dann kann ein Delta Unterschiede zeigen, die nur aus dem Filter stammen.
+
+### Testberichte
+
+Unter `testReports` in `config.json` lassen sich Dateien mit Testergebnissen eintragen, relativ zur Repository-Wurzel oder absolut, auch ausserhalb des Repositorys:
+
+```json
+"testReports": [{ "path": "build/test-results/junit.xml", "label": "Unit-Tests" }]
+```
+
+- Die Berichte werden direkt gelesen, ohne Pfadfilter, aber immer mit Secret-Prüfung und Grössengrenze. Ein Bericht mit Secret-Verdacht wird ganz zurückgehalten.
+- Ist ein Bericht neu oder hat er einen anderen Inhalt als im letzten Snapshot, entsteht ein Beleg `test_report` mit `label`, `mtime` und `fresh`. Ein unveränderter oder gelöschter Bericht ergibt keinen Beleg.
+- `fresh` ist `true`, wenn die Änderungszeit der Datei im Beobachtungszeitraum des Snapshots liegt, also nach der vorigen Aufnahme. Das ist eine Heuristik: Sie weist nicht nach, welcher Codestand getestet wurde. Ein kopierter Bericht mit alter Änderungszeit gilt als nicht frisch.
+- Das Tool führt keine Tests aus und wertet Berichte nicht aus.
 
 ## Filter und vertrauliche Inhalte
 
@@ -201,7 +273,7 @@ Mit `--json` erscheint ein JSON-Objekt. Dieses Format ist ein stabiler Vertrag. 
 
 ### Secret-Prüfung
 
-Jede Einheit wird vor der Speicherung auf mögliche Zugangsdaten geprüft: Dateikopien, Diffs einschliesslich entfernter Zeilen und Kontextzeilen sowie Commit-Nachrichten. Bei einem Treffer wird die **ganze Einheit zurückgehalten**, geschwärzt wird nichts. Das Manifest nennt in `filterDecisions` Pfad, Detektor und Zeilennummer, nie den Wert.
+Jede Einheit wird vor der Speicherung auf mögliche Zugangsdaten geprüft: Dateikopien, Diffs und Zustandsdeltas einschliesslich entfernter Zeilen und Kontextzeilen, Commit-Nachrichten und Testberichte. Bei einem Treffer wird die **ganze Einheit zurückgehalten**, geschwärzt wird nichts. Das Manifest nennt in `filterDecisions` Pfad, Detektor und Zeilennummer, nie den Wert.
 
 | Detektor | erkennt |
 | --- | --- |
@@ -228,7 +300,7 @@ Ein Secret mit Leerzeichen oder in einem ungewohnten Format wird daher nicht erk
 
 - Eine Einheit ist binär, wenn ihre ersten 8000 Bytes ein NUL-Byte enthalten oder Git sie als binär meldet. Binärdateien erscheinen nur mit Metadaten (`binary: true`, ohne Datei).
 - Einheiten über `limits.maxFileBytes` (Standard 256 KiB) werden mit `file_too_large` ausgelassen. Ihre Blob-ID wird trotzdem bestimmt.
-- Würde ein Snapshot mehr als `limits.maxSnapshotBytes` (Standard 10 MiB) speichern, werden ab dort alle weiteren Einheiten mit `snapshot_limit` ausgelassen. Zuerst kommen die Kopien der Dateien nach Pfad, dann die Belege in ihrer Reihenfolge.
+- Würde ein Snapshot mehr als `limits.maxSnapshotBytes` (Standard 10 MiB) speichern, werden ab dort alle weiteren Einheiten mit `snapshot_limit` ausgelassen. Zuerst kommen die Kopien der Dateien nach Pfad, dann Zustandsdeltas und Testberichte, dann die übrigen Belege in ihrer Reihenfolge.
 - Symlinks werden nie verfolgt. Gespeichert wird nur das geprüfte Linkziel als Text. Git für Windows listet auch Dateien in Ordner-Junctions auf; liegt ein übergeordneter Ordner ausserhalb des Repositorys, wird die Datei nicht gelesen und als `symlink` ausgelassen.
 - Submodule erscheinen nur mit ihrer Commit-ID.
 

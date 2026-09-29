@@ -38,6 +38,7 @@ function observation(files: ObservedFile[], extra: Partial<Observation> = {}): O
     staged: [],
     unstaged: [],
     files,
+    index: new Map(),
     excluded: new Map(),
     nestedRepositories: [],
     configuredEmail: null,
@@ -56,6 +57,9 @@ function build(obs: Observation, limits = { maxFileBytes: 10_000, maxSnapshotByt
     timezone: 'Europe/Zurich',
     limits,
     scanner: createSecretScanner({ extraPatterns: [], disabledDetectors: [] }),
+    reports: [],
+    newReports: [],
+    gaps: [],
   });
   expect(validate('manifest', built.manifest)).toEqual({ ok: true });
   return built;
@@ -170,8 +174,9 @@ describe('buildSnapshot: Belege, Dateien und Manifest (spec.md §8.1, §9.3)', (
     expect(manifest.filterDecisions).toEqual([
       { path: '.env', decision: 'excluded', reason: 'excluded', rule: '.env', detector: null, line: null, evidence: null },
     ]);
+    // Without attribution input there is no delta and no new or unclear commit file (spec.md §11.3).
     expect(manifest).toMatchObject({
-      analysisRequired: true,
+      analysisRequired: false,
       previousSnapshotId: 'S000001',
       observedPeriod: { from: '2026-10-14T09:00:00+02:00', to: '2026-10-14T10:03:12+02:00' },
       statusChanges: [],
