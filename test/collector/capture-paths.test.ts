@@ -71,6 +71,8 @@ describe('Pfade, Autorschaft und Links (AK-02-13, AK-02-14, AK-02-16)', () => {
     } catch {
       return;
     }
+    // Paths behind a junction have no determined state and alone make no capture relevant (package 03).
+    await repo.write('lesbar.txt', 'lesbar\n');
     await unchanged(repo, () => captureRepo(repo, dataDir));
     expect(await filesContaining(dataDir, marker)).toEqual([]);
     const manifest = await readManifestFile(workspace, 'S000002');
