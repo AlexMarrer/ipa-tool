@@ -11,7 +11,7 @@ Die Umsetzung erfolgt in Paketen, geplant in [`docs/implementation/`](docs/imple
 - Windows 11. Das ist die einzige geprüfte Plattform. Linux und macOS sind nicht geprüft.
 - Node.js 24 oder neuer
 - Git 2.31 oder neuer (geprüft mit 2.51)
-- Für `ipa doctor` und die spätere Analyse: eine installierte und angemeldete Claude-Code-CLI. Auf dem Entwicklungsrechner ist Version 2.1.114 vorhanden; ihre Optionen sind geprüft, ein erfolgreicher Modellaufruf steht noch aus (siehe [`ipa doctor --live`](#ipa-doctor---live)). Ein Update auf mindestens 2.1.205 wird empfohlen.
+- Für `ipa doctor` und die spätere Analyse: eine installierte und angemeldete Claude-Code-CLI. Geprüft mit Version 2.1.201 unter Windows 11, einschliesslich [`ipa doctor --live`](#ipa-doctor---live). Ein Update auf mindestens 2.1.205 wird empfohlen: Ältere Versionen ignorieren ein ungültiges Ausgabeschema still (das Tool prüft seine Schemas deshalb selbst).
 
 ## Installation
 
@@ -123,7 +123,7 @@ Arbeitsbereich:    C:/GIT/mein-projekt/.ipa
 Speichermodus:     ausdrücklich gewählt (im Repository)
 Zeitzone:          Europe/Zurich
 Ausgangs-Snapshot: S000001
-Claude-Prüfung: bereit (Claude Code 2.1.114, ohne Modellaufruf). Einen echten Aufruf prüft ipa doctor --live.
+Claude-Prüfung: bereit (Claude Code 2.1.201, ohne Modellaufruf). Einen echten Aufruf prüft ipa doctor --live.
 ```
 
 ### `ipa capture [--no-analysis]`
@@ -201,12 +201,12 @@ Prüft, ob Git und Claude Code für die Analyse bereit sind. Ohne `--live` finde
 
 ```text
 > ipa doctor
-Git:               gefunden, Version 2.51.0.windows.1
-Claude Code:       gefunden, Version 2.1.114
+Git:               gefunden, Version 2.52.0.windows.1
+Claude Code:       gefunden, Version 2.1.201
 Anmeldung:         angemeldet, Anmeldeart claude.ai
 Pflichtoptionen:   alle 11 erkannt
-Weitere Optionen:  --safe-mode nein, --setting-sources ja, --model ja, --verbose ja
---safe-mode:       wird nicht verwendet, weil nicht erkannt
+Weitere Optionen:  --safe-mode ja, --setting-sources ja, --model ja, --verbose ja
+--safe-mode:       wird verwendet
 --setting-sources: wird nicht verwendet, bis ipa doctor --live die Anmeldung damit bestätigt (A-08)
 Live-Prüfung:      nicht ausgeführt (ipa doctor --live)
 Ergebnis:          bereit
