@@ -1,0 +1,67 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "IPA Assistant – Zeile in runs.jsonl (spec.md §9.11)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "runId",
+    "command",
+    "startedAt",
+    "endedAt",
+    "durationMs",
+    "exitCode",
+    "outcome",
+    "snapshotCreated",
+    "analysesCompleted",
+    "analysesFailed",
+    "lockBroken",
+    "errors"
+  ],
+  "properties": {
+    "schemaVersion": { "type": "integer", "const": 1 },
+    "runId": { "type": "string", "pattern": "^R[0-9]{8}T[0-9]{6}Z-[0-9a-f]{4}$" },
+    "command": { "type": "string", "minLength": 1 },
+    "startedAt": { "$ref": "#/definitions/timestamp" },
+    "endedAt": { "$ref": "#/definitions/timestamp" },
+    "durationMs": { "type": "integer", "minimum": 0 },
+    "exitCode": { "type": "integer", "enum": [0, 1, 2, 3, 4, 5, 6, 7] },
+    "outcome": {
+      "type": "string",
+      "enum": [
+        "ok",
+        "unchanged",
+        "halted",
+        "unstable",
+        "lock_held",
+        "analysis_failed",
+        "outside_window",
+        "usage_error",
+        "error"
+      ]
+    },
+    "snapshotCreated": { "type": ["string", "null"], "pattern": "^S[0-9]{6}$" },
+    "analysesCompleted": { "type": "array", "items": { "$ref": "#/definitions/snapshotId" } },
+    "analysesFailed": { "type": "array", "items": { "$ref": "#/definitions/snapshotId" } },
+    "lockBroken": { "type": "boolean" },
+    "errors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "message"],
+        "properties": {
+          "code": { "type": "string", "minLength": 1 },
+          "message": { "type": "string" }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "snapshotId": { "type": "string", "pattern": "^S[0-9]{6}$" },
+    "timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(Z|[+-][0-9]{2}:[0-9]{2})$"
+    }
+  }
+}

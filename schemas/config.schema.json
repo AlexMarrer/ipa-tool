@@ -1,0 +1,145 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "IPA Assistant – config.json (spec.md §7)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "repositoryId",
+    "repository",
+    "timezone",
+    "paths",
+    "secrets",
+    "limits",
+    "context",
+    "testReports",
+    "claude",
+    "schedule"
+  ],
+  "properties": {
+    "schemaVersion": { "type": "integer", "const": 1 },
+    "repositoryId": { "$ref": "#/definitions/repositoryId" },
+    "repository": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path"],
+      "properties": {
+        "path": { "$ref": "#/definitions/nonEmptyString" }
+      }
+    },
+    "timezone": { "$ref": "#/definitions/nonEmptyString" },
+    "paths": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["include", "exclude"],
+      "properties": {
+        "include": { "type": "array", "items": { "$ref": "#/definitions/nonEmptyString" } },
+        "exclude": { "type": "array", "items": { "$ref": "#/definitions/nonEmptyString" } }
+      }
+    },
+    "secrets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["extraPatterns", "disabledDetectors"],
+      "properties": {
+        "extraPatterns": { "type": "array", "items": { "$ref": "#/definitions/nonEmptyString" } },
+        "disabledDetectors": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "private_key",
+              "aws_access_key",
+              "github_token",
+              "slack_token",
+              "anthropic_or_openai_key",
+              "jwt",
+              "url_credentials",
+              "assignment",
+              "custom"
+            ]
+          }
+        }
+      }
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "maxFileBytes",
+        "maxSnapshotBytes",
+        "maxAnalysisInputBytes",
+        "maxJournalInputBytes",
+        "maxContextFileBytes",
+        "stabilityRetries",
+        "stabilityDelayMs",
+        "maxRunSeconds"
+      ],
+      "properties": {
+        "maxFileBytes": { "type": "integer", "minimum": 1 },
+        "maxSnapshotBytes": { "type": "integer", "minimum": 1 },
+        "maxAnalysisInputBytes": { "type": "integer", "minimum": 1 },
+        "maxJournalInputBytes": { "type": "integer", "minimum": 1 },
+        "maxContextFileBytes": { "type": "integer", "minimum": 1 },
+        "stabilityRetries": { "type": "integer", "minimum": 0 },
+        "stabilityDelayMs": { "type": "integer", "minimum": 0 },
+        "maxRunSeconds": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["files"],
+      "properties": {
+        "files": { "type": "array", "items": { "$ref": "#/definitions/nonEmptyString" } }
+      }
+    },
+    "testReports": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "label"],
+        "properties": {
+          "path": { "$ref": "#/definitions/nonEmptyString" },
+          "label": { "$ref": "#/definitions/nonEmptyString" }
+        }
+      }
+    },
+    "claude": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["command", "model", "timeoutSeconds", "maxTurns", "maxAttemptsPerSnapshot", "maxAnalysesPerRun"],
+      "properties": {
+        "command": { "type": "array", "minItems": 1, "items": { "$ref": "#/definitions/nonEmptyString" } },
+        "model": { "type": ["string", "null"], "minLength": 1 },
+        "timeoutSeconds": { "type": "integer", "minimum": 1 },
+        "maxTurns": { "type": "integer", "minimum": 1 },
+        "maxAttemptsPerSnapshot": { "type": "integer", "minimum": 1 },
+        "maxAnalysesPerRun": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "schedule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["workdays", "windowStart", "windowEnd", "intervalMinutes", "extraRunTimes"],
+      "properties": {
+        "workdays": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "enum": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] }
+        },
+        "windowStart": { "$ref": "#/definitions/timeOfDay" },
+        "windowEnd": { "$ref": "#/definitions/timeOfDay" },
+        "intervalMinutes": { "type": "integer", "minimum": 1, "maximum": 1440 },
+        "extraRunTimes": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/definitions/timeOfDay" } }
+      }
+    }
+  },
+  "definitions": {
+    "nonEmptyString": { "type": "string", "minLength": 1 },
+    "repositoryId": { "type": "string", "pattern": "^[a-z0-9-]{1,32}-[0-9a-f]{6}$" },
+    "timeOfDay": { "type": "string", "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$" }
+  }
+}

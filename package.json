@@ -1,0 +1,33 @@
+{
+  "name": "ipa-assistant",
+  "version": "0.1.0",
+  "description": "Lokales Kommandozeilenwerkzeug, das den Arbeitsstand eines Git-Repositorys in gefilterten Snapshots sichert und daraus belegte Arbeitsprotokolle vorbereitet.",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "ipa": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "schemas",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "probe:claude": "node scripts/claude-probe.mjs"
+  },
+  "dependencies": {
+    "ajv": "^8.20.0",
+    "commander": "^15.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.0",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.2"
+  }
+}
