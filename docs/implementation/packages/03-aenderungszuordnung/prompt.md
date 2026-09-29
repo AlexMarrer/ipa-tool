@@ -20,6 +20,29 @@ Lies diese Dateien vollständig, bevor du etwas änderst:
 
 Die gemeinsamen Verträge (Datenmodelle, Befehle, Exit-Codes, Schnittstellen, Invarianten I-01 bis I-15, Regeln R-01 bis R-07) stehen nur in `docs/implementation/spec.md`. Halte dich exakt an diese Namen und Formate.
 
+
+## Zusatzkontext aus Paket 02
+
+Paket 02 ist abgeschlossen. `npm run typecheck`, `npm run build` und `npm test` waren zuletzt grün. Stand: 241 Tests bestanden, 1 Test übersprungen. Paket 03 wurde noch nicht begonnen.
+
+Wichtige technische Erkenntnisse aus Paket 02:
+
+- Der `GitRunner` setzt `-c diff.autoRefreshIndex=false`, weil `git diff` unter Git for Windows sonst trotz `GIT_OPTIONAL_LOCKS=0` die `.git/index` verändern kann. Diese Schutzmassnahme gehört zu I-01 und darf nicht entfernt werden.
+- Git for Windows kann Dateien über Directory Junctions ausserhalb des Repositorys sichtbar machen. Vor jedem tatsächlichen Dateizugriff wird deshalb der aufgelöste reale Pfad geprüft. Externe Ziele dürfen nicht gelesen werden.
+- Die Secret-Erkennung ist bewusst heuristisch. Pfadfilter allein reichen nicht. Auffällige Inhalte in normalen Quelldateien oder Diffs werden zurückgehalten. False Positives und False Negatives sind möglich und dokumentiert.
+- Muster ohne `/` werden bei Pfadfiltern gegen den Dateinamen geprüft. Dies wurde selbst implementiert, weil Picomatchs globale `basename`-Option nicht exakt dem gewünschten Verhalten entspricht.
+- `filterDecisions` enthält zusätzlich `line`, `evidence` und ein nullbares `path`.
+- `runs.jsonl` unterstützt das optionale Feld `recovered`.
+- Die Dateiliste eines Commits wird über `git show --raw` ermittelt. Dafür wird Git 2.31 oder neuer vorausgesetzt.
+- `ipa capture` erzeugt aktuell bei jedem Aufruf einen Snapshot. Die eigentliche Relevanzprüfung und `analysisRequired` werden erst in Paket 03 umgesetzt.
+- `ipa init` erzeugt den Ausgangs-Snapshot `S000001` und kann einen fehlenden Ausgangs-Snapshot bei erneutem Aufruf nachholen.
+- Integrationstests verwenden echte temporäre Git-Repositories und prüfen den Repository-Fingerprint vor und nach dem Lauf, einschliesslich `.git/index`.
+- Unter Windows kann der echte Symlink-Test ohne Entwicklermodus mit `EPERM` übersprungen werden. Das Verhalten gegen externe Pfade wurde zusätzlich über Junctions geprüft.
+- Die parallele Git-Verarbeitung wurde auf höchstens 4 Prozesse begrenzt. Das Test-Timeout liegt wegen langsamer Windows-Git-Integrationstests bei 120 Sekunden.
+- Aus Paket 01 sind A-02, A-03 und A-08 weiterhin offen. Die Live-Claude-Prüfung soll vor Paket 05 in einem normalen Terminal wiederholt werden.
+
+Diese Punkte sind bestehende Designentscheidungen beziehungsweise bekannte Randbedingungen. Ändere sie in Paket 03 nur, wenn die Spezifikation dies zwingend erfordert oder ein reproduzierbarer Fehler vorliegt.
+
 ## 2. Ausgangslage prüfen, bevor du implementierst
 
 1. Führe `git status` und `git log --oneline -10` aus. Notiere vorhandene uncommittete Änderungen. Sie gehören nicht dir und bleiben erhalten.
