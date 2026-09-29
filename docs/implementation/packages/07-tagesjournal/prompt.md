@@ -44,6 +44,7 @@ Dazu gehören:
 - **Integration:** Jede neue Komponente ist an das CLI oder an einen bestehenden Ablauf angeschlossen. Ungenutzter Code gilt nicht als erledigt.
 - **Tests:** Schreibe alle in Abschnitt 8 der Paketspezifikation genannten Tests. Jedes Akzeptanzkriterium `AK-07-xx` braucht mindestens einen benannten Test oder eine dokumentierte manuelle Prüfung. Halte die Testregeln aus spec.md §16.2 ein: temporäre Repositories und Datenwurzeln, Prüfung des Repository-Fingerprints, keine echten Secrets.
 - **Dokumentation:** Aktualisiere das `README.md` im Repository-Root für neue oder geänderte Befehle.
+- **Code-Kommentare:** Schreibe Kommentare im Code immer auf Englisch, auch JSDoc, in Tests und in Skripten. Setze sie nur dort, wo sie nötig sind, zum Beispiel für einen nicht offensichtlichen Grund, eine Vorgabe aus der Spezifikation oder einen Workaround. Kommentare, die nur den Code wiederholen, entfallen. Meldungen an den Benutzer bleiben deutsch (spec.md §6.5).
 
 ## 4. Grenzen
 

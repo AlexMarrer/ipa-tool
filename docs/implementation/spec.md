@@ -389,13 +389,13 @@ Ein Feld erscheint erst, wenn das genannte Paket es liefert.
 | `workspaceMode` | `"default"` \| `"explicit"` | 01 |
 | `baselineSnapshotId`, `lastSnapshotId`, `lastAnalysedSnapshotId`, `lastSuccessfulRun` | string \| null | 01 |
 | `lastRun` | letzter gültiger Eintrag aus `runs.jsonl`, dessen `errors` nur `{ code }` ohne `message` enthält, oder null | 01 |
-
-Die Felder erscheinen in der Reihenfolge der Tabelle. Ungültige Zeilen in `runs.jsonl` meldet `status` als Warnung auf stderr.
 | `snapshots` | `{ total, baseline, work }` | 02 |
 | `halt` | Halt-Objekt (§9.1) oder null | 03 |
 | `notesToday` | number | 04 |
 | `claude` | `{ checkedAt, ok, cliVersion }` aus `doctor.json`, oder null | 05 |
 | `analyses` | `{ pending, failed, blocked, exhausted, complete, skipped, notRequired, openIds: string[] }` | 06 |
+
+Die Felder erscheinen in der Reihenfolge der Tabelle. Ungültige Zeilen in `runs.jsonl` meldet `status` als Warnung auf stderr.
 
 ---
 
@@ -1335,6 +1335,7 @@ Leere Listen werden als „nicht erfasst“ dargestellt (I-13). Jeder Work-Log u
 - Prozesse werden nur mit `spawn` oder `execFile` gestartet, immer ohne Shell und mit Argument-Array.
 - Alle fachlichen Dateien werden über die Funktionen aus §8.5 geschrieben. Direkte `fs.writeFile`-Aufrufe ausserhalb von `src/core/` sind verboten.
 - Jedes Paket schliesst seine Komponenten an das CLI oder an einen bestehenden Ablauf an. Code ohne Anbindung zählt nicht als erledigt.
+- Kommentare im Code sind englisch, auch JSDoc, in Tests und in Skripten. Sie stehen nur dort, wo sie nötig sind, zum Beispiel für einen nicht offensichtlichen Grund, eine Vorgabe dieser Spezifikation oder einen Workaround. Meldungen an den Benutzer bleiben deutsch (§6.5).
 
 ### 16.2 Tests mit Vitest
 

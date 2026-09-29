@@ -15,8 +15,8 @@ Nachfolgende Pakete dürfen beginnen, sobald ihre Voraussetzungen mindestens `te
 
 | Paket | Status | Checkliste | Offene Punkte / Hinweis |
 | --- | --- | --- | --- |
-| 01 – CLI-Grundlage | technisch abgeschlossen | [checklist](packages/01-cli-grundlage/checklist.md) | Offen ist nur die manuelle Prüfung `npm install --global .` mit `ipa init` in einer Windows-Konsole (Ersatzprüfung mit Temp-Prefix bestanden). Live-Vorabprüfung am 29.09.2026 ausgeführt: A-02, A-03 und A-08 unklar wegen abgelehnter Anmeldung, Wiederholung vor Paket 05 empfohlen (spec.md §18). |
-| 02 – Snapshot-Erfassung | offen | [checklist](packages/02-snapshot-erfassung/checklist.md) | – |
+| 01 – CLI-Grundlage | abgeschlossen | [checklist](packages/01-cli-grundlage/checklist.md) | Live-Vorabprüfung am 29.09.2026 ausgeführt: A-02, A-03 und A-08 unklar wegen abgelehnter Anmeldung, Wiederholung vor Paket 05 empfohlen (spec.md §18). |
+| 02 – Snapshot-Erfassung | in Arbeit | [checklist](packages/02-snapshot-erfassung/checklist.md) | Umsetzung begonnen am 29.09.2026 |
 | 03 – Änderungszuordnung | offen | [checklist](packages/03-aenderungszuordnung/checklist.md) | – |
 | 04 – Notizen | offen | [checklist](packages/04-notizen/checklist.md) | – |
 | 05 – Claude-Anbindung | offen | [checklist](packages/05-claude-anbindung/checklist.md) | – |
@@ -24,7 +24,7 @@ Nachfolgende Pakete dürfen beginnen, sobald ihre Voraussetzungen mindestens `te
 | 07 – Tagesjournal | offen | [checklist](packages/07-tagesjournal/checklist.md) | – |
 | 08 – Zeitsteuerung und Abnahme | offen | [checklist](packages/08-zeitsteuerung-und-abnahme/checklist.md) | – |
 
-- [ ] Paket 01 abgeschlossen
+- [x] Paket 01 abgeschlossen. Nachweis: 29.09.2026, alle Punkte der Paketcheckliste erledigt.
 - [ ] Paket 02 abgeschlossen
 - [ ] Paket 03 abgeschlossen
 - [ ] Paket 04 abgeschlossen
