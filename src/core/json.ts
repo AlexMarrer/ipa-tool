@@ -1,5 +1,5 @@
 /**
- * Validiertes Lesen und Schreiben von JSON-Dateien (spec.md §8.4, §8.5).
+ * Validated JSON files (spec.md §8.4, §8.5).
  */
 import { readFile } from 'node:fs/promises';
 import { errnoCode, EXIT, IpaError } from './errors.js';
@@ -10,9 +10,7 @@ export function stripBom(text: string): string {
   return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
 }
 
-/**
- * Position eines JSON-Syntaxfehlers ohne Auszug aus dem Inhalt (I-12).
- */
+/** Position of a JSON syntax error without any excerpt of the content (I-12). */
 export function describeJsonSyntaxError(error: unknown): string {
   const message = error instanceof Error ? error.message : '';
   const lineColumn = /line (\d+) column (\d+)/.exec(message);
@@ -23,9 +21,8 @@ export function describeJsonSyntaxError(error: unknown): string {
 }
 
 /**
- * Liest eine JSON-Datei und validiert sie gegen ihr Schema.
- * Fehlende, unlesbare, syntaktisch oder schematisch ungültige Dateien sowie eine höhere
- * `schemaVersion` führen zu `IpaError` mit Exit-Code 2 (D-18).
+ * Missing, unreadable or invalid files and a higher `schemaVersion` raise `IpaError` with exit
+ * code 2 (D-18).
  */
 export async function readJsonValidated<T>(filePath: string, schemaId: SchemaId): Promise<T> {
   let text: string;
@@ -64,8 +61,7 @@ export async function readJsonValidated<T>(filePath: string, schemaId: SchemaId)
 }
 
 /**
- * Validiert einen Wert und schreibt ihn atomar als formatiertes JSON.
- * Ein ungültiger Wert ist ein Programmierfehler (Exit-Code 1); die Datei bleibt dann unverändert.
+ * An invalid value is a programming error (exit code 1); the file then stays unchanged.
  */
 export async function writeJsonAtomic(filePath: string, value: unknown, schemaId: SchemaId): Promise<void> {
   const result = validate(schemaId, value);

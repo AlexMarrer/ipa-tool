@@ -1,27 +1,26 @@
 /**
- * Schemaregister mit Ajv im draft-07-Modus (spec.md §8.4).
+ * Schema registry, Ajv in draft-07 mode (spec.md §8.4).
  */
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { Ajv, type ErrorObject, type ValidateFunction } from 'ajv';
 import { TOOL_ROOT } from './tool.js';
 
-/** Schemas, die mit dem Tool ausgeliefert werden. Spätere Pakete ergänzen die Liste. */
-export const SCHEMA_IDS = ['config', 'state', 'registry', 'run-record'] as const;
+export const SCHEMA_IDS = ['config', 'state', 'registry', 'run-record', 'manifest'] as const;
 export type SchemaId = (typeof SCHEMA_IDS)[number];
 
-/** Höchste Schemaversion, die V1 lesen kann (D-18). */
+/** V1 has no migration (D-18). */
 export const SUPPORTED_SCHEMA_VERSION = 1;
 
 export interface SchemaIssue {
-  /** JSON-Pfad des Fehlers, zum Beispiel `/limits/maxFileBytes`. `/` steht für die Wurzel. */
+  /** JSON pointer such as `/limits/maxFileBytes`; `/` is the root. */
   path: string;
   message: string;
 }
 
 export type ValidationResult = { ok: true } | { ok: false; issues: SchemaIssue[] };
 
-// `allowUnionTypes` erlaubt `"type": ["string", "null"]` im strikten Modus.
+// `allowUnionTypes` permits `"type": ["string", "null"]` in strict mode (spec.md §18).
 const ajv = new Ajv({ strict: true, allErrors: true, allowUnionTypes: true });
 const validators = new Map<SchemaId, ValidateFunction>();
 
@@ -29,7 +28,6 @@ export function schemaFilePath(id: SchemaId): string {
   return path.join(TOOL_ROOT, 'schemas', `${id}.schema.json`);
 }
 
-/** Schema als Objekt, zum Beispiel für die Ablage neben einem Versuch. */
 export function loadSchema(id: SchemaId): Record<string, unknown> {
   return JSON.parse(readFileSync(schemaFilePath(id), 'utf8')) as Record<string, unknown>;
 }
@@ -49,9 +47,7 @@ export function validate(id: SchemaId, value: unknown): ValidationResult {
   return { ok: false, issues: (validator.errors ?? []).map(toIssue) };
 }
 
-/**
- * Liefert die Schemaversion eines Objekts, wenn sie höher ist als die unterstützte (D-18), sonst `null`.
- */
+/** The schema version of a value if it is higher than the supported one (D-18), otherwise `null`. */
 export function unsupportedSchemaVersion(value: unknown): number | null {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
   const version = (value as { schemaVersion?: unknown }).schemaVersion;

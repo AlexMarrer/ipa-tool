@@ -35,7 +35,7 @@ interface ProbeRun {
   exitCode: number;
   stdout: string;
   stderr: string;
-  // `any`: frei aufgebautes JSON des Skripts, das der Test nur liest.
+  // `any`: the script's free-form JSON, only read by the test.
   report: Record<string, any>;
   log: Record<string, unknown>[];
 }
@@ -45,7 +45,7 @@ async function runProbe(
   options: { cwd: string; mode?: string; command?: string; env?: Record<string, string> },
 ): Promise<ProbeRun> {
   const logFile = path.join(await createTempDir('fake-log'), 'aufrufe.jsonl');
-  // Läuft die Testsuite selbst in einer Claude-Code-Sitzung, dürfen deren Variablen das Ergebnis nicht färben.
+  // When the suite itself runs inside a Claude Code session, that session's variables must not affect the result.
   const env = { ...isolatedEnv(process.env), FAKE_CLAUDE_MODE: options.mode ?? 'ok', FAKE_CLAUDE_LOG: logFile, ...options.env };
   const child = spawn(process.execPath, [PROBE, '--command', options.command ?? FAKE_COMMAND, ...args], {
     cwd: options.cwd,

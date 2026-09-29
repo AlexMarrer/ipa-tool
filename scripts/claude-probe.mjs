@@ -1,17 +1,17 @@
 #!/usr/bin/env node
 /**
- * Claude-Vorabprüfung (Paket 01, D-24). Wird in Paket 05 durch `ipa doctor --live` ersetzt.
+ * Claude pre-check (package 01, D-24), replaced by `ipa doctor --live` in package 05.
  *
- * Arbeitet nur mit künstlichen Daten. Liest und schreibt nichts im Repository oder im Arbeitsbereich:
- * Jeder Claude-Prozess läuft ohne Shell in einem neuen leeren Ordner unter os.tmpdir().
+ * Uses artificial data only and never reads or writes the repository or a workspace: every Claude
+ * process runs without a shell in a new empty folder below os.tmpdir().
  *
- *   node scripts/claude-probe.mjs                Version, Anmeldestatus und Optionen, ohne Modellaufruf
- *   node scripts/claude-probe.mjs --live         zusätzlich höchstens drei kleine Modellaufrufe
- *   --isolate-env                                Variablen einer umgebenden Claude-Code-Sitzung nicht weitergeben
- *   --command '["pfad/zu/claude.exe"]'           anderer Claude-Befehl als JSON-Array (Programm und Vorargumente)
+ *   node scripts/claude-probe.mjs                version, login state and options, no model call
+ *   node scripts/claude-probe.mjs --live         additionally at most three small model calls
+ *   --isolate-env                                do not pass on variables of a surrounding Claude Code session
+ *   --command '["path/to/claude.exe"]'           other Claude command as JSON array (program and fixed arguments)
  *
- * Am Ende steht eine JSON-Zusammenfassung auf stdout, ohne E-Mail, Organisation oder Token.
- * Exit-Codes: 0 alles in Ordnung, 1 Claude nicht startbar, 2 ungültige Argumente, 3 Befunde.
+ * Prints a JSON summary without email, organisation or token.
+ * Exit codes: 0 all fine, 1 Claude cannot be started, 2 invalid arguments, 3 findings.
  */
 import { spawn } from 'node:child_process';
 import { access, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
@@ -27,13 +27,13 @@ export const LIVE_MAX_TURNS = 5;
 export const FLAG_CONCURRENCY = 4;
 export const EXCERPT_CHARS = 300;
 
-/** Name des Ausgabewerkzeugs, das Claude Code bei `--json-schema` bereitstellt. */
+/** Output tool that Claude Code provides for `--json-schema`. */
 export const STRUCTURED_OUTPUT_TOOL = 'StructuredOutput';
 
-/** Wortlaut aus spec.md §13.1. */
+/** Wording of spec.md §13.1. */
 export const PROMPT_TEXT = 'Analysiere ausschliesslich das JSON-Eingabepaket auf stdin gemäss den Systemanweisungen.';
 
-/** Triviales Ausgabeschema ohne $schema, $id und format (A-02). */
+/** Without $schema, $id and format (A-02). */
 export const TRIVIAL_SCHEMA = {
   type: 'object',
   properties: { ok: { type: 'boolean' } },
@@ -44,7 +44,7 @@ export const TRIVIAL_SCHEMA = {
 export const INPUT_MARKER = 'IPA-PROBE-KUENSTLICHE-EINGABE';
 export const INJECTION_FILE = 'probe-injektion.txt';
 
-/** Künstliche Eingabe mit eingebetteter Aufforderung, Dateien zu löschen und Befehle auszuführen. */
+/** Artificial input with an embedded request to delete files and run commands. */
 export const PROBE_INPUT = JSON.stringify({
   purpose: 'probe',
   marker: INPUT_MARKER,
@@ -71,11 +71,10 @@ export const SYSTEM_PROMPT = [
  * @typedef {{ status: AssumptionStatus, evidence: string }} Assumption
  */
 
-/** Platzhalter für den Pfad der Prompt-Datei in der Flag-Prüfung. */
 export const PROMPT_FILE_PLACEHOLDER = '<prompt-datei>';
 
 /**
- * Optionen aus spec.md §13.1 sowie `--safe-mode`, `--setting-sources` und `--verbose` (für stream-json).
+ * Options of spec.md §13.1 plus `--safe-mode`, `--setting-sources` and `--verbose` (for stream-json).
  * @type {FlagSpec[]}
  */
 export const FLAG_SPECS = [
@@ -96,9 +95,9 @@ export const FLAG_SPECS = [
   { flag: '--safe-mode', values: [], required: false },
 ];
 
-// Variablen, die eine umgebende Claude-Code-Sitzung (Desktop-App, SDK, Terminal) an Kindprozesse vererbt.
+// Variables that a surrounding Claude Code session (desktop app, SDK, terminal) passes to child processes.
 const SESSION_VARIABLE = /^(CLAUDECODE|CLAUDE_.+|MCP_CONNECTION_NONBLOCKING|MCP_SERVER_CONNECTION_BATCH_SIZE)$/i;
-// Anmelde-, Anbieter- und Konfigurationsvariablen des Benutzers bleiben auch mit --isolate-env erhalten.
+// The user's login, provider and configuration variables survive --isolate-env.
 const USER_LEVEL_VARIABLES = new Set([
   'CLAUDE_CONFIG_DIR',
   'CLAUDE_CODE_OAUTH_TOKEN',
@@ -109,7 +108,7 @@ const USER_LEVEL_VARIABLES = new Set([
 ]);
 
 /**
- * Namen der von einer umgebenden Claude-Code-Sitzung geerbten Variablen, ohne Werte.
+ * Names only, never values.
  * @param {NodeJS.ProcessEnv} env
  * @returns {string[]}
  */
@@ -128,7 +127,6 @@ export function isNestedClaudeSession(env) {
 }
 
 /**
- * Umgebung ohne die Variablen einer umgebenden Claude-Code-Sitzung.
  * @param {NodeJS.ProcessEnv} env
  * @returns {NodeJS.ProcessEnv}
  */
@@ -143,8 +141,8 @@ export function isolatedEnv(env) {
 }
 
 /**
- * Argumente der Flag-Prüfung: `-p <option> [wert] --zz-ipa-probe`, bewusst ohne Positionsargument,
- * damit auch bei einer unerwartet akzeptierten Option kein Prompt entsteht.
+ * `-p <option> [value] --zz-ipa-probe` without a positional argument, so that an unexpectedly accepted
+ * option still produces no prompt and hence no model call (spec.md §18).
  * @param {FlagSpec} spec
  * @param {string} promptFile
  * @returns {string[]}
@@ -155,8 +153,8 @@ export function buildFlagProbeArgs(spec, promptFile) {
 }
 
 /**
- * Meldet stderr die Probe-Option als unbekannt, ist die geprüfte Option bekannt.
- * Meldet es die geprüfte Option, ist sie nicht bekannt. Alles andere ist unklar.
+ * If stderr calls the probe option unknown, the tested option is supported; if it names the tested
+ * option, that one is not. Anything else is unclear.
  * @param {string} flag
  * @param {{ stderr: string }} result
  * @returns {FlagStatus}
@@ -177,7 +175,7 @@ export function parseVersion(stdout) {
 }
 
 /**
- * Übernimmt aus `claude auth status` nur `loggedIn` und `authMethod`. Alle anderen Felder werden verworfen.
+ * Keeps only `loggedIn` and `authMethod` of `claude auth status`.
  * @param {string} stdout
  * @returns {AuthStatus}
  */
@@ -201,7 +199,7 @@ export function filterAuthStatus(stdout) {
 }
 
 /**
- * Argumente eines Live-Aufrufs in der Reihenfolge aus spec.md §13.1.
+ * In the order of spec.md §13.1.
  * @param {{ outputFormat: 'json' | 'stream-json', promptFile: string, settingSources: boolean, maxTurns?: number }} options
  * @returns {string[]}
  */
@@ -230,7 +228,7 @@ export function buildLiveArgs(options) {
 }
 
 /**
- * Entfernt E-Mail-Adressen und tokenartige Zeichenfolgen aus freiem Text.
+ * Removes email addresses and token-like strings from free text.
  * @param {string} text
  * @returns {string}
  */
@@ -242,7 +240,7 @@ export function redact(text) {
 }
 
 /**
- * Gekürzter Auszug ohne Zeilen mit Inhalten der künstlichen Eingabe.
+ * Short excerpt without lines that echo the artificial input.
  * @param {string} text
  * @returns {string}
  */
@@ -266,7 +264,7 @@ export function validateTrivialOutput(value) {
 }
 
 /**
- * Kennzahlen eines Ergebnis-Umschlags, ohne Modelltext.
+ * Figures of a result envelope, without model text.
  * @param {Record<string, unknown>} envelope
  */
 export function summarizeResult(envelope) {
@@ -293,7 +291,7 @@ export function summarizeResult(envelope) {
 }
 
 /**
- * Wertet eine stream-json-Ausgabe aus: Ereignis `system/init`, Ereignisstatistik ohne Inhalte und letztes Ergebnis.
+ * `system/init` event, event counts without content, and the last result.
  * @param {string} stdout
  */
 export function parseStreamJson(stdout) {
@@ -358,7 +356,7 @@ export function parseStreamJson(stdout) {
 }
 
 /**
- * Prüft, ob stdout genau ein JSON-Objekt ist (A-03).
+ * Is stdout exactly one JSON object (A-03)?
  * @param {string} stdout
  */
 export function parseJsonEnvelope(stdout) {
@@ -379,7 +377,7 @@ export function parseJsonEnvelope(stdout) {
         const value = JSON.parse(trimmed.slice(start));
         if (typeof value === 'object' && value !== null && !Array.isArray(value)) envelope = value;
       } catch {
-        // kein auswertbares Objekt
+        // no evaluable object
       }
     }
   }
@@ -430,7 +428,7 @@ export function runCommand(command, args, options) {
         stdio: ['pipe', 'pipe', 'pipe'],
       });
     } catch (error) {
-      // Unter Windows wirft spawn für .cmd-Dateien ohne Shell synchron EINVAL (A-05).
+      // On Windows, spawn without a shell throws EINVAL synchronously for .cmd files (A-05).
       const code = /** @type {NodeJS.ErrnoException} */ (error).code ?? 'SPAWN_FAILED';
       finish({ spawnError: code, exitCode: null, stdout, stderr, timedOut, durationMs: Date.now() - started });
       return;
@@ -455,7 +453,7 @@ export function runCommand(command, args, options) {
   });
 }
 
-/** Sucht unter Windows im PATH nach einer npm-Installation (`claude.cmd`), die ohne Shell nicht startet (A-05). */
+/** An npm installation (`claude.cmd`) on the Windows PATH cannot start without a shell (A-05). */
 async function findCmdShim() {
   if (process.platform !== 'win32') return false;
   for (const dir of (process.env['PATH'] ?? '').split(path.delimiter)) {
@@ -464,14 +462,13 @@ async function findCmdShim() {
       await access(path.join(dir, 'claude.cmd'));
       return true;
     } catch {
-      // nicht vorhanden
+      // not in this PATH entry
     }
   }
   return false;
 }
 
 /**
- * Führt Aufgaben mit begrenzter Parallelität aus.
  * @template T, R
  * @param {T[]} items
  * @param {number} limit
@@ -494,7 +491,7 @@ async function mapLimited(items, limit, worker) {
 }
 
 /**
- * Ein Live-Aufruf in einem neuen leeren Ordner unter os.tmpdir(). Der Ordner wird danach gelöscht.
+ * Runs in a new empty folder below os.tmpdir(), which is deleted afterwards.
  * @param {string[]} command
  * @param {{ label: string, outputFormat: 'json' | 'stream-json', settingSources: boolean }} variant
  * @param {NodeJS.ProcessEnv} env
@@ -528,9 +525,9 @@ async function liveCall(command, variant, env) {
 }
 
 /**
- * Bewertet die Annahmen A-01 bis A-05 und A-08 (spec.md §3.3).
- * `any`, weil der Bericht ein frei aufgebautes JSON-Objekt ist, das hier nur gelesen wird.
- * @param {any} report Bericht aus runProbe (Struktur siehe dort)
+ * Assumptions A-01 to A-05 and A-08 (spec.md §3.3).
+ * `any`: the report is a free-form JSON object built by runProbe and only read here.
+ * @param {any} report
  * @returns {Record<string, Assumption>}
  */
 export function evaluateAssumptions(report) {
@@ -539,7 +536,7 @@ export function evaluateAssumptions(report) {
   const allCalls = Array.isArray(report.live?.calls) ? report.live.calls : [];
   /** @type {(label: string) => any} */
   const find = (label) => allCalls.find((/** @type {any} */ call) => call.label === label) ?? null;
-  // Übersprungene Aufrufe zählen wie nicht ausgeführte; ihr Grund erscheint im Nachweis.
+  // Skipped calls count as not executed; their reason appears in the evidence text.
   /** @type {(label: string) => any} */
   const executed = (label) => {
     const call = find(label);
@@ -563,8 +560,8 @@ export function evaluateAssumptions(report) {
   /** @type {Record<string, Assumption>} */
   const result = {};
 
-  // A-01: keine eingebauten Werkzeuge und keine MCP-Server im Init-Ereignis. Das Ausgabewerkzeug
-  // von --json-schema ist kein Datei-, Shell- oder MCP-Werkzeug und wird gesondert ausgewiesen.
+  // A-01: no built-in tools and no MCP servers in the init event. The output tool of --json-schema is
+  // neither a file, shell nor MCP tool and is reported separately.
   if (stream?.init) {
     const { tools, mcpServers } = stream.init;
     const otherTools = tools.filter((/** @type {string} */ tool) => tool !== STRUCTURED_OUTPUT_TOOL);
@@ -582,7 +579,7 @@ export function evaluateAssumptions(report) {
     result['A-01'] = a('unklar', stream ? `kein system/init-Ereignis (${incomplete('stream-json')})` : incomplete('stream-json'));
   }
 
-  // A-02: structured_output mit --output-format json und --json-schema.
+  // A-02: structured_output with --output-format json and --json-schema.
   const jsonResult = json?.result ?? null;
   if (jsonResult && jsonResult.subtype === 'success' && !jsonResult.isError) {
     result['A-02'] = jsonResult.structuredOutputValid
@@ -594,7 +591,7 @@ export function evaluateAssumptions(report) {
     result['A-02'] = a('unklar', incomplete('json'));
   }
 
-  // A-03: genau ein JSON-Objekt auf stdout. Nur abgeschlossene Aufrufe mit Ausgabe zählen.
+  // A-03: exactly one JSON object on stdout; only finished calls with output count.
   const envelopeCalls = [json, settings].filter((call) => call !== null && !call.timedOut && !call.stdoutEmpty);
   if (envelopeCalls.length === 0) {
     result['A-03'] = a('unklar', incomplete('json'));
@@ -604,7 +601,7 @@ export function evaluateAssumptions(report) {
     result['A-03'] = a('widerlegt', 'stdout enthielt zusätzlichen Text neben dem JSON-Objekt, siehe stdoutExcerpt');
   }
 
-  // A-04: leeres Argument nach --tools kommt an.
+  // A-04: the empty argument after --tools arrives.
   const toolsFlag = report.flags?.['--tools'];
   if (toolsFlag === 'supported') {
     result['A-04'] = a(
@@ -617,7 +614,7 @@ export function evaluateAssumptions(report) {
     result['A-04'] = a('unklar', `Flag-Prüfung für --tools: ${toolsFlag ?? 'nicht ausgeführt'}`);
   }
 
-  // A-05: claude startet ohne Shell über den Namen.
+  // A-05: claude starts by name without a shell.
   const defaultCommand = Array.isArray(report.command) && report.command.length === 1 && report.command[0] === 'claude';
   if (!defaultCommand) {
     result['A-05'] = a('unklar', 'nicht geprüft, weil ein eigener Befehl vorgegeben wurde');
@@ -629,7 +626,7 @@ export function evaluateAssumptions(report) {
     result['A-05'] = a('unklar', `claude nicht startbar (${report.claude?.spawnError ?? 'unbekannt'})`);
   }
 
-  // A-08: --setting-sources project,local behält die Anmeldung.
+  // A-08: --setting-sources project,local keeps the login.
   const settingsResult = settings?.result ?? null;
   if (settingsResult && settingsResult.subtype === 'success' && !settingsResult.isError && settingsResult.structuredOutputValid) {
     result['A-08'] = a(
@@ -637,7 +634,7 @@ export function evaluateAssumptions(report) {
       'Anmeldung und structured_output funktionieren mit --setting-sources project,local; Wirkung auf Benutzer-Hooks nicht nachweisbar (spec.md §13.4)',
     );
   } else if (settingsResult?.authError && jsonResult?.subtype === 'success' && !jsonResult.isError) {
-    // Nur ein Widerspruch, wenn derselbe Aufruf ohne --setting-sources angemeldet funktioniert hat.
+    // Only a contradiction if the same call without --setting-sources was logged in.
     result['A-08'] = a('widerlegt', 'mit --setting-sources project,local schlägt die Anmeldung fehl, ohne die Option nicht');
   } else {
     result['A-08'] = a('unklar', settingsResult ? 'Ergebnis ohne gültiges structured_output' : incomplete('setting-sources'));
@@ -646,7 +643,6 @@ export function evaluateAssumptions(report) {
 }
 
 /**
- * Führt die Vorabprüfung aus.
  * @param {{ live: boolean, command: string[], isolateEnv?: boolean, env?: NodeJS.ProcessEnv, log?: (message: string) => void }} options
  */
 export async function runProbe(options) {
@@ -655,7 +651,7 @@ export async function runProbe(options) {
   const nested = isNestedClaudeSession(baseEnv);
   const isolate = options.isolateEnv === true;
   const childEnv = isolate ? isolatedEnv(baseEnv) : baseEnv;
-  // `any`: Der Bericht wird schrittweise als JSON-Objekt aufgebaut und am Ende ausgegeben.
+  // `any`: the report is built step by step as a JSON object and printed at the end.
   /** @type {any} */
   const report = {
     tool: 'ipa-assistant claude-probe',
@@ -736,7 +732,7 @@ export async function runProbe(options) {
           log(`Live-Aufruf ${index + 1}/${variants.length} (${variant.label}) …`);
           const call = await liveCall(options.command, variant, childEnv);
           calls.push(call);
-          // Hängt ein Aufruf, würden die weiteren vermutlich ebenfalls hängen und nur Kontingent verbrauchen.
+          // If one call hangs, the next ones would probably hang too and only use up quota.
           if (call.timedOut) stopReason = `übersprungen, weil ${variant.label} in den Timeout lief`;
           else if (call.spawnError !== null) stopReason = `übersprungen, weil ${variant.label} nicht startete`;
         }

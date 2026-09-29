@@ -1,5 +1,5 @@
 /**
- * Zustand `state.json` (spec.md §9.1).
+ * `state.json` (spec.md §9.1).
  */
 import path from 'node:path';
 import { readJsonValidated, writeJsonAtomic } from './json.js';
@@ -33,7 +33,6 @@ export interface State {
   halt: Halt | null;
 }
 
-/** Anfangszustand nach `ipa init`: alle IDs `null`, `nextSnapshotSeq: 1`, kein Halt. */
 export function createInitialState(repositoryId: string): State {
   return {
     schemaVersion: 1,

@@ -1,6 +1,6 @@
 /**
- * Läuft vor jeder Testdatei: übernimmt die Test-Umgebung aus dem globalen Setup und bricht ab,
- * falls die Datenwurzel nicht auf das Temp-Verzeichnis zeigt.
+ * Runs before every test file: takes over the environment of the global setup and aborts if the data
+ * root does not point into the temp folder.
  */
 import path from 'node:path';
 import { inject } from 'vitest';

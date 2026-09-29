@@ -1,5 +1,7 @@
 import { spawn } from 'node:child_process';
+import { utimes } from 'node:fs/promises';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { GitRunner } from '../../src/git/runner.js';
 
 vi.mock('node:child_process', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:child_process')>();
@@ -14,6 +16,7 @@ const {
   GitCommandError,
   GitPolicyError,
   GitSpawnError,
+  limitConcurrency,
   workspaceExcludeFor,
 } = await import('../../src/git/runner.js');
 const { createTempRepo } = await import('../helpers/git-repo.js');
@@ -96,7 +99,17 @@ describe('GitRunner (spec.md §14.2, AK-01-10)', () => {
 
   it('setzt die Pflichtoptionen vor jeden Unterbefehl und schaltet Diff-Erweiterungen ab', () => {
     expect(buildGitInvocation(['status', '--porcelain=v2'], null)).toEqual([...GIT_GLOBAL_ARGS, 'status', '--porcelain=v2']);
-    expect(GIT_GLOBAL_ARGS).toEqual(['--no-pager', '-c', 'core.quotepath=off', '-c', 'color.ui=never', '-c', 'core.fsmonitor=false']);
+    expect(GIT_GLOBAL_ARGS).toEqual([
+      '--no-pager',
+      '-c',
+      'core.quotepath=off',
+      '-c',
+      'color.ui=never',
+      '-c',
+      'core.fsmonitor=false',
+      '-c',
+      'diff.autoRefreshIndex=false',
+    ]);
     for (const sub of ['diff', 'show', 'log']) {
       expect(buildGitInvocation([sub, 'HEAD'], null)).toEqual([...GIT_GLOBAL_ARGS, sub, '--no-ext-diff', '--no-textconv', 'HEAD']);
     }
@@ -173,6 +186,42 @@ describe('GitRunner (spec.md §14.2, AK-01-10)', () => {
     const unfiltered = (await createGitRunner(repo.root).run(['ls-files', '-z'])).stdout.toString('utf8');
     expect(unfiltered).toContain('.ipa/versioniert.txt');
     expectRepoUnchanged(before, await fingerprintRepo(repo.root, { workspace: '.ipa' }));
+  });
+
+  it('schreibt .git/index bei einem Diff gegen den Working Tree nicht neu, auch nach reinen Zeitstempeländerungen (I-01)', async () => {
+    const repo = await createTempRepo({ files: { 'a.txt': 'eins\n', 'b.txt': 'zwei\n' } });
+    // Without diff.autoRefreshIndex=false, git diff refreshes the index after stat-only changes.
+    const later = new Date(Date.now() + 60_000);
+    await utimes(`${repo.root}/a.txt`, later, later);
+    await repo.write('b.txt', 'zwei\ngeändert\n');
+    const before = await fingerprintRepo(repo.root);
+
+    const git = createGitRunner(repo.root);
+    for (const args of [['diff', '--raw', '-z'], ['diff', '--numstat', '-z'], ['diff', '-p'], ['status', '--porcelain=v2', '-z']]) {
+      await git.run(args);
+    }
+    expectRepoUnchanged(before, await fingerprintRepo(repo.root));
+  });
+
+  it('begrenzt mit limitConcurrency die gleichzeitig laufenden Git-Prozesse, auch wenn Aufrufe scheitern', async () => {
+    let active = 0;
+    let peak = 0;
+    const slow: GitRunner = {
+      async run(args) {
+        active += 1;
+        peak = Math.max(peak, active);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        active -= 1;
+        if (args[0] === 'fehler') throw new Error('gescheitert');
+        return { stdout: Buffer.alloc(0), stderr: '', exitCode: 0 };
+      },
+    };
+    const limited = limitConcurrency(slow, 3);
+    const calls = Array.from({ length: 20 }, (_, index) => limited.run([index % 5 === 0 ? 'fehler' : 'status']).catch(() => 'abgelehnt'));
+    const results = await Promise.all(calls);
+    expect(peak).toBe(3);
+    expect(results.filter((result) => result === 'abgelehnt')).toHaveLength(4);
+    await expect(limited.run(['status'])).resolves.toMatchObject({ exitCode: 0 });
   });
 
   it('meldet Git-Fehler und erlaubte Exit-Codes', async () => {

@@ -7,8 +7,8 @@ import { createTempRepo } from '../helpers/git-repo.js';
 import { expectRepoUnchanged, fingerprintRepo } from '../helpers/repo-fingerprint.js';
 import { createTempDataRoot, listTree, readJsonFile, runCli } from '../helpers/workspace.js';
 
-/** Felder von Paket 01 aus spec.md §6.6, in der festgelegten Reihenfolge. */
-const PACKAGE_01_FIELDS = [
+// Fields of packages 01 and 02 from spec.md §6.6, in the prescribed order.
+const STATUS_FIELDS = [
   'repositoryId',
   'repoPath',
   'workspacePath',
@@ -20,6 +20,7 @@ const PACKAGE_01_FIELDS = [
   'lastAnalysedSnapshotId',
   'lastSuccessfulRun',
   'lastRun',
+  'snapshots',
 ];
 
 async function initialized(options: { workspace?: string } = {}) {
@@ -32,8 +33,8 @@ async function initialized(options: { workspace?: string } = {}) {
   return { repo, dataDir, entry };
 }
 
-describe('ipa status (Paket 01)', () => {
-  it('liefert mit --json genau die Felder von Paket 01 und schreibt keine Datei (AK-01-13)', async () => {
+describe('ipa status (Pakete 01 und 02)', () => {
+  it('liefert mit --json genau die Felder der Pakete 01 und 02 und schreibt keine Datei (AK-01-13, AK-02-18)', async () => {
     const { repo, dataDir, entry } = await initialized();
     const treeBefore = await listTree(dataDir);
     const repoBefore = await fingerprintRepo(repo.root);
@@ -42,7 +43,7 @@ describe('ipa status (Paket 01)', () => {
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe('');
     const report = JSON.parse(result.stdout) as Record<string, unknown>;
-    expect(Object.keys(report)).toEqual(PACKAGE_01_FIELDS);
+    expect(Object.keys(report)).toEqual(STATUS_FIELDS);
     expect(report).toMatchObject({
       repositoryId: entry.repositoryId,
       repoPath: repo.root,
@@ -50,16 +51,17 @@ describe('ipa status (Paket 01)', () => {
       dataRoot: dataDir,
       timezone: 'Europe/Zurich',
       workspaceMode: 'default',
-      baselineSnapshotId: null,
-      lastSnapshotId: null,
+      baselineSnapshotId: 'S000001',
+      lastSnapshotId: 'S000001',
       lastAnalysedSnapshotId: null,
       lastSuccessfulRun: null,
+      snapshots: { total: 1, baseline: 1, work: 0 },
     });
     expect(report['lastRun']).toMatchObject({ command: 'init', outcome: 'ok', exitCode: 0, errors: [] });
 
     const human = await runCli(['status'], { dataDir, repo: repo.root });
     expect(human.exitCode).toBe(0);
-    for (const label of ['Repository-ID:', 'Arbeitsbereich:', 'Speichermodus:', 'Datenwurzel:', 'Zeitzone:', 'Letzter Lauf:']) {
+    for (const label of ['Repository-ID:', 'Arbeitsbereich:', 'Speichermodus:', 'Datenwurzel:', 'Zeitzone:', 'Letzter Lauf:', 'Snapshots:']) {
       expect(human.stdout).toContain(label);
     }
     expect(human.stdout).toContain('Standard (Datenwurzel, ausserhalb des Repositorys)');

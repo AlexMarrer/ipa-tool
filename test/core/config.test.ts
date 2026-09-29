@@ -4,7 +4,7 @@ import { checkConfigRules, createDefaultConfig, loadConfig } from '../../src/cor
 import { IpaError } from '../../src/core/errors.js';
 import { createTempDir } from '../helpers/workspace.js';
 
-/** Die Standardwerte aus spec.md §7.1, wörtlich übernommen. */
+/** Defaults of spec.md §7.1, copied verbatim. */
 const SPEC_DEFAULTS = {
   schemaVersion: 1,
   repositoryId: 'mein-projekt-3fa9c1',

@@ -1,5 +1,5 @@
 /**
- * Deutsche Texte für die Hilfe und die Fehlermeldungen von Commander (spec.md §6.5).
+ * German texts for Commander's help and error messages (spec.md §6.5).
  */
 
 const HELP_TITLES: Record<string, string> = {

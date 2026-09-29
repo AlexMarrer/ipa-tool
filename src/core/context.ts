@@ -1,6 +1,3 @@
-/**
- * Auflösung des Arbeitskontexts (spec.md §5.4, §10).
- */
 import { type Clock, systemClock } from './clock.js';
 import { type Config, loadConfig } from './config.js';
 import { assertDataRootSeparate, type DataRoot, resolveDataRoot } from './data-root.js';
@@ -22,15 +19,14 @@ export interface WorkspaceContext {
 }
 
 export interface LocateOptions {
-  /** Globale Option `--repo`; ohne Angabe das aktuelle Verzeichnis. */
+  /** `--repo`; defaults to the current directory. */
   repo?: string | undefined;
-  /** Globale Option `--data-dir`. */
   dataDir?: string | undefined;
 }
 
 export interface ResolveContextOptions extends LocateOptions {
   requireInit: boolean;
-  /** Injizierbare Uhr, Standard ist die Systemuhr. */
+  /** Defaults to the system clock. */
   clock?: Clock;
 }
 
@@ -42,8 +38,8 @@ export interface RepositoryLocation {
 }
 
 /**
- * Repository, Datenwurzel und Registry-Eintrag bestimmen, nur lesend.
- * Datenwurzel und Repository dürfen nicht ineinander liegen.
+ * Resolves repository, data root and registry entry without writing anything.
+ * Data root and repository must not contain each other.
  */
 export async function locateRepository(opts: LocateOptions): Promise<RepositoryLocation> {
   const repo = await resolveRepository(opts.repo ?? process.cwd());
@@ -62,7 +58,7 @@ export function notInitializedError(location: RepositoryLocation): IpaError {
   );
 }
 
-/** Kontext zu einem vorhandenen Registry-Eintrag: Arbeitsbereich prüfen, `config.json` laden und validieren. */
+/** Context of an existing registry entry: checks the workspace, loads and validates `config.json`. */
 export async function openWorkspace(location: RepositoryLocation, entry: RegistryEntry, clock: Clock): Promise<WorkspaceContext> {
   if (!(await workspacePresent(entry))) {
     throw workspaceMissingError(entry, location.dataRoot.path);
@@ -94,13 +90,10 @@ export async function openWorkspace(location: RepositoryLocation, entry: Registr
 }
 
 /**
- * Löst den Kontext auf (spec.md §10). Der Arbeitsbereichspfad stammt aus der Registry,
- * `config.json` wird geladen und validiert, die Zeitzone geprüft. Es wird nichts geschrieben.
- *
- * - `requireInit: true`: Ein nicht registriertes Repository ergibt Exit-Code 2 („nicht initialisiert“).
- * - `requireInit: false`: Ein nicht registriertes Repository ergibt `null`.
- *
- * Ein registrierter, aber fehlender Arbeitsbereich ergibt in beiden Fällen Exit-Code 2.
+ * spec.md §10: the workspace path comes from the registry, `config.json` and its time zone are
+ * validated, nothing is written. An unregistered repository gives exit code 2 with
+ * `requireInit: true` and `null` with `requireInit: false`; a registered but missing workspace
+ * always gives exit code 2.
  */
 export function resolveContext(opts: ResolveContextOptions & { requireInit: true }): Promise<WorkspaceContext>;
 export function resolveContext(opts: ResolveContextOptions): Promise<WorkspaceContext | null>;

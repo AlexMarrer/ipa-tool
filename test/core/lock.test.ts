@@ -23,7 +23,7 @@ async function context(): Promise<WorkspaceContext> {
   };
 }
 
-/** PID eines Prozesses, der sicher beendet ist. */
+/** PID of a process that has certainly finished. */
 async function finishedPid(): Promise<number> {
   const child = spawn(process.execPath, ['-e', ''], { stdio: 'ignore' });
   await new Promise((resolve) => child.on('exit', resolve));
@@ -61,7 +61,7 @@ describe('Lock (spec.md §8.5, AK-01-08)', () => {
       expect(error).toBeInstanceOf(LockHeldError);
       expect(error).toMatchObject({ code: 'lock_held', exitCode: 3 });
     });
-    // Nach dem Ende ist der Lock wieder frei.
+    // Released after the end.
     await expect(withLock(ctx, 'dritter', async () => 'ok')).resolves.toBe('ok');
   });
 

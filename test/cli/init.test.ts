@@ -18,7 +18,7 @@ async function readRegistry(dataDir: string): Promise<Registry> {
   return readJsonFile<Registry>(`${dataDir}/registry.json`);
 }
 
-describe('ipa init (Paket 01)', () => {
+describe('ipa init (Paket 01, mit Ausgangs-Snapshot aus Paket 02)', () => {
   it('legt im Standardmodus einen schemagültigen Arbeitsbereich in der Datenwurzel an (AK-01-03)', async () => {
     const repo = await createTempRepo();
     const dataDir = await createTempDataRoot();
@@ -47,15 +47,16 @@ describe('ipa init (Paket 01)', () => {
     expect(state).toEqual({
       schemaVersion: 1,
       repositoryId: entry.repositoryId,
-      baselineSnapshotId: null,
-      branch: null,
-      lastSnapshotId: null,
+      baselineSnapshotId: 'S000001',
+      branch: 'main',
+      lastSnapshotId: 'S000001',
       lastAnalysedSnapshotId: null,
       lastCommit: null,
       lastSuccessfulRun: null,
-      nextSnapshotSeq: 1,
+      nextSnapshotSeq: 2,
       halt: null,
     });
+    expect(result.stdout).toContain('Ausgangs-Snapshot: S000001');
 
     const runs = await readJsonl<RunRecord>(`${entry.workspacePath}/runs.jsonl`, 'run-record');
     expect(runs.invalid).toEqual([]);
@@ -64,7 +65,7 @@ describe('ipa init (Paket 01)', () => {
       command: 'init',
       exitCode: 0,
       outcome: 'ok',
-      snapshotCreated: null,
+      snapshotCreated: 'S000001',
       lockBroken: false,
       errors: [],
     });

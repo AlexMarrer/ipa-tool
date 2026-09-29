@@ -118,7 +118,7 @@ Zielplattform und einzige geplante Prüfplattform von V1 ist Windows 11 mit Node
 | D-02 | Standard ist ein eigener Arbeitsbereich pro Repository in der Datenwurzel ausserhalb des Projekts (§5.2, §5.3). Die Datenwurzel selbst darf nicht in einem untersuchten Repository liegen. Vom Benutzer am 29.09.2026 bestätigt. | Kein Selbst-Logging, keine Verschmutzung des Projekts (W-02). |
 | D-03 | Pro Repository gibt es einen Arbeitsbereich. `registry.json` ordnet ihn über den kanonischen Repository-Pfad zu. Die Auswahl erfolgt mit `--repo`, sonst über das aktuelle Verzeichnis. | Mehrere Repositories mit einer Installation. |
 | D-04 | IDs folgen §8.2: Snapshots fortlaufend (`S000001`), Läufe und Notizen mit UTC-Zeit und Zufallsanteil. | Eindeutig, sortierbar und lesbar. |
-| D-05 | Dateistände werden über Git-Blob-IDs identifiziert. Sie werden mit `git hash-object --stdin --path=<pfad>` ohne `-w` berechnet. | Gleiche IDs wie in Index und Commits, auch bei `core.autocrlf`. Kein Schreibzugriff. |
+| D-05 | Dateistände werden über Git-Blob-IDs identifiziert. Sie werden mit `git hash-object --stdin --path=<pfad>` ohne `-w` berechnet. Dateien über `maxFileBytes` hasht Git direkt aus der Datei, ebenfalls ohne `-w` (§18). | Gleiche IDs wie in Index und Commits, auch bei `core.autocrlf`. Kein Schreibzugriff. |
 | D-06 | Der inhaltliche Hauptbeleg ist `state_delta`. Commit-, Staged- und Unstaged-Diffs werden gespeichert, aber nicht an Claude übermittelt. | Derselbe Inhalt wird nicht doppelt übermittelt, die Herkunft bleibt nachvollziehbar. |
 | D-07 | Eine reine Indexänderung erzeugt keinen Snapshot, solange weder neuer Inhalt, neuer HEAD noch ein neuer Testbericht vorliegt. | W-06. |
 | D-08 | Ausgangs-Snapshots und Snapshots, die nur Statusänderungen enthalten, werden ohne Claude deterministisch protokolliert. | Keine unnötigen KI-Aufrufe. |
@@ -327,7 +327,7 @@ Ein Befehl erscheint in `ipa --help` erst, wenn sein Paket ihn umsetzt.
 - Nimmt den Ausgangs-Snapshot auf (Paket 02).
 - Führt `doctor` ohne Modellaufruf aus (Paket 05). Ein Fehler bei dieser Prüfung erzeugt nur eine Warnung.
 - Existiert bereits ein Arbeitsbereich mit Ausgangs-Snapshot, endet der Befehl mit Exit-Code 2 und ändert nichts.
-- Hat eine frühere Initialisierung vor dem Ausgangs-Snapshot abgebrochen, holt `init` ihn nach.
+- Hat eine frühere Initialisierung vor dem Ausgangs-Snapshot abgebrochen, holt `init` ihn nach. Weichen `--timezone` oder `--workspace` dabei vom registrierten Arbeitsbereich ab, endet der Befehl mit Exit-Code 2 (§18).
 - `--timezone` erwartet einen IANA-Namen. Standard ist `Europe/Zurich`.
 - `--workspace <pfad>` wählt den Speicherort des Arbeitsbereichs gemäss §5.3. Ohne die Option gilt der Standard.
 
@@ -337,6 +337,7 @@ Ein Befehl erscheint in `ipa --help` erst, wenn sein Paket ihn umsetzt.
 - `--retry <id>`: Setzt den Versuchszähler eines Snapshots im Status `exhausted` zurück, indem `retry-<n>.json` angelegt wird (§12.1).
 - `--scheduled`: Ausserhalb des konfigurierten Zeitfensters endet der Lauf mit Exit-Code 0 ohne Aufnahme (§11.1, Paket 08).
 - Solange Paket 06 fehlt, verhält sich `capture` immer wie mit `--no-analysis`.
+- Ohne Ausgangs-Snapshot endet `capture` mit Exit-Code 2 und verweist auf `ipa init` (§18).
 
 **`ipa baseline`**
 
@@ -542,10 +543,10 @@ Diese Regex-Muster gelten in allen Schemas:
 | Funktion | Verwendung | Regel |
 | --- | --- | --- |
 | `writeFileAtomic` | `state.json`, `config.json`, `registry.json`, `doctor.json`, Analyseergebnisse, Logs | Temporäre Datei im selben Ordner schreiben, dann `rename`. Bei `EPERM` oder `EBUSY` bis zu 5 Wiederholungen im Abstand von 50 ms. |
-| `createFileExclusive` | Abschluss-, Skip- und Retry-Markierungen, Journal-Entwürfe, Versuchsdateien | Flag `wx`. Existiert die Datei bereits, ist das ein Fehler. |
+| `createFileExclusive` | Abschluss-, Skip- und Retry-Markierungen, Journal-Entwürfe, Versuchsdateien, Inhalte und Manifest im temporären Snapshot-Ordner | Flag `wx`. Existiert die Datei bereits, ist das ein Fehler. Daten als Text oder Bytes (§18). |
 | `appendJsonl` | `runs.jsonl`, `ai-usage.jsonl`, Notizen | Ein Datensatz pro `appendFile`-Aufruf mit abschliessendem `\n`. Der Datensatz wird vorher validiert. |
 | `readJsonl` | alle JSONL-Dateien | Liefert die gültigen Datensätze und eine Liste ungültiger Zeilen mit Zeilennummer. Eine unvollständige letzte Zeile gilt als ungültig. |
-| Snapshot-Verzeichnis | Aufnahme | In `snapshots/.tmp-<id>-<hex>/` schreiben, `manifest.json` zuletzt, dann per `rename` nach `snapshots/<id>/` verschieben. Das Ziel darf noch nicht existieren. |
+| Snapshot-Verzeichnis | Aufnahme | In `snapshots/.tmp-<id>-<hex>/` schreiben, `manifest.json` zuletzt, dann mit `renameDirectory` nach `snapshots/<id>/` verschieben. Das Ziel darf noch nicht existieren. |
 
 Regeln für den Lock:
 
@@ -590,15 +591,15 @@ Die Felder sind hier verbindlich festgelegt. Das jeweilige Paket setzt sie 1:1 i
 | `previousSnapshotId` | string \| null |
 | `capturedAt` | Zeitstempel (§8.3) |
 | `observedPeriod` | `{ from: <capturedAt des Vorgängers> \| null, to: <capturedAt> }` |
-| `git` | `{ branch, head, indexFingerprint, statusFingerprint }`. `head` ist `null` in einem Repository ohne Commits. Die Fingerprints sind SHA-256-Werte über `git ls-files -s -z` beziehungsweise `git status --porcelain=v2 -z --untracked-files=all`. |
+| `git` | `{ branch, head, indexFingerprint, statusFingerprint }`. `head` ist `null` in einem Repository ohne Commits. Die Fingerprints sind SHA-256-Werte über `git ls-files -s -z` beziehungsweise `git status --porcelain=v2 -z --untracked-files=all --no-renames` (§18). |
 | `analysisRequired` | boolean (§11.3) |
 | `commits[]` | `{ sha, parents[], authorDate, committerDate, authoredByConfiguredUser, isMerge, messageEvidence: <Beleg-ID> \| null, files[] }` |
 | `commits[].files[]` | `{ path, oldPath \| null, change: A\|M\|D\|R\|T\|C, blob \| null, evidence: <Beleg-ID> \| null, attribution: new\|documented\|baseline\|unclear \| null, coveredBy: <Beleg-ID>[], previousEvidence: <qualifizierter Beleg>[] }` |
-| `fileStates[]` | `{ path, stage: clean\|staged\|unstaged\|mixed\|untracked, headBlob, indexBlob, worktreeBlob, symlink: boolean, copy: <relativer Pfad> \| null, copyOmitted: <Grund> \| null }`. Enthält jeden erlaubten Pfad, der nicht sauber ist oder durch neue Commits geändert wurde. Blobs sind `string \| null`. |
+| `fileStates[]` | `{ path, stage: clean\|staged\|unstaged\|mixed\|untracked, headBlob, indexBlob, worktreeBlob, symlink: boolean, copy: <relativer Pfad> \| null, copyOmitted: <Grund> \| null }`. Enthält jeden erlaubten Pfad, der nicht sauber ist oder durch neue Commits geändert wurde. Blobs sind `string \| null`. `worktreeBlob: null` mit `copyOmitted` `symlink` oder `unreadable` heisst „nicht ermittelt“, sonst „existiert nicht“. Bei Submodulen ist `worktreeBlob` der ausgecheckte Commit (§18). |
 | `evidence[]` | Belege (§9.4) |
 | `statusChanges[]` | `{ path, blob, from: <stage>, to: <stage> \| committed, commit: sha \| null, attribution: documented\|baseline\|unclear, previousEvidence: <qualifizierter Beleg>[] }` |
 | `testReports[]` | `{ path, label, sha256, mtime }` für alle aktuell vorhandenen konfigurierten Berichte. Dient als Vergleichsbasis. |
-| `filterDecisions[]` | `{ path, decision: excluded\|withheld\|omitted, reason, rule \| null, detector \| null }`, ohne Inhalte oder Werte |
+| `filterDecisions[]` | `{ path \| null, decision: excluded\|withheld\|omitted, reason, rule \| null, detector \| null, line \| null, evidence \| null }`, ohne Inhalte oder Werte. `line` ist die erste Zeile mit Secret-Treffer, `evidence` der betroffene Beleg (`null` bei Pfadausschluss und Kopien). Ausgeschlossene Pfade stehen einmal pro Snapshot (§18). |
 | `gaps[]` | `{ type: rebaseline\|previous_state_unavailable\|halt_detected, detail }` |
 | `stability` | `{ attempts, stable: true }` |
 | `tool` | `{ name: "ipa-assistant", version }` |
@@ -614,14 +615,14 @@ Alle Belege haben diese gemeinsamen Felder:
   binary: boolean, omitted: null | { reason, rule?, detector? } }
 ```
 
-`file` ist relativ zum Snapshot-Ordner.
+`file` ist relativ zum Snapshot-Ordner. Bei einem ausgelassenen Beleg ist `sha256` `null`, und `bytes` ist die Grösse der Einheit, falls bekannt, sonst 0 (§18).
 
 | `kind` | Zusatzfelder | Inhalt | An Claude |
 | --- | --- | --- | --- |
 | `commit_message` | – | Commit-Nachricht nach der Inhaltsprüfung | ja |
 | `commit_diff` | – | Patch einer Datei in einem Commit. Bei Merges gegen den ersten Elternteil. | nein |
 | `staged_diff` | – | Patch HEAD → Index einer Datei | nein |
-| `unstaged_diff` | – | Patch Index → Working Tree einer Datei | nein |
+| `unstaged_diff` | – | Patch Index → Working Tree einer Datei; bei einer neuen Datei gegen eine leere Datei (§18) | nein |
 | `state_delta` | `fromBlob`, `toBlob` | Patch vom Stand im Vorgänger-Snapshot zum aktuellen wirksamen Stand (§11.4) | ja |
 | `test_report` | `label`, `mtime`, `fresh` | Inhalt eines konfigurierten Testberichts | ja |
 
@@ -769,12 +770,13 @@ Den Aufbau des Markdown-Entwurfs legt Paket 07 fest.
 ```text
 { schemaVersion, runId, command, startedAt, endedAt, durationMs, exitCode, outcome,
   snapshotCreated: id|null, analysesCompleted: id[], analysesFailed: id[], lockBroken: boolean,
-  errors: [{ code, message }] }
+  errors: [{ code, message }], recovered?: id[] }
 ```
 
 - `outcome` ist `ok`, `unchanged`, `halted`, `unstable`, `lock_held`, `analysis_failed`, `outside_window`, `usage_error` oder `error`.
 - `message` enthält keine Inhalte aus dem Repository (I-12).
-- Jeder Lauf eines schreibenden Befehls wird protokolliert. `status` protokolliert nicht.
+- `recovered` nennt Snapshots, die der Lauf gemäss §11.6 aus einem abgebrochenen Lauf übernommen hat. Das Feld fehlt, wenn es leer wäre (§18).
+- Jeder Lauf eines schreibenden Befehls wird protokolliert, auch einer, der den Lock nicht erhält. `status` protokolliert nicht.
 
 ### 9.12 `ai-usage.jsonl`
 
@@ -818,7 +820,8 @@ resolveContext(opts: { repo?: string; dataDir?: string; requireInit: boolean; cl
   // Ohne clock gilt die Systemuhr. resolveContext schreibt nichts.
 withLock<T>(ctx: WorkspaceContext, command: string, fn: (lock: { lockBroken: boolean }) => Promise<T>): Promise<T> // wirft LockHeldError
 writeFileAtomic(path: string, data: string | Uint8Array): Promise<void>
-createFileExclusive(path: string, data: string): Promise<void>
+createFileExclusive(path: string, data: string | Uint8Array): Promise<void>
+renameDirectory(from: string, to: string): Promise<void>   // Ziel darf nicht existieren (§8.5, §18)
 appendJsonl(path: string, record: unknown, schemaId: SchemaId): Promise<void>
 readJsonl<T>(path: string, schemaId: SchemaId): Promise<{ records: T[]; invalid: { line: number; error: string }[] }>
 readJsonValidated<T>(path: string, schemaId: SchemaId): Promise<T>
@@ -844,7 +847,8 @@ type CaptureOutcome =
   | { type: 'created'; snapshotId: string; analysisRequired: boolean }
   | { type: 'unchanged' }
   | { type: 'halted'; halt: Halt };
-captureSnapshot(ctx: WorkspaceContext, opts: { kind: 'baseline' | 'work'; reason?: string; hooks?: CaptureHooks }): Promise<CaptureOutcome>
+captureSnapshot(ctx: WorkspaceContext, opts: { kind: 'baseline' | 'work'; reason?: string; hooks?: CaptureHooks;
+  onWarning?: (message: string) => void }): Promise<CaptureOutcome>   // reason ab Paket 03 (§18)
 readManifest(ctx: WorkspaceContext, snapshotId: string): Promise<Manifest>
 listSnapshots(ctx: WorkspaceContext): Promise<string[]>   // aufsteigend
 
@@ -898,10 +902,10 @@ Das ausgelieferte CLI setzt keine Hooks. Fehlerinjektion über Umgebungsvariable
 2. **Halt prüfen** (§11.5), nur bei `kind = work`.
 3. **Erster Lesedurchgang:**
    - `branch`, `head` und beide Fingerprints lesen
-   - neue Commits mit `git rev-list --reverse --topo-order <vorgänger.head>..HEAD` ermitteln
-   - Status mit `--porcelain=v2 -z --untracked-files=all` lesen
+   - neue Commits mit `git rev-list --reverse --topo-order <vorgänger.head>..HEAD` ermitteln, ihre Dateien mit `git show --raw` (§18)
+   - Status mit `--porcelain=v2 -z --untracked-files=all --no-renames` lesen
    - Filter anwenden
-   - Inhalte erlaubter Dateien einmal in den Speicher lesen und Blob-IDs berechnen (D-05)
+   - Inhalte erlaubter Dateien einmal in den Speicher lesen und Blob-IDs berechnen (D-05), und zwar bevor Git den Working Tree vergleicht, damit eine Änderung dazwischen im zweiten Durchgang auffällt
    - Diffs, Nachrichten und Testberichte erzeugen und prüfen (§14)
 4. **Konsistenz prüfen** (§11.2).
 5. **Zuordnen:** Zustandsdelta, Zuordnung und Relevanz berechnen (§11.3, §11.4). Ist die Aufnahme nicht relevant, ist das Ergebnis `unchanged`, und es wird nichts geschrieben.
@@ -912,7 +916,7 @@ Das ausgelieferte CLI setzt keine Hooks. Fehlerinjektion über Umgebungsvariable
 
 ### 11.2 Konsistenzprüfung
 
-- Nach dem ersten Durchgang werden HEAD, beide Fingerprints und der SHA-256 jedes gelesenen Inhalts erneut bestimmt.
+- Nach dem ersten Durchgang werden HEAD, Branch, beide Fingerprints und der SHA-256 jedes gelesenen Inhalts erneut bestimmt. Bei Dateien über `maxFileBytes`, die nicht in den Speicher geladen werden, zählen Grösse und Änderungszeit (§18).
 - Weicht etwas ab, wird bis zu `limits.stabilityRetries` Mal komplett neu aufgenommen, jeweils nach einer Wartezeit von `limits.stabilityDelayMs`.
 - Bleibt der Stand instabil, wird kein Snapshot gespeichert, `state.json` bleibt unverändert, und der Lauf endet mit Exit-Code 5 und `outcome: unstable`.
 
@@ -1002,7 +1006,7 @@ Arbeit zwischen dem letzten Snapshot und dem neuen Ausgangspunkt gilt als nicht 
 Zu Beginn jedes Befehls, der einen Lock nimmt:
 
 - Verwaiste Ordner `snapshots/.tmp-*` werden entfernt.
-- Existiert `snapshots/S<nextSnapshotSeq>/` mit gültigem Manifest, wird der Snapshot übernommen: `state` wird nachgeführt und der Vorgang protokolliert.
+- Existiert `snapshots/S<nextSnapshotSeq>/` mit gültigem Manifest, wird der Snapshot übernommen: `state` wird nachgeführt und der Vorgang in `runs.jsonl` unter `recovered` protokolliert (§9.11).
 - `tmp/` wird geleert.
 
 ---
@@ -1214,7 +1218,7 @@ Es schreibt nie ausserhalb eines Arbeitsbereichs in das Repository, nie in `.git
 
 Alle Git-Aufrufe laufen über `GitRunner`:
 
-- Aufrufform: `git --no-pager -c core.quotepath=off -c color.ui=never -c core.fsmonitor=false <befehl> …`
+- Aufrufform: `git --no-pager -c core.quotepath=off -c color.ui=never -c core.fsmonitor=false -c diff.autoRefreshIndex=false <befehl> …`. Ohne die letzte Option schreibt ein `git diff` gegen den Working Tree `.git/index` neu (§18).
 - Umgebung: `GIT_OPTIONAL_LOCKS=0` und `GIT_TERMINAL_PROMPT=0` werden gesetzt. `GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE` und `GIT_OBJECT_DIRECTORY` werden entfernt.
 - Erlaubte Unterbefehle:
   - `rev-parse`, `rev-list`, `cat-file`, `show`, `log`, `diff`, `ls-files`, `status`
@@ -1233,7 +1237,8 @@ Alle Git-Aufrufe laufen über `GitRunner`:
 ### 14.3 Pfadfilter
 
 - Der Pfadfilter gilt für jeden Repository-Pfad, bevor ein Inhalt gelesen wird: für alte und neue Pfade bei Umbenennungen, für Commit-Dateien, Index, Working Tree und neue Dateien.
-- Eine Umbenennung von einem ausgeschlossenen zu einem erlaubten Pfad wird als neue Datei am erlaubten Pfad behandelt. Der alte Pfad liefert keinen Inhalt.
+- Eine Umbenennung von einem ausgeschlossenen zu einem erlaubten Pfad wird als neue Datei am erlaubten Pfad behandelt. Der alte Pfad liefert keinen Inhalt. Umgekehrt gilt eine Umbenennung an einen ausgeschlossenen Pfad als Löschung. Git erkennt Umbenennungen dazu nur unter erlaubten Pfaden (§18).
+- `.git` ist in jeder Verzeichnistiefe ausgeschlossen. Als Regel steht in `filterDecisions` das Muster, `.git/**`, `<arbeitsbereich>/**` oder `paths.include` für einen nicht eingeschlossenen Pfad.
 - Ausgeschlossene Pfade erscheinen nur in `filterDecisions` des Manifests und als Zähler im Eingabepaket.
 - Liegt der Arbeitsbereich im Repository, ist sein Pfad immer ausgeschlossen, zusätzlich zu `.git/**` und nicht konfigurierbar. Das gilt auch für Commit-Dateien, falls der Benutzer den Arbeitsbereich versioniert (I-14).
 
@@ -1259,8 +1264,8 @@ Die Detektoren arbeiten mit regulären Ausdrücken. Ihre Namen sind verbindlich:
 | `anthropic_or_openai_key` | `sk-(ant-)?[A-Za-z0-9_-]{20,}` |
 | `jwt` | drei Base64URL-Segmente, beginnend mit `eyJ` |
 | `url_credentials` | `://user:pass@` |
-| `assignment` | Zuweisung eines Literalwerts ab 8 Zeichen an Schlüssel wie `password`, `passwd`, `secret`, `token`, `api_key`, `apikey`, `client_secret` |
-| `custom` | Muster aus `secrets.extraPatterns` |
+| `assignment` | Zuweisung eines Literalwerts ab 8 Zeichen an Schlüssel wie `password`, `passwd`, `secret`, `token`, `api_key`, `apikey`, `client_secret`. Genaue Regeln in §18. |
+| `custom` | Muster aus `secrets.extraPatterns`, zeilenweise geprüft |
 
 Bei einem Treffer:
 
@@ -1274,7 +1279,8 @@ Kein Detektor gilt als vollständig. README und Ausgaben DÜRFEN keine Fehlerfre
 
 - Eine Einheit ist binär, wenn die ersten 8000 Bytes ein NUL-Byte enthalten oder Git-Numstat `-` meldet. Binäre Einheiten werden nur als Metadaten geführt.
 - Einheiten über `maxFileBytes` werden mit dem Grund `file_too_large` ausgelassen.
-- Würde die Summe der gespeicherten Inhalte `maxSnapshotBytes` überschreiten, werden alle weiteren Einheiten mit `snapshot_limit` ausgelassen. Die Reihenfolge folgt den Pfaden, das Ergebnis ist deterministisch.
+- Würde die Summe der gespeicherten Inhalte `maxSnapshotBytes` überschreiten, werden alle weiteren Einheiten mit `snapshot_limit` ausgelassen. Die Reihenfolge ist deterministisch: zuerst die Kopien nach Pfad, dann die Belege in ID-Reihenfolge (§18).
+- Liegt ein übergeordneter Ordner eines Pfads wegen eines Links oder einer Junction ausserhalb des Repositorys, wird der Inhalt nicht gelesen und mit `symlink` ausgelassen (D-20, §18).
 
 ### 14.6 Was an Claude übermittelt wird
 
@@ -1388,3 +1394,16 @@ Die Einträge entstehen während der Umsetzung. Jeder Eintrag nennt Datum, Paket
 | 2026-09-29 | 01 | Folgen der Vorabprüfung für Paket 05: (a) Mit `--json-schema` meldet das Init-Ereignis das Werkzeug `StructuredOutput`; die Regel „leere Werkzeugliste“ für `live.ok` und AK-05-09 wäre nie erfüllbar. (b) `claude auth status` meldet `loggedIn: true`, obwohl die API die Anmeldung ablehnt; `claude -p` wiederholt dann bis zum Timeout. Mit `--output-format json` erscheint dabei nichts auf stdout oder stderr, nur `stream-json` zeigt die Ereignisse `system/api_retry`. (c) Innerhalb einer Claude-Code-Sitzung erbt `claude` deren Variablen (`CLAUDECODE`, `CLAUDE_CODE_ENTRYPOINT`, `CLAUDE_CODE_SDK_HAS_HOST_AUTH_REFRESH`, Messaging-Socket u. a.). | (a) §13.4 angepasst: erlaubt ist genau `StructuredOutput`; Paket 05 wendet das auf `live.ok` und AK-05-09 an. (b) `ipa doctor --live` wertet `system/api_retry` aus und meldet `authentication_failed` als Befund. (c) Paket 05 entscheidet, ob `ClaudeRunner` diese Variablen wie `--isolate-env` der Vorabprüfung entfernt; bis dahin gilt §13.1. | §13.1, §13.4; Paket 05 |
 | 2026-09-29 | 01 | Testumgebung: Neben `IPA_ASSISTANT_HOME` könnten Standard-Datenorte und die Git-Konfiguration des Rechners Tests beeinflussen, und Tests des echten CLI-Einstiegs brauchen `dist/`. | Das globale Vitest-Setup setzt auch `LOCALAPPDATA` und `XDG_DATA_HOME` auf das Temp-Verzeichnis, blendet System- und Benutzerkonfiguration von Git aus, baut `dist/` und prüft am Ende die echte Datenwurzel. | §16.2 |
 | 2026-09-29 | 01 | Befehlsname `ipa` (Paketspezifikation 01 §9) | Auf dem Entwicklungsrechner gibt es keinen anderen Befehl und keinen Alias `ipa` (geprüft mit `Get-Command ipa`). Keine Umbenennung nötig. | – |
+| 2026-09-29 | 02 | Benutzervorgabe: Kommentare im Code sind englisch und stehen nur dort, wo sie nötig sind. Der Code aus Paket 01 hatte deutsche, teils redundante Kommentare. | Regel in §16.1 aufgenommen und in alle Paket-Prompts eingefügt. Kommentare in `src/`, `test/`, `scripts/` und `vitest.config.ts` übersetzt oder entfernt. Meldungen an den Benutzer bleiben deutsch. | §16.1; alle `prompt.md` |
+| 2026-09-29 | 02 | **Befund (Git 2.51.0.windows.1):** `git diff` gegen den Working Tree schreibt `.git/index` neu, sobald Dateien nur geänderte Zeitstempel haben, trotz `GIT_OPTIONAL_LOCKS=0` (automatische Index-Aktualisierung). Das verletzt I-01. | Die Aufrufform aus §14.2 enthält zusätzlich `-c diff.autoRefreshIndex=false`. Damit bleibt der Index unverändert; reine Zeitstempeländerungen erscheinen in `--raw` als Änderung, darum stammt die Liste ungestagter Pfade aus `git status`. Nachweis: `test/git/runner.test.ts`. | §14.2, §11.1 |
+| 2026-09-29 | 02 | **Befund:** Git für Windows listet in `git status` Dateien innerhalb einer Ordner-Junction auf, auch wenn sie auf einen Ordner ausserhalb des Repositorys zeigt. Junctions lassen sich ohne Administratorrechte anlegen, Symlinks auf diesem Rechner nicht (EPERM). | Vor jedem Lesen wird der übergeordnete Ordner mit `realpath` aufgelöst. Liegt er nicht am erwarteten Ort im Repository, wird die Datei weder gelesen noch an einen Worktree-Diff von Git übergeben. Sie erscheint mit `symlink: true`, `worktreeBlob: null`, `copyOmitted: "symlink"` und als Auslassung `symlink`. | D-20, §9.3, §14.5 |
+| 2026-09-29 | 02 | Listenbefehle: `git status` meldet gestagte Umbenennungen als Paar, `fileStates` sind aber pfadbezogen. `git diff` erhält die Arbeitsbereichs-Pathspec, dann erreichen committete Dateien aus `.ipa/` `filterDecisions` nicht (Paketspezifikation 02 §2). `--name-status` liefert keine Blob-IDs und Modi für `commits[].files[].blob`, Symlinks und Submodule. | Status und Statusfingerprint verwenden `--no-renames`. Die Dateiliste eines Commits kommt aus `git show --raw -z --no-abbrev --no-renames --format= --diff-merges=first-parent --root` (Git ab 2.31). Statt `--name-status` wird `--raw -z --no-abbrev` ausgewertet. Umbenennungen werden nur unter erlaubten Pfaden erkannt: Aus einem ausgeschlossenen an einen erlaubten Pfad entsteht `A`, umgekehrt `D`. | §9.3, §11.1, §14.2, §14.3 |
+| 2026-09-29 | 02 | §14.4 verlangt die Zeilennummer in `filterDecisions`, §9.3 sieht kein Feld dafür vor. Eine Commit-Nachricht hat keinen Pfad, und ein Pfad kann mehrere Einheiten haben. | `filterDecisions[]` = `{ path \| null, decision, reason, rule \| null, detector \| null, line \| null, evidence \| null }`. `evidence` verweist auf den betroffenen Beleg, `null` bei Pfadausschluss und Kopien. Ausgeschlossene Pfade stehen einmal pro Snapshot. Ausgelassene Belege haben `sha256: null`; `bytes` ist die Grösse der Einheit, falls bekannt, sonst 0. | §9.3, §9.4, §14.4 |
+| 2026-09-29 | 02 | Offene Einzelheiten zu `fileStates` und Belegen: neue Dateien haben keinen Git-Diff; `worktreeBlob: null` bedeutet „existiert nicht“, der Stand kann aber auch nicht ermittelbar sein; Submodule, als Datei ausgecheckte Links (`core.symlinks=false`) und nicht versionierte Unter-Repositories. | Eine neue Datei erhält ein `unstaged_diff` als Patch gegen eine leere Datei, erzeugt aus den einmal gelesenen Bytes. `worktreeBlob: null` zusammen mit `copyOmitted` `symlink` oder `unreadable` heisst „nicht ermittelt“. Submodule: `worktreeBlob` ist der ausgecheckte Commit, keine Kopie. Einträge mit Modus `120000` gelten als Link, gespeichert wird nur das Linkziel. Ein nicht versioniertes Unter-Repository (`? ordner/`) erscheint nur in `filterDecisions` mit `unreadable`. | §9.3, §9.4, §11.4, D-20 |
+| 2026-09-29 | 02 | D-05 verlangt `hash-object --stdin`. Dateien über `maxFileBytes` werden nicht gespeichert, brauchen aber eine Blob-ID; sie ganz in den Speicher zu laden ist bei grossen Dateien unnötig. | Dateien über `maxFileBytes` hasht Git direkt aus der Datei (`hash-object --path=<pfad> -- <absoluter pfad>`, ohne `-w`), nachdem Link und Ordner geprüft sind. Ihre Konsistenz prüft der zweite Durchgang über Grösse und Änderungszeit, bei allen anderen über SHA-256 des Inhalts. | D-05, §11.2 |
+| 2026-09-29 | 02 | §14.5: „Die Reihenfolge folgt den Pfaden“ legt nicht fest, ob Kopien oder Belege zuerst zählen. | Zuerst die Kopien nach Pfad, weil sie der vorige Stand der nächsten Aufnahme sind (§11.4), dann die Belege in ID-Reihenfolge: Commits in Aufnahmereihenfolge mit Nachricht und Dateien nach Pfad, dann Staged-, dann Unstaged-Diffs nach Pfad. | §14.5 |
+| 2026-09-29 | 02 | §11.6 verlangt, die Übernahme eines Snapshots zu protokollieren; §9.11 hat kein Feld dafür. `createFileExclusive` nimmt nur Text an, Patches können beliebige Bytes enthalten. Für das Verschieben des Snapshot-Ordners fehlt eine Schreibfunktion. Die Warnung bei fehlendem `user.email` braucht einen Ausgabeweg. | `runs.jsonl` erhält das optionale Feld `recovered: snapshotId[]`, nur wenn nicht leer; ältere Zeilen bleiben gültig. Läufe mit gehaltenem Lock werden ohne Lock mit `lock_held` protokolliert (ein einzelnes Anhängen). `createFileExclusive` nimmt `string \| Uint8Array`. Neue Funktion `renameDirectory(from, to)` in `src/core/fs-write.ts`: Ziel darf nicht existieren, Wiederholung bei `EPERM`/`EBUSY`. `captureSnapshot` erhält optional `onWarning`; `reason` folgt mit Paket 03. | §8.5, §9.11, §10, §11.6 |
+| 2026-09-29 | 02 | `core` darf den Collector nicht importieren (§4.3), `init` muss aber im selben Lock den Ausgangs-Snapshot aufnehmen. §6.3 regelt nicht, was ein erneutes `init` mit abweichenden Optionen tut und was `capture` ohne Ausgangs-Snapshot tut. | `initializeWorkspace` erhält den Schritt als Funktion (`InitOptions.baseline`), das CLI übergibt `takeInitialBaseline`. Ein erneutes `init` auf einem registrierten Arbeitsbereich ohne Ausgangs-Snapshot holt ihn nach; abweichende `--timezone` oder `--workspace` ergeben Exit-Code 2. `capture` ohne Ausgangs-Snapshot endet mit Exit-Code 2 und verweist auf `ipa init`. | §4.3, §6.3 |
+| 2026-09-29 | 02 | **Annahme A-06** (Git 2.51.0.windows.1): `git diff --cached` in einem Repository ohne Commits. | **Bestätigt:** Git vergleicht dann gegen den leeren Baum, das Ergebnis entspricht dem Aufruf mit der ID des leeren Baums. Das Tool übergibt den leeren Baum trotzdem ausdrücklich und bestimmt seine ID mit `git hash-object -t tree --stdin` (ohne `-w`), damit sie auch im Hashformat SHA-256 stimmt. SHA-256-Repositories bleiben ungeprüft. | §3.3 |
+| 2026-09-29 | 02 | §14.4 beschreibt die Detektoren nur knapp; D-10 legt die Auswertung von Mustern ohne `/` fest, `picomatch` mit Option `basename` wendet sie aber auch auf Muster mit `/` an. | Detektoren: `assignment` erkennt einen Schlüssel, der auf `password`, `passwd`, `secret`, `token`, `api_key`, `apikey` oder `access_key` endet, mit Literalwert ab 8 Zeichen; Werte in Anführungszeichen überall, aber ohne Leerzeichen und ohne Platzhalter wie `${…}`; Werte ohne Anführungszeichen nur als ganze Konfigurationszeile und ohne `.`, Klammern oder Platzhalter. `github_token` erkennt zusätzlich `github_pat_…`. `custom` prüft zeilenweise. Alle Muster laufen auf langen Zeilen in linearer Zeit. Pfadfilter: Muster ohne `/` werden gegen den Dateinamen geprüft, eigene Umsetzung ohne `basename`. Regeln in `filterDecisions`: das Muster, `.git/**` (in jeder Tiefe), `<arbeitsbereich>/**` oder `paths.include`. | D-10, §14.3, §14.4 |
+| 2026-09-29 | 02 | §14.4: „Status und Journal weisen zurückgehaltene Einheiten als offene Prüfung aus“; §6.6 sieht dafür in `status --json` kein Feld vor. | Paket 02 meldet zurückgehaltene Einheiten nach `init` und `capture` als Hinweis auf stderr. Ein Feld in `ipa status` bleibt offen und wird mit Paket 06 oder 07 entschieden. | §6.6, §14.4; Pakete 06, 07 |

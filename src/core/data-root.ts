@@ -1,5 +1,5 @@
 /**
- * Datenwurzel (spec.md §5.2).
+ * Data root (spec.md §5.2).
  */
 import { mkdir, rm, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';
@@ -14,7 +14,6 @@ export const DATA_ROOT_FOLDER = 'ipa-assistant';
 export type DataRootSource = 'option' | 'env' | 'default';
 
 export interface DataRootInput {
-  /** Globale Option `--data-dir`. */
   dataDir?: string | undefined;
   env?: NodeJS.ProcessEnv;
   platform?: NodeJS.Platform;
@@ -23,7 +22,7 @@ export interface DataRootInput {
 }
 
 export interface DataRoot {
-  /** Kanonischer absoluter Pfad mit `/`. */
+  /** Canonical absolute path with `/`. */
   path: string;
   source: DataRootSource;
 }
@@ -33,8 +32,7 @@ function nonEmpty(value: string | undefined): string | undefined {
 }
 
 /**
- * Bestimmt den Pfad der Datenwurzel ohne Dateisystemzugriff:
- * `--data-dir`, dann `IPA_ASSISTANT_HOME`, dann der Standard der Plattform.
+ * Without file system access: `--data-dir`, then `IPA_ASSISTANT_HOME`, then the platform default.
  */
 export function dataRootCandidate(input: DataRootInput = {}): { path: string; source: DataRootSource } {
   const env = input.env ?? process.env;
@@ -74,13 +72,13 @@ export function dataRootCandidate(input: DataRootInput = {}): { path: string; so
   return { path: toPortablePath(pathApi.join(base, DATA_ROOT_FOLDER)), source: 'default' };
 }
 
-/** Datenwurzel mit kanonischem Pfad. Legt nichts an. */
+/** Canonical path; creates nothing. */
 export async function resolveDataRoot(input: DataRootInput = {}): Promise<DataRoot> {
   const candidate = dataRootCandidate(input);
   return { path: await canonicalizePath(candidate.path), source: candidate.source };
 }
 
-/** Datenwurzel und Repository dürfen nicht ineinander liegen (spec.md §5.2, D-02). */
+/** Data root and repository must not contain each other (spec.md §5.2, D-02). */
 export function assertDataRootSeparate(dataRoot: string, repoRoot: string): void {
   if (isSameOrInside(dataRoot, repoRoot)) {
     throw new IpaError(
@@ -101,7 +99,7 @@ export function assertDataRootSeparate(dataRoot: string, repoRoot: string): void
   }
 }
 
-/** Deutsche Kurzbeschreibung eines Dateisystemfehlers, ohne Inhalte. */
+/** Short German description of a file system error, without any content. */
 export function describeFsError(error: unknown): string {
   switch (errnoCode(error)) {
     case 'EEXIST':
@@ -121,7 +119,7 @@ export function describeFsError(error: unknown): string {
   }
 }
 
-/** Meldung für eine nicht beschreibbare Datenwurzel mit allen Auswegen (D-21). */
+/** Names every way out (D-21). */
 export function dataRootNotWritableMessage(dataRoot: string, reason: string): string {
   return [
     `Die Datenwurzel ist nicht beschreibbar: ${dataRoot} (${reason}).`,
@@ -135,8 +133,8 @@ export function dataRootNotWritableMessage(dataRoot: string, reason: string): st
 }
 
 /**
- * Legt die Datenwurzel bei Bedarf an und prüft mit einer Probedatei, ob sie beschreibbar ist.
- * Scheitert das, folgt Exit-Code 2 mit Pfad und Auswegen. Es wird nie ein anderer Ort verwendet.
+ * Creates the data root if needed and probes it with a test file. On failure: exit code 2 with
+ * path and ways out; another location is never used (D-21).
  */
 export async function ensureDataRootWritable(dataRoot: string): Promise<void> {
   const fail = (error: unknown): never => {

@@ -1,13 +1,12 @@
 /**
- * Pfadnormalisierung (spec.md §2.3, §5.4). Intern verwenden Pfade immer `/`.
- * Unter Windows wird der Laufwerksbuchstabe gross geschrieben, und Vergleiche
- * unterscheiden nicht zwischen Gross- und Kleinschreibung.
+ * Paths use `/` internally (spec.md §2.3, §5.4). On Windows the drive letter is upper case and
+ * comparisons ignore case.
  */
 import { realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { errnoCode } from './errors.js';
 
-/** Backslashes → `/`, Laufwerksbuchstabe gross, ohne abschliessenden `/` (ausser bei Wurzeln). */
+/** Backslashes → `/`, upper-case drive letter, no trailing `/` except for roots. */
 export function toPortablePath(input: string): string {
   let result = input.replace(/\\/g, '/');
   if (/^[a-zA-Z]:/.test(result)) {
@@ -20,7 +19,6 @@ export function toPortablePath(input: string): string {
   return result;
 }
 
-/** Schlüssel für Pfadvergleiche: portabel, unter Windows in Kleinbuchstaben. */
 export function comparisonKey(input: string, platform: NodeJS.Platform = process.platform): string {
   const portable = toPortablePath(input);
   return platform === 'win32' ? portable.toLowerCase() : portable;
@@ -30,7 +28,6 @@ export function samePath(a: string, b: string, platform: NodeJS.Platform = proce
   return comparisonKey(a, platform) === comparisonKey(b, platform);
 }
 
-/** `child` liegt in `parent` oder ist gleich `parent`. */
 export function isSameOrInside(child: string, parent: string, platform: NodeJS.Platform = process.platform): boolean {
   const childKey = comparisonKey(child, platform);
   const parentKey = comparisonKey(parent, platform);
@@ -39,14 +36,13 @@ export function isSameOrInside(child: string, parent: string, platform: NodeJS.P
   return childKey.startsWith(prefix);
 }
 
-/** `child` liegt echt in `parent`. */
 export function isStrictlyInside(child: string, parent: string, platform: NodeJS.Platform = process.platform): boolean {
   return isSameOrInside(child, parent, platform) && !samePath(child, parent, platform);
 }
 
 /**
- * Relativer Pfad mit `/` von `parent` zu `child`, oder `null`, wenn `child` nicht echt in `parent` liegt.
- * Die Schreibweise des relativen Teils stammt aus `child`.
+ * Relative path with `/`, or `null` if `child` is not strictly inside `parent`. The letter case of
+ * the result comes from `child`.
  */
 export function relativeInside(child: string, parent: string, platform: NodeJS.Platform = process.platform): string | null {
   if (!isStrictlyInside(child, parent, platform)) return null;
@@ -57,8 +53,7 @@ export function relativeInside(child: string, parent: string, platform: NodeJS.P
 }
 
 /**
- * Kanonischer absoluter Pfad: `realpath` des nächsten existierenden Vorfahren,
- * ergänzt um den noch nicht existierenden Rest, portabel geschrieben.
+ * `realpath` of the nearest existing ancestor plus the part that does not exist yet.
  */
 export async function canonicalizePath(input: string): Promise<string> {
   const absolute = path.resolve(input);
@@ -72,7 +67,7 @@ export async function canonicalizePath(input: string): Promise<string> {
     } catch (error) {
       const code = errnoCode(error);
       if (code !== 'ENOENT' && code !== 'ENOTDIR') {
-        // realpath ist für manche Laufwerke nicht verfügbar; dann gilt der lexikalische Pfad.
+        // Some drives do not support realpath; the lexical path is used then.
         return toPortablePath(absolute);
       }
       const parent = path.dirname(current);

@@ -1,5 +1,5 @@
 /**
- * Ein- und Ausgabe des CLI. Ergebnisse gehen auf stdout, Warnungen und Fehler auf stderr (spec.md §6.5).
+ * Results go to stdout, warnings and errors to stderr (spec.md §6.5).
  */
 import type { ExitCode } from '../core/errors.js';
 
@@ -13,7 +13,6 @@ export interface CliState {
   exitCode: ExitCode;
 }
 
-/** Globale Optionen aus spec.md §6.1. */
 export interface GlobalOptions {
   repo?: string;
   dataDir?: string;

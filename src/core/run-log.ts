@@ -1,8 +1,9 @@
 /**
- * Laufprotokoll `runs.jsonl` (spec.md §9.11).
+ * Run log `runs.jsonl` (spec.md §9.11).
  */
 import path from 'node:path';
-import type { ExitCode } from './errors.js';
+import type { WorkspaceContext } from './context.js';
+import { EXIT, type ExitCode, IpaError } from './errors.js';
 import { appendJsonl, type JsonlReadResult, readJsonl } from './jsonl.js';
 import { formatZoned } from './time.js';
 
@@ -21,7 +22,7 @@ export type RunOutcome =
 
 export interface RunError {
   code: string;
-  /** Enthält keine Inhalte aus dem Repository (I-12). */
+  /** Never contains repository content (I-12). */
   message: string;
 }
 
@@ -39,13 +40,15 @@ export interface RunRecord {
   analysesFailed: string[];
   lockBroken: boolean;
   errors: RunError[];
+  /** Snapshots taken over from an aborted run (spec.md §11.6); only present when not empty. */
+  recovered?: string[];
 }
 
 export function runsLogPath(workspaceDir: string): string {
   return path.join(workspaceDir, RUNS_FILE);
 }
 
-/** Standard-Ergebnis zu einem Exit-Code. Befehle setzen `unchanged` oder `outside_window` selbst. */
+/** Commands set `unchanged` and `outside_window` themselves. */
 export function outcomeForExitCode(exitCode: ExitCode): RunOutcome {
   switch (exitCode) {
     case 0:
@@ -79,10 +82,11 @@ export interface RunRecordInput {
   analysesCompleted?: string[];
   analysesFailed?: string[];
   errors?: RunError[];
+  recovered?: string[];
 }
 
 export function createRunRecord(input: RunRecordInput): RunRecord {
-  return {
+  const record: RunRecord = {
     schemaVersion: 1,
     runId: input.runId,
     command: input.command,
@@ -97,10 +101,42 @@ export function createRunRecord(input: RunRecordInput): RunRecord {
     lockBroken: input.lockBroken,
     errors: input.errors ?? [],
   };
+  if (input.recovered !== undefined && input.recovered.length > 0) record.recovered = input.recovered;
+  return record;
+}
+
+const MAX_ERROR_MESSAGE = 300;
+
+/** Run log entry for a failure; the message is shortened to its first line (I-12). */
+export function runErrorOf(error: unknown): RunError {
+  const code = error instanceof IpaError ? error.code : 'internal';
+  const text = error instanceof Error ? error.message : String(error);
+  const line = text.split(/\r?\n/)[0] ?? '';
+  return { code, message: line.length > MAX_ERROR_MESSAGE ? `${line.slice(0, MAX_ERROR_MESSAGE)} …` : line };
 }
 
 export async function appendRunRecord(workspaceDir: string, record: RunRecord): Promise<void> {
   await appendJsonl(runsLogPath(workspaceDir), record, 'run-record');
+}
+
+/**
+ * Log entry for a run that did not get the lock (exit code 3). It is appended without the lock;
+ * a single append of one line does not interleave with the lock holder's own entry.
+ */
+export async function appendLockHeldRecord(ctx: WorkspaceContext, command: string, startedAt: Date, error: unknown): Promise<void> {
+  await appendRunRecord(
+    ctx.workspaceDir,
+    createRunRecord({
+      runId: ctx.runId,
+      command,
+      startedAt,
+      endedAt: ctx.clock.now(),
+      timezone: ctx.config.timezone,
+      exitCode: EXIT.lockHeld,
+      lockBroken: false,
+      errors: [runErrorOf(error)],
+    }),
+  );
 }
 
 export async function readRunRecords(workspaceDir: string): Promise<JsonlReadResult<RunRecord>> {

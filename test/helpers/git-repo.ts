@@ -1,6 +1,6 @@
 /**
- * Temporäre Git-Repositories für Integrationstests (spec.md §16.2).
- * Die Repositories setzen lokal `user.name`, `user.email` und `core.autocrlf=false`.
+ * Temporary Git repositories for integration tests (spec.md §16.2) with local `user.name`,
+ * `user.email` and `core.autocrlf=false`.
  */
 import { execFile } from 'node:child_process';
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -14,20 +14,20 @@ export const TEST_USER_NAME = 'IPA Test';
 export const TEST_USER_EMAIL = 'ipa-test@example.invalid';
 
 export interface TempRepo {
-  /** Kanonische Repository-Wurzel mit `/`. */
+  /** Canonical, with `/`. */
   root: string;
   git(...args: string[]): Promise<string>;
   write(relativePath: string, content: string | Uint8Array): Promise<void>;
-  /** `git add -A` und `git commit`. */
+  /** `git add -A` and `git commit`. */
   commit(message: string): Promise<void>;
 }
 
 export interface TempRepoOptions {
-  /** Name des Repository-Ordners, zum Beispiel mit Leerzeichen und Umlauten. */
+  /** Folder name, for example with spaces and umlauts. */
   name?: string;
-  /** Dateien, die vor dem ersten Commit angelegt werden. */
+  /** Files created before the first commit. */
   files?: Record<string, string>;
-  /** Ersten Commit anlegen. Standard: `true`. Ohne Commit bleibt HEAD unborn. */
+  /** Default `true`; without a commit HEAD stays unborn. */
   commit?: boolean;
 }
 

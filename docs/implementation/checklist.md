@@ -16,7 +16,7 @@ Nachfolgende Pakete dürfen beginnen, sobald ihre Voraussetzungen mindestens `te
 | Paket | Status | Checkliste | Offene Punkte / Hinweis |
 | --- | --- | --- | --- |
 | 01 – CLI-Grundlage | abgeschlossen | [checklist](packages/01-cli-grundlage/checklist.md) | Live-Vorabprüfung am 29.09.2026 ausgeführt: A-02, A-03 und A-08 unklar wegen abgelehnter Anmeldung, Wiederholung vor Paket 05 empfohlen (spec.md §18). |
-| 02 – Snapshot-Erfassung | in Arbeit | [checklist](packages/02-snapshot-erfassung/checklist.md) | Umsetzung begonnen am 29.09.2026 |
+| 02 – Snapshot-Erfassung | abgeschlossen | [checklist](packages/02-snapshot-erfassung/checklist.md) | AK-02-16 mit echtem Symlink auf dem Entwicklungsrechner übersprungen (Windows ohne Entwicklermodus), D-20 dort über Junction geprüft. Git 2.31 oder neuer nötig. Anzeige zurückgehaltener Einheiten in `status` offen für Paket 06/07 (spec.md §18). |
 | 03 – Änderungszuordnung | offen | [checklist](packages/03-aenderungszuordnung/checklist.md) | – |
 | 04 – Notizen | offen | [checklist](packages/04-notizen/checklist.md) | – |
 | 05 – Claude-Anbindung | offen | [checklist](packages/05-claude-anbindung/checklist.md) | – |
@@ -25,7 +25,7 @@ Nachfolgende Pakete dürfen beginnen, sobald ihre Voraussetzungen mindestens `te
 | 08 – Zeitsteuerung und Abnahme | offen | [checklist](packages/08-zeitsteuerung-und-abnahme/checklist.md) | – |
 
 - [x] Paket 01 abgeschlossen. Nachweis: 29.09.2026, alle Punkte der Paketcheckliste erledigt.
-- [ ] Paket 02 abgeschlossen
+- [x] Paket 02 abgeschlossen. Nachweis: 29.09.2026, alle Punkte der Paketcheckliste erledigt.
 - [ ] Paket 03 abgeschlossen
 - [ ] Paket 04 abgeschlossen
 - [ ] Paket 05 abgeschlossen

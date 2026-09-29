@@ -1,5 +1,5 @@
 /**
- * Zeitfunktionen mit `Intl.DateTimeFormat`, ohne Zusatzbibliothek (spec.md §8.3).
+ * Time functions on `Intl.DateTimeFormat` without extra libraries (spec.md §8.3).
  */
 
 const formatters = new Map<string, Intl.DateTimeFormat>();
@@ -58,9 +58,7 @@ function assertValidDate(date: Date): void {
 
 const pad = (value: number, width = 2): string => String(value).padStart(width, '0');
 
-/**
- * Kanonischer Name einer von `Intl.DateTimeFormat` akzeptierten Zeitzone, sonst `null`.
- */
+/** Canonical name of a time zone that `Intl.DateTimeFormat` accepts, otherwise `null`. */
 export function canonicalTimeZone(timeZone: string): string | null {
   if (timeZone.trim() === '') return null;
   try {
@@ -74,9 +72,7 @@ export function isValidTimeZone(timeZone: string): boolean {
   return canonicalTimeZone(timeZone) !== null;
 }
 
-/**
- * ISO 8601 mit Offset der Zeitzone, sekundengenau, zum Beispiel `2026-10-14T10:03:12+02:00`.
- */
+/** ISO 8601 with the zone offset, in seconds, for example `2026-10-14T10:03:12+02:00`. */
 export function formatZoned(date: Date, timeZone: string): string {
   assertValidDate(date);
   const epochSeconds = Math.floor(date.getTime() / 1000) * 1000;
@@ -92,14 +88,13 @@ export function formatZoned(date: Date, timeZone: string): string {
   );
 }
 
-/** Tag `YYYY-MM-DD` in der Zeitzone. */
 export function dayOf(date: Date, timeZone: string): string {
   assertValidDate(date);
   const p = zonedParts(date, timeZone);
   return `${pad(p.year, 4)}-${pad(p.month)}-${pad(p.day)}`;
 }
 
-/** UTC-Zeit im Format `YYYYMMDDTHHMMSSZ` für Lauf- und Notiz-IDs (spec.md §8.2). */
+/** `YYYYMMDDTHHMMSSZ` in UTC for run and note IDs (spec.md §8.2). */
 export function formatUtcCompact(date: Date): string {
   assertValidDate(date);
   return (

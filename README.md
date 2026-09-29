@@ -4,13 +4,13 @@ Lokales Kommandozeilenwerkzeug für die IPA. Es soll den Arbeitsstand eines beli
 
 Die Umsetzung erfolgt in Paketen, geplant in [`docs/implementation/`](docs/implementation/README.md).
 
-**Stand: Paket 01 (CLI-Grundlage).** Verfügbar sind `ipa init` und `ipa status` sowie eine Claude-Vorabprüfung. Snapshots, Notizen, Analyse, Journal und Zeitsteuerung folgen in den nächsten Paketen. `ipa init` nimmt deshalb noch keinen Ausgangs-Snapshot auf.
+**Stand: Paket 02 (Snapshot-Erfassung).** Verfügbar sind `ipa init` mit Ausgangs-Snapshot, `ipa capture` ohne KI und `ipa status` sowie eine Claude-Vorabprüfung. Noch nicht umgesetzt sind die Zuordnung von Änderungen zum Vorgänger-Snapshot (Paket 03), Notizen, Analyse, Journal und Zeitsteuerung. Bis Paket 03 erzeugt deshalb jeder Aufruf von `ipa capture` einen Snapshot, auch ohne Änderungen.
 
 ## Voraussetzungen
 
 - Windows 11. Das ist die einzige geprüfte Plattform. Linux und macOS sind nicht geprüft.
 - Node.js 24 oder neuer
-- Git
+- Git 2.31 oder neuer (geprüft mit 2.51)
 - Für die Claude-Vorabprüfung: eine installierte Claude-Code-CLI (geprüft mit Version 2.1.114)
 
 ## Installation
@@ -62,7 +62,10 @@ config.json    Konfiguration (von Hand bearbeitbar, wird bei jedem Befehl validi
 state.json     Fortschritt und Cursor
 runs.jsonl     Laufprotokoll: eine Zeile pro schreibendem Lauf
 lock           nur während eines schreibenden Laufs
-snapshots/  analyses/  logs/  notes/  journal/{runs,drafts,final}/  context/  tmp/
+snapshots/S000001/manifest.json          Manifest eines Snapshots
+snapshots/S000001/content/E001.patch     gespeicherte Belege (Diffs, Commit-Nachrichten als .txt)
+snapshots/S000001/content/state/0001.dat Kopie des aktuellen Stands einer geänderten Datei
+analyses/  logs/  notes/  journal/{runs,drafts,final}/  context/  tmp/
 ```
 
 Das Tool sichert den Arbeitsbereich nicht selbst. Wo eine Sicherung liegt, entscheidet der Benutzer.
@@ -98,22 +101,58 @@ Unter Windows werden Pfade unabhängig von Gross- und Kleinschreibung und von `\
 
 ### `ipa init [--timezone <iana>] [--workspace <pfad>]`
 
-Legt den Arbeitsbereich für das Repository an: Unterordner, `config.json` mit Standardwerten, `state.json`, Registry-Eintrag und einen Eintrag in `runs.jsonl`. Dabei wird der Lock gehalten.
+Legt den Arbeitsbereich für das Repository an: Unterordner, `config.json` mit Standardwerten, `state.json`, Registry-Eintrag und einen Eintrag in `runs.jsonl`. Danach nimmt `init` den **Ausgangs-Snapshot** `S000001` auf. Er hält fest, was beim Start schon geändert, gestagt oder neu war, und gilt nie als geleistete Arbeit. Commits vor `init` erfasst er nicht. Während des ganzen Befehls wird der Lock gehalten.
 
 - `--timezone`: IANA-Name wie `Europe/Zurich` (Standard). Eine unbekannte Zeitzone ergibt Exit-Code 2.
 - `--workspace`: ausdrücklich gewählter Arbeitsbereich, siehe oben.
-- Ist das Repository bereits initialisiert, endet `init` mit Exit-Code 2 und ändert nichts.
+- Ist das Repository bereits mit Ausgangs-Snapshot initialisiert, endet `init` mit Exit-Code 2 und ändert nichts.
+- Fehlt der Ausgangs-Snapshot, weil eine frühere Initialisierung abgebrochen ist oder der Arbeitsbereich noch mit Paket 01 angelegt wurde, holt ein erneutes `init` ihn nach. Abweichende Angaben zu `--timezone` oder `--workspace` ergeben dann Exit-Code 2.
 - Funktioniert auch in einem Repository ohne Commits.
 
 ```text
 > ipa init --workspace .ipa
 Arbeitsbereich angelegt.
-Repository-ID:  mein-projekt-3fa9c1
-Repository:     C:/GIT/mein-projekt
-Arbeitsbereich: C:/GIT/mein-projekt/.ipa
-Speichermodus:  ausdrücklich gewählt (im Repository)
-Zeitzone:       Europe/Zurich
+Repository-ID:     mein-projekt-3fa9c1
+Repository:        C:/GIT/mein-projekt
+Arbeitsbereich:    C:/GIT/mein-projekt/.ipa
+Speichermodus:     ausdrücklich gewählt (im Repository)
+Zeitzone:          Europe/Zurich
+Ausgangs-Snapshot: S000001
 ```
+
+### `ipa capture [--no-analysis]`
+
+Nimmt einen Arbeits-Snapshot auf. Es gibt noch keine Analyse durch Claude; `--no-analysis` wird schon akzeptiert und hat bis Paket 06 keine Wirkung.
+
+Erfasst werden getrennt:
+
+- neue Commits seit dem vorherigen Snapshot, je mit Commit-Nachricht und einem Diff pro Datei; bei einem Merge gegen den ersten Elternteil
+- gestagte Änderungen (HEAD → Index) und ungestagte Änderungen (Index → Working Tree) als Diff pro Datei
+- neue, nicht ignorierte Dateien; `.gitignore` wird berücksichtigt
+- Löschungen und Umbenennungen
+- für jede geänderte Datei der aktuelle Stand als Kopie und die Git-Blob-IDs von HEAD, Index und Working Tree
+
+Ablauf und Schutz:
+
+- Vor jedem Lesen gilt der Pfadfilter, vor jeder Speicherung die Secret-Prüfung und die Grössengrenzen (siehe unten).
+- Der Stand wird zweimal gelesen. Ändert er sich dazwischen, wird die Aufnahme bis zu `limits.stabilityRetries` Mal im Abstand von `limits.stabilityDelayMs` wiederholt. Bleibt er unruhig, endet der Befehl mit Exit-Code 5, und es wird nichts gespeichert.
+- Der Snapshot entsteht in einem temporären Ordner und wird erst vollständig unter seinem Namen abgelegt. Bricht ein Lauf danach ab, übernimmt der nächste schreibende Befehl den Snapshot ohne Duplikat und meldet das. Reste abgebrochener Läufe werden entfernt.
+- Das Repository wird nur gelesen. Git läuft ohne optionale Locks und ohne automatische Index-Aktualisierung, damit auch `.git/index` unverändert bleibt.
+- Vor dem ersten `capture` braucht es den Ausgangs-Snapshot von `ipa init`, sonst Exit-Code 2.
+
+```text
+> ipa capture
+Snapshot S000002 gespeichert (Arbeits-Snapshot, ohne Analyse).
+Commits:        2
+Dateizustände:  5
+Belege:         9
+Ausgeschlossen: 1
+Zurückgehalten: 1
+Ausgelassen:    0
+Hinweis: 1 Einheit(en) wegen Secret-Verdacht zurückgehalten. Offene Prüfung: filterDecisions im Manifest von S000002 nennt Pfad, Detektor und Zeile, nie den Wert.
+```
+
+Ohne `user.email` in der Git-Konfiguration gelten alle Commits als fremd, und `capture` gibt eine Warnung aus. Gespeichert wird nur, ob ein Commit vom konfigurierten Benutzer stammt, nie eine E-Mail-Adresse.
 
 ### `ipa status [--json]`
 
@@ -126,7 +165,8 @@ Mit `--json` erscheint ein JSON-Objekt. Dieses Format ist ein stabiler Vertrag. 
 | `repositoryId`, `repoPath`, `workspacePath`, `dataRoot`, `timezone` | Zeichenketten |
 | `workspaceMode` | `default` oder `explicit` |
 | `baselineSnapshotId`, `lastSnapshotId`, `lastAnalysedSnapshotId`, `lastSuccessfulRun` | Zeichenkette oder `null` |
-| `lastRun` | letzter Eintrag aus `runs.jsonl` oder `null`; bei `errors` nur die Fehlercodes, ohne Meldungen |
+| `lastRun` | letzter Eintrag aus `runs.jsonl` oder `null`; bei `errors` nur die Fehlercodes, ohne Meldungen. Hat der Lauf einen abgebrochenen Snapshot übernommen, steht dessen ID in `recovered`. |
+| `snapshots` | `{ total, baseline, work }`: Anzahl aller Snapshots, der Ausgangs- und der Arbeits-Snapshots |
 
 ### Exit-Codes
 
@@ -134,15 +174,72 @@ Mit `--json` erscheint ein JSON-Objekt. Dieses Format ist ein stabiler Vertrag. 
 | --- | --- |
 | 0 | Erfolg |
 | 1 | Unerwarteter interner Fehler. Mit `IPA_DEBUG=1` wird der Stacktrace ausgegeben. |
-| 2 | Bedienungs- oder Konfigurationsfehler: ungültige Argumente oder Konfiguration, kein Git-Repository, nicht initialisiert, unzulässige oder nicht beschreibbare Datenwurzel, unbekannte Schemaversion |
+| 2 | Bedienungs- oder Konfigurationsfehler: ungültige Argumente oder Konfiguration, kein Git-Repository, nicht initialisiert, kein Ausgangs-Snapshot, unzulässige oder nicht beschreibbare Datenwurzel, unbekannte Schemaversion |
 | 3 | Ein anderer Lauf hält den Lock. |
-| 4 bis 7 | vorgesehen für spätere Pakete (Halt, instabiler Stand, KI-Schritt, Voraussetzungsprüfung) |
+| 5 | Der Arbeitsstand hat sich während der Aufnahme wiederholt verändert. Es wurde kein Snapshot gespeichert. |
+| 4, 6, 7 | vorgesehen für spätere Pakete (Halt, KI-Schritt, Voraussetzungsprüfung) |
+
+## Filter und vertrauliche Inhalte
+
+### Pfadfilter
+
+`config.json` legt unter `paths` fest, welche Dateien erfasst werden:
+
+- `include` (Standard `["**"]`) und `exclude` sind Glob-Muster ([picomatch](https://github.com/micromatch/picomatch)), ohne Unterscheidung von Gross- und Kleinschreibung. Pfade sind relativ zur Repository-Wurzel und verwenden `/`.
+- Ein Muster ohne `/` gilt für den Dateinamen in jeder Verzeichnistiefe: `.env` trifft auch `app/config/.env`. Ein Muster mit `/` gilt für den ganzen Pfad: `docs/*.md` trifft `docs/a.md`, aber nicht `x/docs/a.md`.
+- Ausschlüsse haben Vorrang vor Einschlüssen.
+- Immer ausgeschlossen und nicht abwählbar sind `.git` und ein Arbeitsbereich im Repository wie `.ipa/`, auch wenn Dateien daraus committet wurden.
+- Ausgeschlossene Dateien werden nie gelesen. Im Manifest erscheinen sie nur in `filterDecisions` mit Pfad und Regel. Eine Umbenennung von einem ausgeschlossenen an einen erlaubten Pfad gilt als neue Datei, der alte Pfad liefert keinen Inhalt.
+
+`init` schreibt diese Standard-Ausschlüsse in die Konfiguration. Sie sind Vorschläge und dürfen angepasst werden:
+
+```text
+.env  .env.*  *.pem  *.key  *.p12  *.pfx  *.jks  *.keystore  id_rsa  id_rsa.*  id_ed25519  id_ed25519.*
+.npmrc  .pypirc  .netrc  **/secrets/**  **/credentials/**
+**/node_modules/**  **/vendor/**  **/.venv/**  **/__pycache__/**  **/dist/**  **/target/**  **/coverage/**
+```
+
+### Secret-Prüfung
+
+Jede Einheit wird vor der Speicherung auf mögliche Zugangsdaten geprüft: Dateikopien, Diffs einschliesslich entfernter Zeilen und Kontextzeilen sowie Commit-Nachrichten. Bei einem Treffer wird die **ganze Einheit zurückgehalten**, geschwärzt wird nichts. Das Manifest nennt in `filterDecisions` Pfad, Detektor und Zeilennummer, nie den Wert.
+
+| Detektor | erkennt |
+| --- | --- |
+| `private_key` | Kopfzeile eines privaten Schlüssels (`-----BEGIN … PRIVATE KEY-----`) |
+| `aws_access_key` | AWS-Zugriffsschlüssel-IDs (`AKIA…`) |
+| `github_token` | GitHub-Tokens (`ghp_…`, `gho_…`, `ghu_…`, `ghs_…`, `ghr_…`, `github_pat_…`) |
+| `slack_token` | Slack-Tokens (`xoxb-…` und verwandte) |
+| `anthropic_or_openai_key` | Schlüssel der Form `sk-…` und `sk-ant-…` |
+| `jwt` | JSON Web Tokens aus drei Base64URL-Teilen, beginnend mit `eyJ` |
+| `url_credentials` | Zugangsdaten in URLs (`://benutzer:passwort@`) |
+| `assignment` | Zuweisung eines Literalwerts ab 8 Zeichen an einen Schlüssel, der auf `password`, `passwd`, `secret`, `token`, `api_key`, `apikey` oder `access_key` endet |
+| `custom` | eigene Muster aus `secrets.extraPatterns` (JavaScript-Regex ohne Flags, zeilenweise geprüft) |
+
+Detektoren lassen sich mit `secrets.disabledDetectors` abschalten.
+
+**Grenzen:** Die Erkennung beruht auf regulären Ausdrücken und ist nie vollständig. Sie findet nicht jedes Secret, und sie hält auch harmlose Stellen zurück. Beim Detektor `assignment` gelten diese Regeln:
+
+- Werte in Anführungszeichen zählen überall, aber nur ohne Leerzeichen. Platzhalter wie `"${VAR}"` zählen nicht.
+- Werte ohne Anführungszeichen zählen nur als ganze Konfigurationszeile, etwa in `.env`, Properties- oder YAML-Dateien. Dabei zählen keine Werte mit Punkt oder Klammern und keine Platzhalter wie `$VAR`, `%VAR%` oder `<…>`.
+
+Ein Secret mit Leerzeichen oder in einem ungewohnten Format wird daher nicht erkannt. Sensible Dateien sollten zusätzlich über den Pfadfilter ausgeschlossen werden.
+
+### Grössen, Binärdaten und Links
+
+- Eine Einheit ist binär, wenn ihre ersten 8000 Bytes ein NUL-Byte enthalten oder Git sie als binär meldet. Binärdateien erscheinen nur mit Metadaten (`binary: true`, ohne Datei).
+- Einheiten über `limits.maxFileBytes` (Standard 256 KiB) werden mit `file_too_large` ausgelassen. Ihre Blob-ID wird trotzdem bestimmt.
+- Würde ein Snapshot mehr als `limits.maxSnapshotBytes` (Standard 10 MiB) speichern, werden ab dort alle weiteren Einheiten mit `snapshot_limit` ausgelassen. Zuerst kommen die Kopien der Dateien nach Pfad, dann die Belege in ihrer Reihenfolge.
+- Symlinks werden nie verfolgt. Gespeichert wird nur das geprüfte Linkziel als Text. Git für Windows listet auch Dateien in Ordner-Junctions auf; liegt ein übergeordneter Ordner ausserhalb des Repositorys, wird die Datei nicht gelesen und als `symlink` ausgelassen.
+- Submodule erscheinen nur mit ihrer Commit-ID.
+
+Jede Auslassung steht mit Grund im Manifest, in `filterDecisions` und beim betroffenen Beleg als `omitted`.
 
 ## Grenzen
 
 - **Repository verschoben oder umbenannt:** Die Zuordnung erfolgt über den Pfad. Ein verschobenes Repository muss in V1 neu initialisiert werden. Der alte Arbeitsbereich bleibt liegen und ist nicht mehr zugeordnet.
 - **Arbeitsbereich gelöscht:** Verweist die Registry auf einen fehlenden Arbeitsbereich, melden alle Befehle Exit-Code 2. Es gibt keine automatische Neuanlage. Entweder wird der Ordner wiederhergestellt, oder der Eintrag wird aus `registry.json` entfernt und `ipa init` erneut ausgeführt.
 - **Lock:** Ein Lock eines beendeten Prozesses auf demselben Rechner wird automatisch entfernt und protokolliert. Ein Lock eines anderen Rechners wird nie automatisch entfernt.
+- **Git-Konfiguration:** Git wendet beim Berechnen der Blob-IDs konfigurierte Clean-Filter an, wie es auch `git status` tut. SHA-256-Repositories sind nicht geprüft.
 - Geprüft ist nur Windows 11 mit Node.js 24.
 
 ## Claude-Vorabprüfung
@@ -198,7 +295,9 @@ Aufbau:
 src/cli.ts          Einstieg (bin: ipa)
 src/cli/            Commander-Definition, Befehle, Ausgabe, Fehlerbehandlung
 src/core/           Datenwurzel, Registry, Arbeitsbereich, Konfiguration, Schemas, Schreibfunktionen, Lock, IDs, Zeit, Laufprotokoll
-src/git/runner.ts   Git-Aufrufe nur über die Leseliste
+src/git/            Git-Aufrufe nur über die Leseliste, Parser für -z-Ausgaben, Blob-IDs ohne Schreibzugriff
+src/filter/         Pfadfilter und Secret-Prüfung
+src/collector/      Aufnahme, Konsistenzprüfung, Manifest, atomare Ablage, Wiederanlauf
 schemas/            JSON Schemas (draft-07)
 scripts/            Claude-Vorabprüfung
 test/               Tests und Test-Helfer

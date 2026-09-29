@@ -1,5 +1,5 @@
 /**
- * JSONL-Dateien: ein validierter Datensatz pro Zeile (spec.md §8.5).
+ * JSONL files with one validated record per line (spec.md §8.5).
  */
 import { appendFile, open, readFile } from 'node:fs/promises';
 import { errnoCode, EXIT, IpaError } from './errors.js';
@@ -7,7 +7,7 @@ import { stripBom } from './json.js';
 import { formatIssues, type SchemaId, unsupportedSchemaVersion, validate } from './schemas.js';
 
 export interface InvalidLine {
-  /** Zeilennummer, beginnend bei 1. */
+  /** 1-based. */
   line: number;
   error: string;
 }
@@ -18,9 +18,8 @@ export interface JsonlReadResult<T> {
 }
 
 /**
- * Validiert den Datensatz und hängt ihn mit einem einzigen `appendFile`-Aufruf an.
- * Endet die Datei nach einem Abbruch ohne Zeilenumbruch, wird die angefangene Zeile zuerst
- * abgeschlossen, damit der neue Datensatz eine eigene gültige Zeile erhält.
+ * Appends with a single `appendFile` call. If an aborted write left the file without a final line
+ * break, that line is closed first so the new record gets a valid line of its own.
  */
 export async function appendJsonl(filePath: string, record: unknown, schemaId: SchemaId): Promise<void> {
   const result = validate(schemaId, record);
@@ -56,9 +55,7 @@ async function endsWithoutNewline(filePath: string): Promise<boolean> {
 }
 
 /**
- * Liefert die gültigen Datensätze und die ungültigen Zeilen mit Zeilennummer.
- * Eine fehlende Datei ergibt eine leere Liste. Eine unvollständige letzte Zeile gilt als ungültig.
- * Leere Zeilen werden übersprungen.
+ * A missing file yields no records, an incomplete last line counts as invalid, empty lines are skipped.
  */
 export async function readJsonl<T>(filePath: string, schemaId: SchemaId): Promise<JsonlReadResult<T>> {
   let text: string;

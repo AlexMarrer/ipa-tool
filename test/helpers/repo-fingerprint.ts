@@ -1,9 +1,7 @@
 /**
- * Unversehrtheit des untersuchten Repositorys (spec.md §16.2, I-01).
- *
- * SHA-256 über `.git/index`, `HEAD`, alle Refs, `packed-refs`, `config`, `info/exclude`, die Liste
- * der Objektdateien und alle Dateien des Working Trees ausser `.git/`. Liegt der Arbeitsbereich im
- * Repository, wird er ausgenommen und separat erfasst: Nur dort dürfen sich Dateien ändern.
+ * Integrity of the examined repository (spec.md §16.2, I-01): SHA-256 of `.git/index`, `HEAD`, all refs,
+ * `packed-refs`, `config`, `info/exclude`, the list of object files and every worktree file outside
+ * `.git/`. A workspace inside the repository is recorded separately, since only it may change.
  */
 import { createHash } from 'node:crypto';
 import { lstat, readdir, readFile, readlink } from 'node:fs/promises';
@@ -11,14 +9,13 @@ import path from 'node:path';
 import { expect } from 'vitest';
 
 export interface RepoFingerprint {
-  /** Repository ohne Arbeitsbereich: Schlüssel `git:<datei>` und `wt:<pfad>`. */
+  /** Without the workspace; keys `git:<file>` and `wt:<path>`. */
   repo: Record<string, string>;
-  /** Inhalt des Arbeitsbereichs im Repository oder `null`. */
   workspace: Record<string, string> | null;
 }
 
 export interface FingerprintOptions {
-  /** Arbeitsbereich im Repository, relativ zur Wurzel oder absolut. */
+  /** Workspace inside the repository, relative to the root or absolute. */
   workspace?: string;
 }
 
@@ -109,13 +106,13 @@ export async function fingerprintRepo(root: string, options: FingerprintOptions 
     try {
       await hashTree(path.resolve(root, options.workspace ?? ''), '', () => false, workspace, '');
     } catch {
-      // Arbeitsbereich existiert noch nicht.
+      // The workspace does not exist yet.
     }
   }
   return { repo, workspace };
 }
 
-/** Unterschiede zwischen zwei Fingerprints des Repositorys (ohne Arbeitsbereich). */
+/** Changed keys outside the workspace. */
 export function diffFingerprints(before: RepoFingerprint, after: RepoFingerprint): string[] {
   const keys = new Set([...Object.keys(before.repo), ...Object.keys(after.repo)]);
   return [...keys].sort().filter((key) => before.repo[key] !== after.repo[key]);

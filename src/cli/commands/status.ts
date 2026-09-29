@@ -1,7 +1,8 @@
 /**
- * `ipa status [--json]`: nur lesend, ohne Lock und ohne Laufprotokoll (spec.md §6.6).
+ * `ipa status [--json]`: read-only, without lock and without run log entry (spec.md §6.6).
  */
 import type { Command } from 'commander';
+import { listSnapshots, readManifest } from '../../collector/snapshots.js';
 import { resolveContext, type WorkspaceContext } from '../../core/context.js';
 import { EXIT, IpaError } from '../../core/errors.js';
 import { isStrictlyInside } from '../../core/paths.js';
@@ -15,10 +16,16 @@ interface StatusCommandOptions extends GlobalOptions {
   json?: boolean;
 }
 
-/** Letzter Lauf ohne Details in `errors`: nur die Fehlercodes bleiben (spec.md §6.6). */
+/** spec.md §6.6: `errors` of the last run keep only their codes. */
 export type StatusRun = Omit<RunRecord, 'errors'> & { errors: { code: string }[] };
 
-/** Felder von Paket 01 aus spec.md §6.6, in dieser Reihenfolge. */
+export interface SnapshotCounts {
+  total: number;
+  baseline: number;
+  work: number;
+}
+
+/** Fields in the order of spec.md §6.6. */
 export interface StatusReport {
   repositoryId: string;
   repoPath: string;
@@ -31,6 +38,7 @@ export interface StatusReport {
   lastAnalysedSnapshotId: string | null;
   lastSuccessfulRun: string | null;
   lastRun: StatusRun | null;
+  snapshots: SnapshotCounts;
 }
 
 export interface StatusResult {
@@ -59,6 +67,13 @@ export async function collectStatus(ctx: WorkspaceContext): Promise<StatusResult
   const lastRun: StatusRun | null =
     last === undefined ? null : { ...last, errors: last.errors.map((error) => ({ code: error.code })) };
 
+  const snapshots: SnapshotCounts = { total: 0, baseline: 0, work: 0 };
+  for (const snapshotId of await listSnapshots(ctx)) {
+    const manifest = await readManifest(ctx, snapshotId);
+    snapshots.total += 1;
+    snapshots[manifest.kind] += 1;
+  }
+
   return {
     report: {
       repositoryId: ctx.repositoryId,
@@ -72,6 +87,7 @@ export async function collectStatus(ctx: WorkspaceContext): Promise<StatusResult
       lastAnalysedSnapshotId: state.lastAnalysedSnapshotId,
       lastSuccessfulRun: state.lastSuccessfulRun,
       lastRun,
+      snapshots,
     },
     warnings,
   };
@@ -99,6 +115,10 @@ export function formatStatus(report: StatusReport): string {
     ['Analyse-Cursor', report.lastAnalysedSnapshotId ?? NONE],
     ['Letzter erfolgreicher Lauf', report.lastSuccessfulRun ?? NONE],
     ['Letzter Lauf', describeRun(report.lastRun)],
+    [
+      'Snapshots',
+      `${report.snapshots.total} (Ausgangs-Snapshots: ${report.snapshots.baseline}, Arbeits-Snapshots: ${report.snapshots.work})`,
+    ],
   ]);
 }
 

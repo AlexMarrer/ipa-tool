@@ -40,7 +40,7 @@ const registry = () => ({
 
 describe('Schemaregister (spec.md §8.4)', () => {
   it('kompiliert alle Schemas im strikten draft-07-Modus', () => {
-    expect(SCHEMA_IDS).toEqual(['config', 'state', 'registry', 'run-record']);
+    expect(SCHEMA_IDS).toEqual(['config', 'state', 'registry', 'run-record', 'manifest']);
     for (const id of SCHEMA_IDS) {
       expect(() => validate(id, {})).not.toThrow();
     }

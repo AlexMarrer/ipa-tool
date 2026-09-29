@@ -1,5 +1,5 @@
 /**
- * Repository-Auflösung (spec.md §5.4).
+ * Repository resolution (spec.md §5.4).
  */
 import { stat } from 'node:fs/promises';
 import path from 'node:path';
@@ -8,11 +8,11 @@ import { errnoCode, EXIT, IpaError } from './errors.js';
 import { canonicalizePath } from './paths.js';
 
 export interface RepositoryInfo {
-  /** Kanonische Repository-Wurzel mit `/`. */
+  /** Canonical, with `/`. */
   root: string;
-  /** Kanonischer Pfad des Git-Verzeichnisses dieses Arbeitsverzeichnisses. */
+  /** Git directory of this worktree. */
   gitDir: string;
-  /** Kanonischer Pfad des gemeinsamen Git-Verzeichnisses. */
+  /** Common Git directory shared by all worktrees. */
   commonDir: string;
 }
 
@@ -29,9 +29,7 @@ function mapSpawnError(error: unknown): never {
 }
 
 /**
- * Bestimmt die Wurzel des Repositorys, in dem `start` liegt.
- * Kein Git-Repository, ein Bare-Repository oder ein Aufruf ausserhalb eines Arbeitsverzeichnisses
- * führen zu Exit-Code 2.
+ * No repository, a bare repository or a start outside a worktree give exit code 2.
  */
 export async function resolveRepository(start: string): Promise<RepositoryInfo> {
   const startDir = path.resolve(start);

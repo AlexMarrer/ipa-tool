@@ -1,5 +1,5 @@
 /**
- * Registry `registry.json` in der Datenwurzel (spec.md §5.3, §9.2).
+ * `registry.json` in the data root (spec.md §5.3, §9.2).
  */
 import os from 'node:os';
 import path from 'node:path';
@@ -9,9 +9,8 @@ import { acquireLock } from './lock.js';
 import { comparisonKey, samePath } from './paths.js';
 
 export const REGISTRY_FILE = 'registry.json';
-/** Kurzzeitiger Lock, damit gleichzeitige `init`-Läufe keinen Eintrag verlieren. */
+// Serialises concurrent `init` runs so that no entry gets lost.
 export const REGISTRY_LOCK_FILE = 'registry.lock';
-/** So lange wartet ein `init` auf einen anderen, der gerade die Registry ergänzt. */
 export const REGISTRY_LOCK_WAIT_MS = 5000;
 
 export type WorkspaceMode = 'default' | 'explicit';
@@ -51,8 +50,8 @@ function assertUnique(registry: Registry, file: string): void {
 }
 
 /**
- * Liest die Registry. Fehlt sie oder die Datenwurzel, ergibt das `null`.
- * Eine beschädigte Registry oder eine höhere `schemaVersion` führt zu Exit-Code 2 (D-18).
+ * `null` if the registry or the data root does not exist. A damaged registry or a higher
+ * `schemaVersion` gives exit code 2 (D-18).
  */
 export async function readRegistry(dataRoot: string): Promise<Registry | null> {
   const file = registryPath(dataRoot);
@@ -76,8 +75,8 @@ export function findRegistryEntry(registry: Registry | null, repoPath: string): 
 }
 
 /**
- * Ergänzt die Registry atomar um einen Eintrag. Gleichzeitige Läufe werden über `registry.lock`
- * serialisiert. Ist das Repository inzwischen eingetragen, folgt Exit-Code 2.
+ * Adds an entry under `registry.lock`. If another run registered the repository meanwhile, the
+ * result is exit code 2.
  */
 export async function addRegistryEntry(
   dataRoot: string,

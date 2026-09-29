@@ -1,10 +1,10 @@
 /**
- * Fake-CLI für die Tests der Claude-Vorabprüfung (Paket 01). Ruft nie ein Modell auf.
- * Wird zusammen mit `scripts/claude-probe.mjs` in Paket 05 entfernt.
+ * Fake CLI for the tests of the Claude pre-check (package 01); never calls a model. Removed together
+ * with `scripts/claude-probe.mjs` in package 05.
  *
- * Verhalten über Umgebungsvariablen (nur für diesen Test-Helfer):
+ * Controlled by environment variables (only for this test helper):
  *   FAKE_CLAUDE_MODE  ok | logged-out | tools | extra-text | no-structured | settings-auth-fail | writes-file | auth-retry
- *   FAKE_CLAUDE_LOG   Datei, in die jeder Aufruf als JSON-Zeile protokolliert wird
+ *   FAKE_CLAUDE_LOG   file that receives every call as one JSON line
  */
 import { appendFileSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -70,7 +70,7 @@ for (let index = 0; index < args.length; index += 1) {
   } else if (FLAG_OPTIONS.has(arg)) {
     options[arg] = true;
   } else if (arg.startsWith('-')) {
-    // Wie Commander: die erste unbekannte Option wird gemeldet.
+    // Like Commander: the first unknown option is reported.
     record({ kind: 'unknown-option', option: arg });
     process.stderr.write(`error: unknown option '${arg}'\n`);
     process.exit(1);
@@ -79,7 +79,7 @@ for (let index = 0; index < args.length; index += 1) {
   }
 }
 
-// Ab hier würde die echte CLI ein Modell aufrufen.
+// From here on the real CLI would call a model.
 const stdin = readFileSync(0, 'utf8');
 record({
   kind: 'model-call',

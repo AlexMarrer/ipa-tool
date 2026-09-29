@@ -1,9 +1,7 @@
-/**
- * Commander-Definition und zentrale Fehlerbehandlung (spec.md §6).
- */
 import { Command, CommanderError } from 'commander';
 import { EXIT, type ExitCode, IpaError } from '../core/errors.js';
 import { toolVersion } from '../core/tool.js';
+import { registerCaptureCommand } from './commands/capture.js';
 import { registerInitCommand } from './commands/init.js';
 import { registerStatusCommand } from './commands/status.js';
 import { type CliIo, type CliState, processIo } from './io.js';
@@ -11,7 +9,7 @@ import { translateCommanderMessage, translateHelpTitle } from './messages.js';
 
 const MAX_UNEXPECTED_MESSAGE = 300;
 
-/** Eintrag in der Befehlsliste der Hilfe, zum Beispiel `init [optionen]`. */
+/** Help entry of a subcommand in German, for example `init [optionen]`. */
 function subcommandTerm(command: Command): string {
   const args = command.registeredArguments.map((arg) => {
     const name = `${arg.name()}${arg.variadic ? '...' : ''}`;
@@ -42,9 +40,10 @@ export function createProgram(io: CliIo, state: CliState): Command {
     .showSuggestionAfterError(true)
     .exitOverride();
 
-  // Befehle späterer Pakete werden erst mit ihrem Paket registriert.
+  // Commands of later packages are registered only by their package (spec.md §6.2).
   registerInitCommand(program, io, state);
   registerStatusCommand(program, io, state);
+  registerCaptureCommand(program, io, state);
   return program;
 }
 
@@ -64,14 +63,13 @@ function stackOf(error: unknown): string {
 }
 
 /**
- * Bildet einen Fehler auf den Exit-Code ab (spec.md §6.4):
- * `IpaError` → eigener Code, Bedienungsfehler von Commander → 2, alles andere → 1 ohne Stacktrace.
- * Mit `IPA_DEBUG=1` folgt der Stacktrace.
+ * Maps an error to its exit code (spec.md §6.4): `IpaError` → its own code, Commander usage errors → 2,
+ * anything else → 1 without stack trace unless `IPA_DEBUG=1`.
  */
 export function reportError(error: unknown, io: CliIo): ExitCode {
   const debug = io.env['IPA_DEBUG'] === '1';
   if (error instanceof CommanderError) {
-    // Commander hat Hilfe oder Meldung bereits ausgegeben.
+    // Commander has already printed the help or the message.
     return error.exitCode === 0 ? EXIT.ok : EXIT.usage;
   }
   if (error instanceof IpaError) {

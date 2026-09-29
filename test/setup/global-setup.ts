@@ -1,11 +1,11 @@
 /**
- * Globales Vitest-Setup (spec.md §16.2).
+ * Global Vitest setup (spec.md §16.2):
  *
- * - `IPA_ASSISTANT_HOME` sowie `LOCALAPPDATA` und `XDG_DATA_HOME` zeigen auf ein Temp-Verzeichnis,
- *   damit kein Test die echte Datenwurzel erreicht.
- * - Git liest keine System- und Benutzerkonfiguration des Entwicklungsrechners.
- * - `dist/` wird gebaut, weil Integrationstests den echten CLI-Einstieg starten.
- * - Nach dem Lauf wird geprüft, dass die echte Datenwurzel unverändert ist.
+ * - `IPA_ASSISTANT_HOME`, `LOCALAPPDATA` and `XDG_DATA_HOME` point to a temp folder, so no test reaches
+ *   the real data root.
+ * - Git reads neither the system nor the user configuration of the machine.
+ * - `dist/` is built because integration tests start the real CLI entry point.
+ * - Afterwards the real data root must be unchanged.
  */
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -20,7 +20,7 @@ declare module 'vitest' {
   export interface ProvidedContext {
     ipaTestRoot: string;
     ipaTestEnv: Record<string, string>;
-    /** Orte der echten Datenwurzel, die kein Test berühren darf. */
+    /** Real data root locations that no test may touch. */
     ipaRealDataRoots: string[];
   }
 }
@@ -28,7 +28,7 @@ declare module 'vitest' {
 const execFileAsync = promisify(execFile);
 const TOOL_ROOT = fileURLToPath(new URL('../../', import.meta.url));
 
-/** Orte, an denen das Tool ausserhalb der Tests seine Datenwurzel anlegen würde. */
+/** Where the tool would create its data root outside the tests. */
 function realDataRootCandidates(env: NodeJS.ProcessEnv): string[] {
   const candidates: string[] = [];
   if (env['IPA_ASSISTANT_HOME']) candidates.push(path.resolve(env['IPA_ASSISTANT_HOME']));
@@ -42,7 +42,7 @@ function realDataRootCandidates(env: NodeJS.ProcessEnv): string[] {
   return candidates;
 }
 
-/** Beschreibung einer Datenwurzel: vorhanden, Registry-Inhalt und Namen der Arbeitsbereiche. */
+/** Existence, registry hash and workspace names of a data root. */
 async function describeDataRoot(dir: string): Promise<string> {
   let names: string[];
   try {
@@ -54,13 +54,13 @@ async function describeDataRoot(dir: string): Promise<string> {
   try {
     registry = createHash('sha256').update(await readFile(path.join(dir, 'registry.json'))).digest('hex');
   } catch {
-    // keine Registry
+    // no registry
   }
   let workspaces: string[] = [];
   try {
     workspaces = (await readdir(path.join(dir, 'workspaces'))).sort();
   } catch {
-    // keine Arbeitsbereiche
+    // no workspaces
   }
   return JSON.stringify({ names, registry, workspaces });
 }
@@ -76,7 +76,7 @@ export default async function setup(project: TestProject): Promise<() => Promise
     XDG_DATA_HOME: path.join(root, 'xdg-data'),
     GIT_CONFIG_NOSYSTEM: '1',
     GIT_CONFIG_GLOBAL: path.join(root, 'gitconfig-global'),
-    // Git sucht Repositories nicht oberhalb des Test-Verzeichnisses.
+    // Git does not look for repositories above the test folder.
     GIT_CEILING_DIRECTORIES: root,
   };
   await writeFile(env['GIT_CONFIG_GLOBAL']!, '');

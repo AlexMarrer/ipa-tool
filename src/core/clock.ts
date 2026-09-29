@@ -1,11 +1,10 @@
 /**
- * Injizierbare Uhr (spec.md §4.3, §10). Fachliche Zeitstempel entstehen nur über eine `Clock`.
+ * Business timestamps come only from an injected `Clock` (spec.md §4.3).
  */
 export interface Clock {
   now(): Date;
 }
 
-/** Systemuhr für das ausgelieferte CLI. */
 export const systemClock: Clock = {
   now: () => new Date(),
 };

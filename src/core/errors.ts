@@ -1,7 +1,4 @@
-/**
- * Fehlertypen und Exit-Codes (spec.md §6.4).
- */
-
+// Exit codes of spec.md §6.4.
 export type ExitCode = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
 export const EXIT = {
@@ -16,8 +13,8 @@ export const EXIT = {
 } as const satisfies Record<string, ExitCode>;
 
 /**
- * Erwarteter Fehler mit fachlichem Code und zugehörigem Exit-Code.
- * Die Meldung ist deutsch und enthält keine Datei- oder Secret-Inhalte (I-12).
+ * Expected failure with a domain code and its exit code. The message is German and never contains
+ * file content or secret values (I-12).
  */
 export class IpaError extends Error {
   readonly code: string;
@@ -31,7 +28,7 @@ export class IpaError extends Error {
   }
 }
 
-/** Inhalt der Lock-Datei (spec.md §8.5). */
+/** Content of a lock file (spec.md §8.5). */
 export interface LockInfo {
   pid: number;
   hostname: string;
@@ -40,7 +37,6 @@ export interface LockInfo {
   startedAt: string;
 }
 
-/** Ein anderer Lauf hält den Lock (Exit-Code 3). */
 export class LockHeldError extends IpaError {
   readonly lockPath: string;
   readonly holder: LockInfo | null;
@@ -53,7 +49,7 @@ export class LockHeldError extends IpaError {
   }
 }
 
-/** `createFileExclusive` auf eine bereits vorhandene Datei. */
+/** Raised by `createFileExclusive` and `renameDirectory` for an existing target. */
 export class FileExistsError extends IpaError {
   readonly path: string;
 
@@ -64,13 +60,12 @@ export class FileExistsError extends IpaError {
   }
 }
 
-/** Exit-Code eines beliebigen Fehlers: `IpaError` → eigener Code, alles andere → 1. */
 export function exitCodeOf(error: unknown): ExitCode {
   return error instanceof IpaError ? error.exitCode : EXIT.internal;
 }
 
 /**
- * Treffen mehrere Fälle zu, gilt der höchste Code. Ausnahme: Code 1 hat immer Vorrang (spec.md §6.4).
+ * The highest code wins, except that 1 always takes precedence (spec.md §6.4).
  */
 export function mergeExitCodes(...codes: ExitCode[]): ExitCode {
   if (codes.includes(EXIT.internal)) return EXIT.internal;
@@ -81,7 +76,7 @@ export function mergeExitCodes(...codes: ExitCode[]): ExitCode {
   return result;
 }
 
-/** Fehlercode (`errno`-Name) eines Node-Fehlers, zum Beispiel `ENOENT`. */
+/** errno name of a Node error, for example `ENOENT`. */
 export function errnoCode(error: unknown): string | undefined {
   if (typeof error === 'object' && error !== null && 'code' in error) {
     const code = (error as { code: unknown }).code;

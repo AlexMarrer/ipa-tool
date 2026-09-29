@@ -1,5 +1,5 @@
 /**
- * Konfiguration `config.json` (spec.md §7).
+ * `config.json` (spec.md §7).
  */
 import path from 'node:path';
 import { EXIT, IpaError } from './errors.js';
@@ -61,7 +61,7 @@ export interface Config {
   };
 }
 
-/** Standardwerte aus spec.md §7.1. Die Ausschlüsse sind Vorschläge und dürfen danach frei angepasst werden. */
+/** Defaults of spec.md §7.1; the exclusions are suggestions that the user may change freely. */
 export function createDefaultConfig(args: { repositoryId: string; repoPath: string; timezone: string }): Config {
   return {
     schemaVersion: 1,
@@ -128,7 +128,7 @@ export function createDefaultConfig(args: { repositoryId: string; repoPath: stri
   };
 }
 
-/** Feldregeln aus spec.md §7.2, die das Schema nicht ausdrücken kann. */
+/** Rules of spec.md §7.2 that the schema cannot express. */
 export function checkConfigRules(config: Config): SchemaIssue[] {
   const issues: SchemaIssue[] = [];
   if (canonicalTimeZone(config.timezone) === null) {
@@ -151,7 +151,7 @@ export function configPath(workspaceDir: string): string {
   return path.join(workspaceDir, CONFIG_FILE);
 }
 
-/** Lädt und validiert `config.json`. Jeder Fehler führt zu Exit-Code 2 mit JSON-Pfad. */
+/** Every problem ends with exit code 2 and the JSON path of the field. */
 export async function loadConfig(workspaceDir: string): Promise<Config> {
   const file = configPath(workspaceDir);
   const config = await readJsonValidated<Config>(file, 'config');

@@ -1,12 +1,12 @@
 /**
- * IDs gemäss spec.md §8.2.
+ * IDs of spec.md §8.2.
  */
 import { randomBytes } from 'node:crypto';
 import path from 'node:path';
 import type { Clock } from './clock.js';
 import { formatUtcCompact } from './time.js';
 
-/** Regex-Muster aus spec.md §8.2, ergänzt um `repositoryId`. */
+/** Patterns of spec.md §8.2 plus `repositoryId`. */
 export const ID_PATTERNS = {
   repositoryId: /^[a-z0-9-]{1,32}-[0-9a-f]{6}$/,
   snapshotId: /^S[0-9]{6}$/,
@@ -28,8 +28,8 @@ export function randomHex(chars: number): string {
 }
 
 /**
- * Slug eines Ordnernamens: `[a-z0-9-]`, höchstens 32 Zeichen, ohne Rand-Bindestriche.
- * Deutsche Umlaute werden umschrieben, andere diakritische Zeichen entfernt.
+ * `[a-z0-9-]`, at most 32 characters, no dash at either end. German umlauts are transliterated,
+ * other diacritics dropped.
  */
 export function slugify(name: string): string {
   const transliterated = name
@@ -51,25 +51,21 @@ export function slugify(name: string): string {
   return slug.length > 0 ? slug : 'repo';
 }
 
-/** `repositoryId`: Slug des Repository-Ordners, `-` und 6 Hex-Zeichen. */
 export function createRepositoryId(repoRoot: string): string {
   const portable = repoRoot.replace(/\\/g, '/').replace(/\/+$/, '');
-  // Eine Laufwerkswurzel wie `C:/` hat keinen Ordnernamen.
+  // A drive root like `C:/` has no folder name.
   const folder = /^[A-Za-z]:$/.test(portable) ? '' : path.posix.basename(portable);
   return `${slugify(folder)}-${randomHex(6)}`;
 }
 
-/** `runId`: `R`, UTC-Zeit und 4 Hex-Zeichen. */
 export function createRunId(clock: Clock): string {
   return `R${formatUtcCompact(clock.now())}-${randomHex(4)}`;
 }
 
-/** `noteId`: `N`, UTC-Zeit und 4 Hex-Zeichen. */
 export function createNoteId(clock: Clock): string {
   return `N${formatUtcCompact(clock.now())}-${randomHex(4)}`;
 }
 
-/** `snapshotId` aus der fortlaufenden Nummer, zum Beispiel `S000002`. */
 export function formatSnapshotId(seq: number): string {
   if (!Number.isInteger(seq) || seq < 1 || seq > MAX_SNAPSHOT_SEQ) {
     throw new RangeError(`Ungültige Snapshot-Nummer: ${seq}`);
@@ -77,7 +73,6 @@ export function formatSnapshotId(seq: number): string {
   return `S${String(seq).padStart(6, '0')}`;
 }
 
-/** Nummer einer `snapshotId`. */
 export function parseSnapshotSeq(snapshotId: string): number {
   if (!ID_PATTERNS.snapshotId.test(snapshotId)) {
     throw new RangeError(`Ungültige Snapshot-ID: ${snapshotId}`);

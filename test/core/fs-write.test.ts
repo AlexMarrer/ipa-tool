@@ -13,7 +13,7 @@ const { createTempDir } = await import('../helpers/workspace.js');
 const actual = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises');
 const errno = (code: string): NodeJS.ErrnoException => Object.assign(new Error(code), { code });
 
-/** Ein Dateihandle, dessen `writeFile` nach einem Teil der Daten scheitert. */
+/** File handle whose `writeFile` fails after part of the data. */
 async function failingHandle(path: Parameters<typeof actual.open>[0], flags?: Parameters<typeof actual.open>[1]) {
   const handle = await actual.open(path, flags);
   return new Proxy(handle, {

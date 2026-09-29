@@ -1,5 +1,5 @@
 /**
- * Arbeitsbereich: Speicherort, Regeln und Aufbau (spec.md §5.3, §8.1, D-21).
+ * Workspace location, rules and layout (spec.md §5.3, §8.1, D-21).
  */
 import { lstat, mkdir, readdir, rm, stat } from 'node:fs/promises';
 import path from 'node:path';
@@ -14,7 +14,7 @@ import { STATE_FILE } from './state.js';
 
 export const WORKSPACES_FOLDER = 'workspaces';
 
-/** Unterordner aus spec.md §8.1. Dateien wie `lock` oder `runs.jsonl` entstehen erst bei Bedarf. */
+/** Folders of spec.md §8.1; files such as `lock` or `runs.jsonl` appear when needed. */
 export const WORKSPACE_SUBDIRS = [
   'snapshots',
   'analyses',
@@ -29,12 +29,12 @@ export const WORKSPACE_SUBDIRS = [
 ] as const;
 
 export interface WorkspaceLocation {
-  /** Kanonischer absoluter Pfad mit `/`. */
+  /** Canonical absolute path with `/`. */
   path: string;
   mode: WorkspaceMode;
-  /** Relativer Pfad im Repository, wenn der Arbeitsbereich dort liegt, sonst `null`. */
+  /** Path relative to the repository root if the workspace lies inside it, otherwise `null`. */
   relativeToRepo: string | null;
-  /** Der Ordner existierte schon vor `init` (leer). */
+  /** The (empty) folder existed before `init`. */
   existed: boolean;
 }
 
@@ -47,8 +47,7 @@ function workspaceError(code: string, message: string): IpaError {
 }
 
 /**
- * Prüft einen mit `--workspace` gewählten Ordner (spec.md §5.3). Relative Pfade gelten relativ
- * zur Repository-Wurzel. Der Ordner muss leer sein oder darf noch nicht existieren.
+ * Rules of spec.md §5.3 for `--workspace`: relative to the repository root, empty or not yet existing.
  */
 export async function resolveExplicitWorkspace(input: string, repo: RepositoryInfo, dataRoot: string): Promise<WorkspaceLocation> {
   if (input.trim() === '') {
@@ -91,9 +90,7 @@ export async function resolveExplicitWorkspace(input: string, repo: RepositoryIn
   return { path: target, mode: 'explicit', relativeToRepo: relativeInside(target, repo.root), existed };
 }
 
-/**
- * Der Ordner darf ausser `allowed` nichts enthalten. Reste eines abgebrochenen `init` werden benannt.
- */
+/** Leftovers of an aborted `init` are named in the message. */
 export async function assertEmptyWorkspaceDir(dir: string, allowed: readonly string[]): Promise<void> {
   const entries = (await readdir(dir)).filter((name) => !allowed.includes(name));
   if (entries.length === 0) return;
@@ -107,14 +104,13 @@ export async function assertEmptyWorkspaceDir(dir: string, allowed: readonly str
   );
 }
 
-/** Legt die Unterordner aus spec.md §8.1 an. */
 export async function createWorkspaceStructure(workspaceDir: string): Promise<void> {
   for (const sub of WORKSPACE_SUBDIRS) {
     await mkdir(path.join(workspaceDir, sub), { recursive: true });
   }
 }
 
-/** Entfernt alles im Arbeitsbereich ausser `keep`. Nur für den Abbruch eines eigenen `init`. */
+/** Only for cleaning up after this run's own failed `init`. */
 export async function clearWorkspaceContents(workspaceDir: string, keep: readonly string[] = [LOCK_FILE]): Promise<void> {
   for (const name of await readdir(workspaceDir)) {
     if (!keep.includes(name)) {
@@ -123,7 +119,6 @@ export async function clearWorkspaceContents(workspaceDir: string, keep: readonl
   }
 }
 
-/** Der registrierte Arbeitsbereich existiert und enthält `config.json`. */
 export async function workspacePresent(entry: RegistryEntry): Promise<boolean> {
   try {
     const dir = await stat(entry.workspacePath);
@@ -135,7 +130,7 @@ export async function workspacePresent(entry: RegistryEntry): Promise<boolean> {
   }
 }
 
-/** Meldung, wenn der registrierte Arbeitsbereich fehlt. Es gibt keine automatische Neuanlage. */
+/** The workspace is never recreated automatically (spec.md §5.4). */
 export function workspaceMissingError(entry: RegistryEntry, dataRoot: string): IpaError {
   return new IpaError(
     'workspace_missing',

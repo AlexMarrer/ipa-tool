@@ -1,9 +1,8 @@
 /**
- * Hält den Lock eines Arbeitsbereichs in einem eigenen Prozess (Lock-Test mit echtem zweitem Prozess).
- * Verwendet das gebaute `dist/core/lock.js`. Gibt `LOCKED` aus, sobald der Lock gehalten wird,
- * und gibt ihn frei, wenn stdin geschlossen wird.
+ * Holds the lock of a workspace in a separate process, using the built `dist/core/lock.js`.
+ * Prints `LOCKED` once the lock is held and releases it when stdin closes.
  *
- *   node test/helpers/lock-holder.mjs <arbeitsbereich>
+ *   node test/helpers/lock-holder.mjs <workspace>
  */
 const workspaceDir = process.argv[2];
 if (workspaceDir === undefined) {

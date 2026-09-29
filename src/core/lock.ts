@@ -1,5 +1,5 @@
 /**
- * Lock-Dateien gemäss spec.md §8.5.
+ * Lock files of spec.md §8.5.
  */
 import { readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
@@ -13,17 +13,17 @@ export type { LockInfo } from './errors.js';
 
 export const LOCK_FILE = 'lock';
 
-/** Wartezeit, bevor eine unlesbare Lock-Datei ein zweites Mal gelesen wird. */
+// The holder may still be writing an unreadable lock file; it is read a second time after this delay.
 const UNREADABLE_LOCK_RETRY_MS = 100;
 
 export interface AcquiredLock {
-  /** Ein veralteter Lock eines beendeten Prozesses wurde entfernt. */
+  /** A stale lock of a finished process was removed. */
   readonly lockBroken: boolean;
   release(): Promise<void>;
 }
 
 export interface AcquireLockOptions {
-  /** So lange wird auf einen gehaltenen Lock gewartet. Standard: 0, also sofortiger Abbruch. */
+  /** Default 0: fail at once when the lock is held. */
   waitMs?: number;
   pollMs?: number;
 }
@@ -32,7 +32,7 @@ export function lockPathOf(workspaceDir: string): string {
   return path.join(workspaceDir, LOCK_FILE);
 }
 
-/** `process.kill(pid, 0)`: ESRCH heisst beendet, EPERM heisst vorhanden, aber fremd. */
+/** `process.kill(pid, 0)`: ESRCH means finished, EPERM means running under another user. */
 export function isProcessAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
@@ -99,8 +99,8 @@ function heldMessage(lockPath: string, holder: LockInfo | null): string {
 }
 
 /**
- * Legt die Lock-Datei exklusiv an. Ein Lock eines beendeten Prozesses auf demselben Rechner wird entfernt.
- * Hält ein laufender Prozess oder ein anderer Rechner den Lock, folgt `LockHeldError`.
+ * A lock of a finished process on this host is removed; a lock of a running process or of another
+ * host raises `LockHeldError`.
  */
 export async function acquireLock(lockPath: string, info: LockInfo, options: AcquireLockOptions = {}): Promise<AcquiredLock> {
   const waitMs = options.waitMs ?? 0;
@@ -118,10 +118,9 @@ export async function acquireLock(lockPath: string, info: LockInfo, options: Acq
     }
 
     let raw = await readRaw(lockPath);
-    if (raw === null) continue; // Der Halter hat den Lock gerade freigegeben.
+    if (raw === null) continue; // Released in the meantime.
     let holder = parseLockInfo(raw);
     if (holder === null) {
-      // Der Halter schreibt den Inhalt möglicherweise noch.
       await delay(UNREADABLE_LOCK_RETRY_MS);
       raw = await readRaw(lockPath);
       if (raw === null) continue;
@@ -129,7 +128,7 @@ export async function acquireLock(lockPath: string, info: LockInfo, options: Acq
     }
 
     if (holder !== null && sameHost(holder.hostname) && !isProcessAlive(holder.pid)) {
-      // Veralteter Lock: nur entfernen, wenn er seit dem Lesen unverändert ist.
+      // Stale lock: remove it only if nobody replaced it since it was read.
       if ((await readRaw(lockPath)) === raw) {
         await rm(lockPath, { force: true });
         lockBroken = true;
@@ -145,15 +144,14 @@ export async function acquireLock(lockPath: string, info: LockInfo, options: Acq
 }
 
 async function releaseLock(lockPath: string, content: string): Promise<void> {
-  // Nur den eigenen Lock entfernen.
+  // Never remove a lock that another run took over.
   if ((await readRaw(lockPath)) === content) {
     await rm(lockPath, { force: true });
   }
 }
 
 /**
- * Hält den Lock des Arbeitsbereichs, während `fn` läuft (spec.md §10).
- * `fn` erfährt, ob dabei ein veralteter Lock entfernt wurde, damit der Lauf `lockBroken` protokollieren kann.
+ * spec.md §10. `fn` learns whether a stale lock was removed, so that the run can log `lockBroken`.
  */
 export async function withLock<T>(
   ctx: WorkspaceContext,

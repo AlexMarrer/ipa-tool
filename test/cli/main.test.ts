@@ -21,7 +21,7 @@ function memoryIo(env: NodeJS.ProcessEnv = {}) {
   return { io, out };
 }
 
-/** Befehlsnamen aus dem Abschnitt „Befehle:“ der Hilfe. */
+/** Command names listed under "Befehle:" in the help. */
 function listedCommands(help: string): string[] {
   const section = help.split('Befehle:')[1] ?? '';
   return section
@@ -30,11 +30,11 @@ function listedCommands(help: string): string[] {
     .filter((name): name is string => name !== undefined);
 }
 
-describe('CLI-Rahmen (AK-01-02)', () => {
-  it('ipa --help listet nur init und status', async () => {
+describe('CLI-Rahmen (AK-01-02, AK-02-18)', () => {
+  it('ipa --help listet init, status und capture, aber keine Befehle späterer Pakete', async () => {
     const result = await runCli(['--help'], { dataDir: null });
     expect(result.exitCode).toBe(0);
-    expect(listedCommands(result.stdout)).toEqual(['init', 'status']);
+    expect(listedCommands(result.stdout)).toEqual(['init', 'status', 'capture']);
     expect(result.stdout).toContain('--repo <pfad>');
     expect(result.stdout).toContain('--data-dir <pfad>');
     expect(result.stdout).not.toMatch(/\bhelp \[command\]/);
@@ -48,9 +48,9 @@ describe('CLI-Rahmen (AK-01-02)', () => {
   });
 
   it('ein unbekannter Befehl, eine unbekannte Option und fehlende Argumente enden mit Exit-Code 2', async () => {
-    const unknownCommand = await runCli(['capture'], { dataDir: null });
+    const unknownCommand = await runCli(['journal'], { dataDir: null });
     expect(unknownCommand.exitCode).toBe(2);
-    expect(unknownCommand.stderr).toContain("unbekannter Befehl 'capture'");
+    expect(unknownCommand.stderr).toContain("unbekannter Befehl 'journal'");
 
     const unknownOption = await runCli(['status', '--gibt-es-nicht'], { dataDir: null });
     expect(unknownOption.exitCode).toBe(2);

@@ -1,5 +1,5 @@
 /**
- * Test-Helfer für temporäre Datenwurzeln und Aufrufe des echten CLI-Einstiegs (spec.md §16.2).
+ * Temporary data roots and calls of the real CLI entry point (spec.md §16.2).
  */
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -11,19 +11,19 @@ import { inject } from 'vitest';
 export const TOOL_ROOT = fileURLToPath(new URL('../../', import.meta.url));
 export const CLI_PATH = path.join(TOOL_ROOT, 'dist', 'cli.js');
 
-/** Pfad mit `/` und grossem Laufwerksbuchstaben, wie ihn das Tool ausgibt. */
+/** Path with `/` and an upper-case drive letter, as the tool prints it. */
 export function portable(p: string): string {
   const slashed = p.replace(/\\/g, '/').replace(/\/+$/, '');
   return /^[a-z]:/.test(slashed) ? slashed.charAt(0).toUpperCase() + slashed.slice(1) : slashed;
 }
 
-/** Neues leeres Verzeichnis im Test-Verzeichnis, kanonisch und portabel geschrieben. */
+/** New empty folder in the test folder, canonical and portable. */
 export async function createTempDir(prefix = 'tmp'): Promise<string> {
   const created = await mkdtemp(path.join(inject('ipaTestRoot'), `${prefix}-`));
   return portable(await realpath(created));
 }
 
-/** Pfad einer eigenen Datenwurzel pro Test. Der Ordner existiert noch nicht. */
+/** The folder does not exist yet. */
 export async function createTempDataRoot(): Promise<string> {
   return `${await createTempDir('data')}/ipa-daten`;
 }
@@ -35,15 +35,15 @@ export interface CliResult {
 }
 
 export interface RunCliOptions {
-  /** Eigene Datenwurzel über `--data-dir`. `null` lässt die Option bewusst weg. */
+  /** Passed as `--data-dir`; `null` omits the option on purpose. */
   dataDir: string | null;
   repo?: string;
   cwd?: string;
-  /** Zusätzliche oder entfernte (`undefined`) Umgebungsvariablen. */
+  /** Added variables, or removed ones (`undefined`). */
   env?: Record<string, string | undefined>;
 }
 
-/** Startet `node dist/cli.js` ohne Shell. */
+/** Starts `node dist/cli.js` without a shell. */
 export async function runCli(args: readonly string[], opts: RunCliOptions): Promise<CliResult> {
   const env: NodeJS.ProcessEnv = { ...process.env };
   for (const [key, value] of Object.entries(opts.env ?? {})) {
@@ -86,7 +86,7 @@ export interface TreeEntry {
   sha256: string | null;
 }
 
-/** Alle Einträge unter `dir` mit Grösse, Änderungszeit und Hash, für „schreibt keine Datei“-Prüfungen. */
+/** Every entry below `dir` with size, mtime and hash, for "writes no file" checks. */
 export async function listTree(dir: string): Promise<Record<string, TreeEntry>> {
   const result: Record<string, TreeEntry> = {};
   async function walk(current: string, relative: string): Promise<void> {

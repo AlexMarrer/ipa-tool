@@ -142,3 +142,15 @@ Nicht im Umfang:
 
 - A-06 wird hier geprüft und das Ergebnis in spec.md §18 eingetragen.
 - Liefert `git diff --cached` ohne Commits kein brauchbares Ergebnis, wird gegen den leeren Baum `4b825dc642cb6eb9a060e54bf8d69288fbee4904` verglichen. Unter SHA-256-Repositories ist diese ID eine andere. SHA-256-Repositories sind in V1 nicht geprüft.
+
+Folgen aus der Umsetzung (29.09.2026, Einzelheiten in spec.md §18):
+
+- A-06 ist bestätigt. Das Tool übergibt den leeren Baum trotzdem ausdrücklich und bestimmt seine ID mit `hash-object -t tree --stdin`, nicht als feste Konstante.
+- Statt eines Parsers für `diff --name-status -z` gibt es einen für `diff --raw -z --no-abbrev` (§2). Er liefert zusätzlich Modi und Blob-IDs. Die Dateiliste eines Commits stammt aus `git show --raw` mit `--diff-merges=first-parent`, damit committete Dateien des Arbeitsbereichs in `filterDecisions` erscheinen. Das setzt Git 2.31 voraus.
+- Die Liste der ungestagten Pfade stammt aus `git status`, nicht aus `git diff --raw`: Wegen `diff.autoRefreshIndex=false` meldet `--raw` auch Dateien mit nur geänderten Zeitstempeln.
+- Paket 03 muss `worktreeBlob: null` mit `copyOmitted` `symlink` oder `unreadable` als „nicht ermittelt“ behandeln, nicht als Löschung. Kopien können auch wegen `secret_suspected`, `binary`, `file_too_large` oder `snapshot_limit` fehlen; der vorige Stand ist dann nicht verfügbar (`previous_state_unavailable`).
+- Der Vorgänger-HEAD für neue Commits kommt aus `git.head` des vorigen Manifests, nicht aus `state.lastCommit` (Cursor, §9.1).
+- Bis Paket 03 setzt jeder Arbeits-Snapshot `analysisRequired: true` (`src/collector/build.ts`), und `captureSnapshot` kennt `reason` noch nicht.
+- Zurückgehaltene Einheiten meldet Paket 02 nach `init` und `capture` auf stderr. Ein Feld in `ipa status` ist offen (spec.md §18, Pakete 06/07).
+- AK-02-16 mit echtem Symlink wird auf dem Entwicklungsrechner übersprungen, weil Windows ohne Entwicklermodus keine Symlinks anlegt (EPERM). D-20 ist dort mit einer Junction auf einen Ordner ausserhalb und mit einem als Datei ausgecheckten Link (`core.symlinks=false`) geprüft.
+- Eine Aufnahme dauert auf dem Entwicklungsrechner rund 2 s, weil jeder Git-Aufruf dort etwa 150 ms braucht. Unabhängige Lesezugriffe laufen parallel, höchstens vier Git-Prozesse gleichzeitig; Inhalte werden vor dem Worktree-Diff gelesen (spec.md §11.1). Unter hoher Last des Rechners liefen einzelne Integrationstests über 60 s, das Test-Timeout beträgt deshalb 120 s.

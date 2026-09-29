@@ -1,8 +1,7 @@
 /**
- * Git-Aufrufe nur über die Leseliste (spec.md §14.2).
+ * Git calls restricted to the read list of spec.md §14.2.
  *
- * Das Modul importiert bewusst nichts aus anderen Komponenten des Tools, damit `core`
- * es für die Repository-Auflösung verwenden kann, ohne einen Importzyklus zu bilden.
+ * Imports nothing from other components, so that `core` can use it without an import cycle (spec.md §4.3).
  */
 import { spawn } from 'node:child_process';
 import path from 'node:path';
@@ -10,7 +9,7 @@ import path from 'node:path';
 export interface GitRunOptions {
   cwd?: string;
   input?: Uint8Array;
-  /** Exit-Codes, die nicht als Fehler gelten. Standard: `[0]`. */
+  /** Exit codes that are not failures; default `[0]`. */
   okExitCodes?: number[];
 }
 
@@ -25,14 +24,11 @@ export interface GitRunner {
 }
 
 export interface GitRunnerOptions {
-  /**
-   * Absoluter Pfad des Arbeitsbereichs. Liegt er im Repository, erhalten auflistende Aufrufe
-   * die Ausschluss-Pathspec (spec.md §5.3, §14.2).
-   */
+  /** If the workspace lies inside the repository, listing calls exclude it (spec.md §5.3, §14.2). */
   workspaceDir?: string;
 }
 
-/** Ein Aufruf verstösst gegen die Leseliste. Das ist ein Programmierfehler; es startet kein Prozess. */
+/** A programming error: the call is not on the read list. No process is started. */
 export class GitPolicyError extends Error {
   readonly code = 'git_command_not_allowed';
 
@@ -42,7 +38,6 @@ export class GitPolicyError extends Error {
   }
 }
 
-/** Git ist nicht startbar, zum Beispiel weil es nicht installiert ist. */
 export class GitSpawnError extends Error {
   readonly code: 'git_not_found' | 'git_spawn_failed';
 
@@ -53,7 +48,6 @@ export class GitSpawnError extends Error {
   }
 }
 
-/** Git endete mit einem nicht erwarteten Exit-Code. */
 export class GitCommandError extends Error {
   readonly code = 'git_failed';
   readonly subcommand: string;
@@ -70,7 +64,8 @@ export class GitCommandError extends Error {
   }
 }
 
-/** Feste Optionen vor jedem Unterbefehl. */
+// diff.autoRefreshIndex=false: a worktree `git diff` would otherwise rewrite .git/index after
+// stat-only changes, even with GIT_OPTIONAL_LOCKS=0 (I-01, spec.md §18).
 export const GIT_GLOBAL_ARGS: readonly string[] = [
   '--no-pager',
   '-c',
@@ -79,15 +74,17 @@ export const GIT_GLOBAL_ARGS: readonly string[] = [
   'color.ui=never',
   '-c',
   'core.fsmonitor=false',
+  '-c',
+  'diff.autoRefreshIndex=false',
 ];
 
-/** Diese Variablen werden entfernt, damit Git nur das angegebene Repository liest. */
+/** Removed so that Git reads only the given repository. */
 export const REMOVED_GIT_ENV: readonly string[] = ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_OBJECT_DIRECTORY'];
 
 const CONFIG_READ_FLAGS = new Set(['--null', '-z', '--local', '--global', '--system', '--worktree', '--includes', '--no-includes']);
 const MAX_STDERR_CHARS = 64 * 1024;
 
-// `--output` schreibt in eine Datei; Git akzeptiert auch eindeutige Abkürzungen.
+// `--output` writes to a file; Git also accepts unambiguous abbreviations.
 const OUTPUT_OPTION = /^--o(?:u(?:t(?:p(?:u(?:t)?)?)?)?)?(?:=.*)?$/;
 const EXT_DIFF_OPTION = /^--ext(?:-(?:d(?:i(?:f(?:f)?)?)?)?)?$/;
 const TEXTCONV_OPTION = /^--textc(?:o(?:n(?:v)?)?)?$/;
@@ -96,10 +93,7 @@ function reject(message: string): never {
   throw new GitPolicyError(`Git-Aufruf nicht erlaubt: ${message}`);
 }
 
-/**
- * Prüft einen Aufruf gegen die Leseliste und liefert die vollständige Argumentliste.
- * Wirft `GitPolicyError`, bevor ein Prozess startet.
- */
+/** Full argument list of an allowed call; throws `GitPolicyError` before any process starts. */
 export function buildGitInvocation(args: readonly string[], workspaceExclude: string | null): string[] {
   if (args.length === 0) reject('leerer Aufruf');
   for (const arg of args) {
@@ -192,8 +186,8 @@ function needsWorkspaceExclude(subcommand: string, rest: readonly string[]): boo
 }
 
 /**
- * Umgebung für Git: Repository-Umleitungen entfernen, optionale Locks und Passwortabfragen abschalten.
- * Unter Windows sind Variablennamen unabhängig von der Schreibweise.
+ * Drops repository redirections, disables optional locks and credential prompts. Variable names are
+ * case-insensitive on Windows.
  */
 export function buildGitEnv(base: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): NodeJS.ProcessEnv {
   const drop = new Set([...REMOVED_GIT_ENV, 'GIT_OPTIONAL_LOCKS', 'GIT_TERMINAL_PROMPT']);
@@ -208,7 +202,7 @@ export function buildGitEnv(base: NodeJS.ProcessEnv = process.env, platform: Nod
   return env;
 }
 
-/** Relativer Pfad des Arbeitsbereichs im Repository mit `/`, sonst `null`. */
+/** Workspace path relative to the repository with `/`, or `null` if it lies outside. */
 export function workspaceExcludeFor(
   repoRoot: string,
   workspaceDir: string | undefined,
@@ -225,10 +219,30 @@ export function workspaceExcludeFor(
   return relative.length > 0 ? relative : null;
 }
 
+/** At most `max` Git processes of the returned runner run at the same time; further calls wait. */
+export function limitConcurrency(runner: GitRunner, max: number): GitRunner {
+  let active = 0;
+  const waiting: (() => void)[] = [];
+  return {
+    async run(args, opts) {
+      if (active < max) active += 1;
+      // A finishing call hands its slot over directly, so `active` never exceeds `max`.
+      else await new Promise<void>((resolve) => waiting.push(resolve));
+      try {
+        return await runner.run(args, opts);
+      } finally {
+        const next = waiting.shift();
+        if (next === undefined) active -= 1;
+        else next();
+      }
+    },
+  };
+}
+
 export function createGitRunner(repoRoot: string, options: GitRunnerOptions = {}): GitRunner {
   const workspaceExclude = workspaceExcludeFor(repoRoot, options.workspaceDir);
   return {
-    // async, damit auch ein Verstoss gegen die Leseliste als abgelehntes Promise ankommt.
+    // async, so that a read-list violation also arrives as a rejected promise.
     async run(args, opts = {}) {
       const invocation = buildGitInvocation(args, workspaceExclude);
       const subcommand = args[0] ?? '';
@@ -278,7 +292,7 @@ export function createGitRunner(repoRoot: string, options: GitRunnerOptions = {}
             }
           });
         });
-        // Beendet sich Git vor dem Lesen von stdin, darf das Schreiben nicht abstürzen.
+        // Git may exit before reading stdin; the write must not crash then.
         child.stdin.on('error', () => undefined);
         if (opts.input !== undefined) {
           child.stdin.end(Buffer.from(opts.input));
