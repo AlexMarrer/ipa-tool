@@ -142,3 +142,13 @@ Nicht im Umfang:
 
 - A-01 bis A-05, A-07 und A-08: Die Vorabprüfung in Paket 01 prüft sie zuerst, AK-05-09 bestätigt sie mit Produktcode.
 - Widerlegt die Live-Prüfung A-01, weil unter 2.1.114 trotzdem Werkzeuge gemeldet werden, ist Paket 06 blockiert. Die Umsetzung stoppt dann, und der Benutzer entscheidet über ein Claude-Update (O-02).
+
+Folgen aus der Umsetzung (29.09.2026, Einzelheiten in spec.md §18):
+
+- Die Umsetzung lief in einem Linux-Container mit Claude Code 2.1.284 und Node.js 22 (zusätzlich Node.js 24). 2.1.284 erkennt alle Optionen einschliesslich `--safe-mode`. Die vom Benutzer freigegebene Live-Prüfung (AK-05-09) ist dort bestanden: nur `StructuredOutput`, keine MCP-Server, gültiges `structured_output`, Anmeldung auch mit `--setting-sources project,local`. Auf dem Entwicklungsrechner unter Windows mit 2.1.114 steht sie noch aus und soll vor Paket 06 laufen; dort fehlt `--safe-mode`, der Runner lässt es dann weg.
+- Der Runner gibt Variablen einer umgebenden Claude-Code-Sitzung nicht an `claude` weiter; Anmelde- und Anbietervariablen bleiben. Das ersetzt `--isolate-env` der Vorabprüfung.
+- `ipa doctor` braucht ein initialisiertes Repository, nimmt keinen Lock und schreibt nicht in `runs.jsonl`. `--live` macht zwei Modellaufrufe: `stream-json` für Werkzeuge und MCP-Server, dann `json` mit `--setting-sources project,local` für A-02, A-03 und A-08. Wiederholt abgelehnte Anmeldungen brechen den ersten Aufruf ab, statt bis zum Timeout zu warten.
+- Ohne `--live` bleibt ein früheres Live-Ergebnis bei gleicher Claude-Version erhalten, damit `--setting-sources` nicht durch ein einfaches `ipa doctor` wegfällt.
+- `ClaudeRequest` erhält `outputSchemaVersion`; Paket 06 und 07 übergeben dort die Version ihres Ausgabeschemas. `outcomeForErrorCode` in `src/claude/usage.ts` bildet die Fehlerklassen auf die Ergebnisse von `outcome.json` ab (§9.9), das Schema `attempt-outcome` liegt bereit.
+- In den Tests ist `claude` aus dem PATH genommen, und das Temp-Verzeichnis liegt im Test-Ordner. `ipa init` warnt dort daher „nicht gefunden“. Tests binden die Fake-CLI über `test/helpers/claude.ts` ein.
+- Die Vorabprüfung (`scripts/claude-probe.mjs`, `npm run probe:claude`) ist mit ihrem Test und ihrer Fake-CLI entfernt; ihre Ergebnisse bleiben in spec.md §18.

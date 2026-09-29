@@ -2,6 +2,7 @@
  * `ipa status [--json]`: read-only, without lock and without run log entry (spec.md §6.6).
  */
 import type { Command } from 'commander';
+import { readDoctorRecord } from '../../claude/doctor-record.js';
 import { describeHalt } from '../../collector/halt.js';
 import { listSnapshots, readManifest } from '../../collector/snapshots.js';
 import { resolveContext, type WorkspaceContext } from '../../core/context.js';
@@ -28,6 +29,13 @@ export interface SnapshotCounts {
   work: number;
 }
 
+/** Summary of `doctor.json` (spec.md §6.6). */
+export interface ClaudeStatus {
+  checkedAt: string;
+  ok: boolean;
+  cliVersion: string | null;
+}
+
 /** Fields in the order of spec.md §6.6. */
 export interface StatusReport {
   repositoryId: string;
@@ -45,6 +53,8 @@ export interface StatusReport {
   halt: Halt | null;
   /** Valid notes whose activity day is today in the configured time zone. */
   notesToday: number;
+  /** `null` until `ipa doctor` (or `init`) has written `doctor.json`. */
+  claude: ClaudeStatus | null;
 }
 
 export interface StatusResult {
@@ -84,6 +94,7 @@ export async function collectStatus(ctx: WorkspaceContext): Promise<StatusResult
   for (const line of notes.invalid) {
     warnings.push(`Warnung: ${line.file}, Zeile ${line.line} wird übersprungen (${line.error}).`);
   }
+  const doctor = await readDoctorRecord(ctx.workspaceDir);
 
   return {
     report: {
@@ -101,9 +112,16 @@ export async function collectStatus(ctx: WorkspaceContext): Promise<StatusResult
       snapshots,
       halt: state.halt,
       notesToday: notes.notes.length,
+      claude: doctor === null ? null : { checkedAt: doctor.checkedAt, ok: doctor.ok, cliVersion: doctor.claude.version },
     },
     warnings,
   };
+}
+
+function describeClaude(claude: ClaudeStatus | null): string {
+  if (claude === null) return 'noch nicht geprüft (ipa doctor)';
+  const version = claude.cliVersion === null ? '' : `Claude Code ${claude.cliVersion}, `;
+  return claude.ok ? `bereit (${version}geprüft am ${claude.checkedAt})` : `nicht bereit (${version}geprüft am ${claude.checkedAt}), Details mit ipa doctor`;
 }
 
 const NONE = 'keiner';
@@ -134,6 +152,7 @@ export function formatStatus(report: StatusReport): string {
     ],
     ['Halt', report.halt === null ? NONE : `${describeHalt(report.halt)} ipa baseline --reason "<Grund>" erforderlich.`],
     ['Notizen heute', String(report.notesToday)],
+    ['Claude-Prüfung', describeClaude(report.claude)],
   ]);
 }
 

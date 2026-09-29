@@ -1,5 +1,6 @@
 /**
- * `ipa init [--timezone <iana>] [--workspace <pfad>]` with baseline snapshot (spec.md §6.3).
+ * `ipa init [--timezone <iana>] [--workspace <pfad>]` with baseline snapshot and Claude check without
+ * a model call (spec.md §6.3).
  */
 import type { Command } from 'commander';
 import { takeInitialBaseline } from '../../collector/baseline.js';
@@ -11,6 +12,7 @@ import { isStrictlyInside } from '../../core/paths.js';
 import { describeWorkspaceMode, formatFields } from '../format.js';
 import type { CliIo, CliState, GlobalOptions } from '../io.js';
 import { withheldNotice } from './capture.js';
+import { checkClaudeAfterInit } from './doctor.js';
 
 interface InitCommandOptions extends GlobalOptions {
   timezone?: string;
@@ -60,6 +62,7 @@ export function registerInitCommand(program: Command, io: CliIo, state: CliState
         const notice = withheldNotice(await readManifest(result.ctx, result.baseline.snapshotId));
         if (notice !== null) io.stderr(`${notice}\n`);
       }
+      await checkClaudeAfterInit(result.ctx, io);
       state.exitCode = EXIT.ok;
     });
 }

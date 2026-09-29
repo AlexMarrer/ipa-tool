@@ -4,39 +4,39 @@ Einen Punkt erst abhaken, wenn die Arbeit umgesetzt und geprüft ist. Hinter den
 
 ## Voraussetzungen
 
-- [ ] Pakete 01 und 02 sind im Code vorhanden, und ihre Tests sind grün.
-- [ ] Git-Status ist geprüft, keine fremden Änderungen wurden überschrieben.
+- [x] Pakete 01 und 02 sind im Code vorhanden, und ihre Tests sind grün. Nachweis: 29.09.2026 vor den Änderungen: beide Pakete in Paket- und zentraler Checkliste `abgeschlossen`; `ipa init` legt im Rauchtest `S000001` an; `npm run typecheck` fehlerfrei, `npm test` mit 39 Testdateien, 354 bestanden und 4 übersprungen (Linux-Container, Node.js 22.22.2, Git 2.43.0). Installiert ist Claude Code 2.1.284 statt 2.1.114 (spec.md §18). Vorabprüfung aus Paket 01: A-01 bestätigt, A-02, A-03 und A-08 unklar, keine Annahme widerlegt, daher kein Halt wegen O-02.
+- [x] Git-Status ist geprüft, keine fremden Änderungen wurden überschrieben. Nachweis: 29.09.2026 `git status` sauber auf `claude/pensive-carson-su8nu4` (letzter Commit `a891231`). Gelöscht wurden nur die von der Paketspezifikation verlangten Dateien der Vorabprüfung.
 
 ## Implementierung
 
-- [ ] Argumentbildung gemäss spec.md §13.1, temporäres Claude-Arbeitsverzeichnis gemäss D-22 und Start ohne Shell (AK-05-01)
-- [ ] Bedingte Übergabe von `--setting-sources project,local` (AK-05-11)
-- [ ] Auswertung des Umschlags und Fehlerklassen gemäss spec.md §13.3, mit Timeout (AK-05-02, AK-05-03)
-- [ ] Protokoll `ai-usage.jsonl` mit Schema (AK-05-04)
-- [ ] Hilfsfunktion zur Schemaprüfung (AK-05-08)
-- [ ] `probeClaude`: Version, Auth-Filter, Flag-Prüfung, `doctor.json` (AK-05-05, AK-05-06)
-- [ ] `--live`-Prüfung über das stream-json-Init-Ereignis (AK-05-09)
-- [ ] `ensureClaudeReady` für die Pakete 06 und 07
-- [ ] Schemas `ai-usage`, `doctor` und `attempt-outcome`
+- [x] Argumentbildung gemäss spec.md §13.1, temporäres Claude-Arbeitsverzeichnis gemäss D-22 und Start ohne Shell (AK-05-01). Nachweis: `src/claude/args.ts`, `workdir.ts`, `process.ts`, `runner.ts`; `test/claude/args.test.ts`; `test/claude/runner.test.ts` › „übergibt exakt die Argumente aus §13.1 ohne Shell und die Eingabe nur über stdin“, „startet in einem leeren Ordner ausserhalb von Repository und Arbeitsbereich und löscht ihn danach“, „bleibt auch mit dem Arbeitsbereich .ipa im Repository ausserhalb von beiden“, „lehnt den Aufruf vor dem Start ab, wenn TMP in das Repository oder den Arbeitsbereich zeigt“, „entfernt verwaiste Claude-Ordner älter als 24 Stunden …“.
+- [x] Bedingte Übergabe von `--setting-sources project,local` (AK-05-11). Nachweis: `test/claude/runner.test.ts` › „übergibt --setting-sources nur, wenn doctor.json settingSourcesAuthOk: true meldet“ (ohne doctor.json, `true`, `false`, `null` nach Versionswechsel).
+- [x] Auswertung des Umschlags und Fehlerklassen gemäss spec.md §13.3, mit Timeout (AK-05-02, AK-05-03). Nachweis: `src/claude/envelope.ts`; `test/claude/envelope.test.ts` (feste Beispiele für Erfolg und jede Fehlerklasse); `test/claude/runner.test.ts` › „liefert bei Erfolg structuredOutput und meta mit Modellen und Kosten (AK-05-02)“, „meldet jede Fehlerklasse ohne unbehandelte Ausnahme“, „meldet not_found und not_executable …“, „beendet einen hängenden Prozess spätestens 5 s nach dem Timeout, ohne Zombie“ (auch ohne gelesenes stdin und mit ignoriertem SIGTERM); `test/claude/process.test.ts`.
+- [x] Protokoll `ai-usage.jsonl` mit Schema (AK-05-04). Nachweis: `schemas/ai-usage.schema.json`, `src/claude/usage.ts`; `test/claude/runner.test.ts` › „schreibt pro Aufruf genau eine schemagültige Zeile in ai-usage.jsonl, ohne Eingabe und Antwort“; `test/core/schemas.test.ts` › ai-usage.
+- [x] Hilfsfunktion zur Schemaprüfung (AK-05-08). Nachweis: `src/claude/output-schema.ts`; `test/claude/output-schema.test.ts` (gültiges draft-07-Schema, `format`, `$schema` und `$id` auch verschachtelt, Grenze 7999/8000 Zeichen, ungültige Schemas).
+- [x] `probeClaude`: Version, Auth-Filter, Flag-Prüfung, `doctor.json` (AK-05-05, AK-05-06). Nachweis: `src/claude/doctor.ts`, `doctor-record.ts`; `test/cli/doctor.test.ts` › „meldet Version, Anmeldung und Optionen und schreibt doctor.json“, „endet mit Exit-Code 7, wenn eine Pflichtoption fehlt; --safe-mode ist optional“, „übernimmt weder E-Mail noch Organisation noch Token (AK-05-06)“; `test/claude/args.test.ts` › Filter für `claude auth status`. Rauchtest am 29.09.2026 mit der installierten Claude Code 2.1.284 ohne Modellaufruf: alle 15 Optionen erkannt, `doctor.json` ohne persönliche Felder.
+- [x] `--live`-Prüfung über das stream-json-Init-Ereignis (AK-05-09). Nachweis mit Fake-CLI: `test/cli/doctor.test.ts` › „prüft Werkzeuge, MCP-Server, structured_output und --setting-sources mit zwei Aufrufen“, „meldet gemeldete Werkzeuge oder MCP-Server als nicht bestanden“, „bricht nach wiederholt abgelehnter Anmeldung ab …“, „behält das Live-Ergebnis bei gleicher Version …“. Live-Nachweis siehe unten unter „Tests“.
+- [x] `ensureClaudeReady` für die Pakete 06 und 07. Nachweis: `test/claude/doctor.test.ts` › „ensureClaudeReady für die Pakete 06 und 07“ (4 Tests: Prüfung ohne doctor.json, kein Prozessstart bei gültiger doctor.json, Exit-Code 6 bei fehlender Pflichtoption und fehlendem Claude, erneute Prüfung bei neu konfiguriertem Modell).
+- [x] Schemas `ai-usage`, `doctor` und `attempt-outcome`. Nachweis: `schemas/*.schema.json`, `src/core/schemas.ts`; `test/core/schemas.test.ts` (Register und je zwei Tests mit gültigen und ungültigen Beispielen).
 
 ## Integration
 
-- [ ] `ipa doctor [--live]` angebunden (AK-05-05, AK-05-10)
-- [ ] `ipa init` führt `doctor` ohne `--live` aus, ein Fehler ergibt nur eine Warnung (AK-05-07)
-- [ ] `ipa status` zeigt das Feld `claude` (AK-05-10)
-- [ ] Vorabprüfungsskript aus Paket 01 entfernt, README verweist auf `ipa doctor --live` (AK-05-10)
+- [x] `ipa doctor [--live]` angebunden (AK-05-05, AK-05-10). Nachweis: `src/cli/commands/doctor.ts`, `src/cli/main.ts`; `test/cli/doctor.test.ts` (15 Tests über `node dist/cli.js`); `test/cli/main.test.ts` › Hilfe listet `doctor`.
+- [x] `ipa init` führt `doctor` ohne `--live` aus, ein Fehler ergibt nur eine Warnung (AK-05-07). Nachweis: `test/cli/init.test.ts` › „Claude-Prüfung in ipa init (Paket 05)“ (gescheiterte Prüfung und Abbruch der Prüfung: Exit-Code 0, Warnung, vollständiger Arbeitsbereich); `test/claude/doctor.test.ts` › „Claude-Prüfung nach ipa init (AK-05-07)“ (bestandene Prüfung ohne Warnung).
+- [x] `ipa status` zeigt das Feld `claude` (AK-05-10). Nachweis: `test/cli/status.test.ts` › „liefert mit --json genau die Felder der Pakete 01 bis 05 …“.
+- [x] Vorabprüfungsskript aus Paket 01 entfernt, README verweist auf `ipa doctor --live` (AK-05-10). Nachweis: `scripts/claude-probe.mjs`, `test/scripts/claude-probe.test.ts`, `test/helpers/fake-claude-probe.mjs` und `probe:claude` entfernt; `test/cli/main.test.ts` › „ersetzt die Claude-Vorabprüfung aus Paket 01 durch ipa doctor --live (AK-05-10, D-24)“.
 
 ## Tests
 
-- [ ] `test/helpers/fake-claude.mjs` mit allen Modi
-- [ ] Unit- und Integrationstests AK-05-01 bis AK-05-08, AK-05-10 und AK-05-11 sind grün
-- [ ] `npm run typecheck`, `npm test` und `npm run build` sind grün
-- [ ] Skript `npm run test:live` ist vorhanden und nicht Teil von `npm test`
-- [ ] Manuell nach Freigabe: `ipa doctor --live` mit installierter Version (Version, Datum, Ergebnis) (AK-05-09)
-- [ ] Annahmen A-01 bis A-05, A-07 und A-08 in spec.md §18 als bestätigt oder widerlegt eingetragen
+- [x] `test/helpers/fake-claude.mjs` mit allen Modi. Nachweis: Modi `ok`, `invalid-json`, `extra-text`, `error-result`, `no-structured`, `exit-nonzero`, `hang`, `hang-no-stdin`, `hang-ignore-term`, `stderr-flood`, `writes-file`, `tools`, `mcp`, `settings-auth-fail`, `auth-retry`, `logged-out`, `auth-no-json`; `FAKE_CLAUDE_UNSUPPORTED` für das Unknown-Option-Verhalten; stream-json mit Init-Ereignis; Protokoll von Argumenten, stdin, Arbeitsverzeichnis und Umgebungsnamen. Eingebunden über `test/helpers/claude.ts`.
+- [x] Unit- und Integrationstests AK-05-01 bis AK-05-08, AK-05-10 und AK-05-11 sind grün. Nachweis: AK-05-01 `test/claude/runner.test.ts` (Aufruf), `args.test.ts`; AK-05-02 und AK-05-03 `runner.test.ts`, `envelope.test.ts`, `process.test.ts`; AK-05-04 `runner.test.ts`, `schemas.test.ts`; AK-05-05 und AK-05-06 `test/cli/doctor.test.ts`, `args.test.ts`, `runner.test.ts` › „übergibt --safe-mode nur, wenn …“; AK-05-07 `test/cli/init.test.ts`, `test/claude/doctor.test.ts`; AK-05-08 `output-schema.test.ts`; AK-05-10 `status.test.ts`, `main.test.ts`; AK-05-11 `runner.test.ts`.
+- [x] `npm run typecheck`, `npm test` und `npm run build` sind grün. Nachweis: 29.09.2026 mit Node.js 22.22.2 und zusätzlich mit Node.js 24.21.0: je 46 Testdateien, 421 bestanden, 4 übersprungen (bestehende Windows-Tests); Typecheck und Build fehlerfrei.
+- [x] Skript `npm run test:live` ist vorhanden und nicht Teil von `npm test`. Nachweis: `package.json`, `vitest.live.config.ts` (nur `test/live/*.live.ts`, eigenes Setup ohne PATH-Filter), `test/live/doctor.live.ts`; `npm run test:live` ohne `IPA_LIVE_CLAUDE=1` am 29.09.2026: 1 Datei übersprungen, Exit-Code 0, kein Claude-Aufruf.
+- [x] Manuell nach Freigabe: `ipa doctor --live` mit installierter Version (Version, Datum, Ergebnis) (AK-05-09). Nachweis: 29.09.2026, vom Benutzer freigegeben, `IPA_LIVE_CLAUDE=1 npm run test:live` im Linux-Container mit Claude Code 2.1.284 (Anmeldeart `oauth_token`), zweimal mit je zwei Modellaufrufen (der zweite Lauf mit `--reporter=default`, weil Vitest in der Agenten-Sitzung die Ausgabe unterdrückte). Ergebnis: bestanden, Exit-Code 0; `toolsReported: ["StructuredOutput"]`, `mcpServersReported: []`, `structured_output` gültig, `settingSourcesAuthOk: true`, beide Aufrufe mit `--safe-mode`, keine Befunde, Repository unverändert (spec.md §18). **Empfehlung:** vor Paket 06 auf dem Entwicklungsrechner unter Windows mit 2.1.114 wiederholen, dort mit `$env:IPA_LIVE_CLAUDE = '1'; npm run test:live` oder `ipa doctor --live`.
+- [ ] Annahmen A-01 bis A-05, A-07 und A-08 in spec.md §18 als bestätigt oder widerlegt eingetragen. Stand 29.09.2026: Für 2.1.284 sind A-01, A-02 (sinngemäss), A-03, A-04, A-05 und A-08 bestätigt, A-07 ist als Restrisiko dokumentiert, keine Annahme ist widerlegt. Offen: A-02, A-03 und A-08 für 2.1.114 auf dem Entwicklungsrechner (Zielplattform), bis die Live-Prüfung dort gelaufen ist.
 
 ## Dokumentation und Status
 
-- [ ] README: Voraussetzungen für Claude, `doctor`, Schutzwirkung und Grenzen gemäss spec.md §13.4
-- [ ] Abweichungen in spec.md §18 eingetragen oder „keine“ bestätigt
-- [ ] Zentrale `docs/implementation/checklist.md` aktualisiert
+- [x] README: Voraussetzungen für Claude, `doctor`, Schutzwirkung und Grenzen gemäss spec.md §13.4. Nachweis: `README.md`, Abschnitte „Voraussetzungen“, „`ipa init`“, „`ipa doctor [--live]`“, „`ipa status`“, „Exit-Codes“, „Claude Code: Aufruf, Schutzwirkung und Grenzen“ und „Entwicklung“, Stand 29.09.2026.
+- [x] Abweichungen in spec.md §18 eingetragen oder „keine“ bestätigt. Nachweis: 9 Einträge vom 29.09.2026 für Paket 05; Definitionen in §4.2, §6.3, §8.4, §9.11 bis §9.13, §10, §13.1 bis §13.4 und §16.2 angepasst; Folgen in Paketspezifikation §9.
+- [x] Zentrale `docs/implementation/checklist.md` aktualisiert. Nachweis: Paketstatus „technisch abgeschlossen“ mit der offenen Live-Prüfung auf dem Entwicklungsrechner, 29.09.2026.

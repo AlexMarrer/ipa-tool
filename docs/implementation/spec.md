@@ -191,7 +191,7 @@ Keine dieser Entscheidungen blockiert die Pakete 01 bis 07. Die gewählten Stand
 | Filter | `src/filter/` | `PathFilter`, `SecretScanner` | 02 |
 | Collector | `src/collector/` | Aufnahme, Konsistenzprüfung, Belegbildung, Snapshot-Ablage, Zustandsdelta, Zuordnung, Relevanz, Halt, neuer Ausgangspunkt, Testberichte | 02, 03 |
 | Notes | `src/notes/` | Notizen erfassen, speichern und lesen | 04, erweitert von 06 |
-| Vorabprüfung | `scripts/claude-probe.mjs` | Praktische Claude-Prüfung mit künstlichen Daten, ohne Build ausführbar (D-24) | 01, ersetzt in 05 |
+| Vorabprüfung | `scripts/claude-probe.mjs` | Praktische Claude-Prüfung mit künstlichen Daten, ohne Build ausführbar (D-24) | 01, in 05 durch `ipa doctor --live` ersetzt und entfernt |
 | Claude | `src/claude/` | Prozessstart, Fähigkeitsprüfung, Auswertung der Antwort, KI-Nutzungsprotokoll | 05 |
 | Analysis | `src/analysis/` | Eingabepaket, Validierung, Ablage, Work-Log, Warteschlange, Cursor, Überspringen | 06 |
 | Journal | `src/journal/` | Tageseingabe, Validierung, Entwurfsdarstellung | 07 |
@@ -330,6 +330,13 @@ Ein Befehl erscheint in `ipa --help` erst, wenn sein Paket ihn umsetzt.
 - Hat eine frühere Initialisierung vor dem Ausgangs-Snapshot abgebrochen, holt `init` ihn nach. Weichen `--timezone` oder `--workspace` dabei vom registrierten Arbeitsbereich ab, endet der Befehl mit Exit-Code 2 (§18).
 - `--timezone` erwartet einen IANA-Namen. Standard ist `Europe/Zurich`.
 - `--workspace <pfad>` wählt den Speicherort des Arbeitsbereichs gemäss §5.3. Ohne die Option gilt der Standard.
+
+**`ipa doctor`** (Details in Paket 05)
+
+- Braucht ein initialisiertes Repository, sonst Exit-Code 2. Nimmt keinen Lock und schreibt keinen Eintrag in `runs.jsonl` (§9.11).
+- Ohne `--live` kein Modellaufruf: Git-Version, Claude-Version, Anmeldung und Optionen (§13.2). Pflicht sind die Optionen aus §13.1 ohne die bedingten; `--model` nur, wenn `claude.model` gesetzt ist.
+- `--live` macht zwei kleine Modellaufrufe (§13.4).
+- Ergebnis in `doctor.json` (§9.13), Exit-Code 0 oder 7.
 
 **`ipa capture`**
 
@@ -541,7 +548,7 @@ Diese Regex-Muster gelten in allen Schemas:
 - Jede gespeicherte JSON-Datei und jede JSONL-Zeile trägt `schemaVersion: 1`.
 - Für jede Dateiart gibt es ein Schema unter `schemas/`. Die Dateinamen lauten `config`, `state`, `registry`, `manifest`, `note`, `analysis-input`, `analysis-output`, `analysis-record`, `complete`, `skip`, `retry`, `attempt-outcome`, `journal-input`, `journal-output`, `journal-record`, `run-record`, `ai-usage` und `doctor`, jeweils mit der Endung `.schema.json`.
 - Ajv läuft im draft-07-Modus mit `strict: true`, `allErrors: true` und `allowUnionTypes: true`. Die letzte Option erlaubt im strikten Modus Typen wie `["string", "null"]` (§18). Alle Objekte verwenden `additionalProperties: false`.
-- Die Schemas, die an Claude gehen (`analysis-output`, `journal-output`), enthalten kein `$schema`, kein `$id` und kein `format` (A-02). Kompakt serialisiert sind sie kürzer als 8000 Zeichen, damit das Windows-Limit für Befehlszeilen eingehalten wird.
+- Die Schemas, die an Claude gehen (`analysis-output`, `journal-output`), enthalten kein `$schema`, kein `$id` und kein `format` (A-02), als Schlüsselwort an keiner Schemaposition; als Name einer Eigenschaft ist `format` erlaubt. Kompakt serialisiert sind sie kürzer als 8000 Zeichen, damit das Windows-Limit für Befehlszeilen eingehalten wird. Die Hilfsfunktion aus Paket 05 prüft das und die Kompilierbarkeit im strikten Ajv-Modus vor jedem Prozessstart; ein Verstoss ist ein Programmierfehler (Exit-Code 1, §18).
 - Jede Datei wird beim Lesen validiert. Eine ungültige Einzeldatei führt zu Exit-Code 2 mit Pfad und Schemafehler. JSONL-Leser überspringen ungültige Zeilen und melden sie (§8.5).
 
 ### 8.5 Schreibregeln
@@ -784,11 +791,11 @@ Den Aufbau des Markdown-Entwurfs legt Paket 07 fest.
 - `outcome` ist `ok`, `unchanged`, `halted`, `unstable`, `lock_held`, `analysis_failed`, `outside_window`, `usage_error` oder `error`.
 - `message` enthält keine Inhalte aus dem Repository (I-12).
 - `recovered` nennt Snapshots, die der Lauf gemäss §11.6 aus einem abgebrochenen Lauf übernommen hat. Das Feld fehlt, wenn es leer wäre (§18).
-- Jeder Lauf eines schreibenden Befehls wird protokolliert, auch einer, der den Lock nicht erhält. `status` protokolliert nicht. `note` protokolliert ebenfalls nicht, die Notiz selbst mit `id` und `recordedAt` ist der Nachweis (§18).
+- Jeder Lauf eines schreibenden Befehls wird protokolliert, auch einer, der den Lock nicht erhält. `status` protokolliert nicht. `note` protokolliert ebenfalls nicht, die Notiz selbst mit `id` und `recordedAt` ist der Nachweis (§18). `doctor` protokolliert nicht; Nachweis sind `doctor.json` mit `checkedAt` und die Zeilen in `ai-usage.jsonl` (§18).
 
 ### 9.12 `ai-usage.jsonl`
 
-Eine Zeile pro Modellaufruf, also pro `ClaudeRunner.run` und pro `ipa doctor --live`. Aufrufe von Version, Anmeldestatus und Flag-Proben werden nicht protokolliert, weil sie kein Modell aufrufen.
+Eine Zeile pro Modellaufruf, also pro `ClaudeRunner.run` und pro Live-Aufruf von `ipa doctor --live` (zwei, §13.4). Aufrufe von Version, Anmeldestatus und Flag-Proben werden nicht protokolliert, weil sie kein Modell aufrufen.
 
 ```text
 { schemaVersion, runId, purpose: analysis|journal|doctor, subjectId: snapshotId|day|null,
@@ -796,7 +803,11 @@ Eine Zeile pro Modellaufruf, also pro `ClaudeRunner.run` und pro `ipa doctor --l
   inputSha256|null, inputIds: string[], outcome, errorCode|null, costUsd|null, durationMs }
 ```
 
-Prompt, Eingabe und Antwort stehen nicht in dieser Datei.
+- `subjectId` ist bei `analysis` eine Snapshot-ID, bei `journal` ein Tag, bei `doctor` `null`.
+- `outcome` ist `success`, `claude_error` oder `invalid_response`, `errorCode` die passende Fehlerklasse aus §13.3 wie in §9.9 oder `null`. Die fachliche Validierung des Aufrufers (Pakete 06, 07) steht nur in `outcome.json`.
+- `durationMs` ist `duration_ms` des Antwortumschlags, sonst die gemessene Dauer des Prozesses. `inputSha256` ist der SHA-256 der Eingabe als UTF-8.
+
+Prompt, Eingabe und Antwort stehen nicht in dieser Datei (§18).
 
 ### 9.13 `doctor.json`
 
@@ -808,6 +819,11 @@ Prompt, Eingabe und Antwort stehen nicht in dieser Datei.
 ```
 
 Kein Feld enthält E-Mail-Adresse, Organisationsname oder Token.
+
+- `loggedIn` ist `null`, wenn der Status nicht ermittelt wurde. `authMethod` besteht nur aus `[A-Za-z0-9._-]` (höchstens 40 Zeichen), sonst steht `unbekannt`.
+- `flags` hat als Schlüssel genau die geprüften Optionen: alle aus §13.1 einschliesslich `--safe-mode`, dazu `--verbose` für `stream-json`. Wurde Claude nicht gefunden, ist `flags` leer.
+- `live` ist `null`, wenn keine Live-Prüfung stattfand. Ohne `--live` übernimmt `doctor` `live` und `settingSourcesAuthOk` aus dem vorigen Ergebnis, sofern die Claude-Version gleich ist, sonst sind beide `null` (§18).
+- `ok` berücksichtigt `live` nur bei einem Lauf mit `--live`.
 
 ---
 
@@ -872,16 +888,24 @@ readNotes(ctx: WorkspaceContext, q: { day?: string; recordedFrom?: string; recor
 // claude
 interface ClaudeRequest {
   purpose: 'analysis' | 'journal' | 'doctor'; subjectId: string | null; promptFile: string;
-  outputSchema: object; stdin: string; promptVersion: string | null; inputIds: string[];
+  outputSchema: object; stdin: string; promptVersion: string | null; outputSchemaVersion: string | null;
+  inputIds: string[];
 }
 // Der Runner legt das Claude-Arbeitsverzeichnis selbst an und löscht es danach (D-22).
 // Rohausgaben stehen in ClaudeMeta.rawStdout und rawStderr. Der Aufrufer speichert sie im Arbeitsbereich.
+interface ClaudeMeta {
+  cliVersion: string | null; models: string[]; costUsd: number | null; durationMs: number; exitCode: number | null;
+  startedAt: string; endedAt: string; rawStdout: string; rawStderr: string; stderrTruncated: boolean;
+}
 type ClaudeResult =
   | { ok: true; structuredOutput: unknown; meta: ClaudeMeta }
   | { ok: false; errorCode: ClaudeErrorCode; message: string; meta: ClaudeMeta };
 interface ClaudeRunner { run(ctx: WorkspaceContext, req: ClaudeRequest): Promise<ClaudeResult> }
-probeClaude(ctx: WorkspaceContext, opts: { live: boolean }): Promise<DoctorReport>
-ensureClaudeReady(ctx: WorkspaceContext): Promise<void>   // wirft IpaError mit Exit-Code 6, wenn Pflichtoptionen fehlen
+createClaudeRunner(opts?: { env?: NodeJS.ProcessEnv }): ClaudeRunner   // Standard: process.env
+probeClaude(ctx: WorkspaceContext, opts: { live: boolean; env?: NodeJS.ProcessEnv; onNotice?: (message: string) => void }):
+  Promise<DoctorReport>   // DoctorReport = { record: <doctor.json>, findings, missingFlags, liveCarriedOver, droppedSessionVariables }
+ensureClaudeReady(ctx: WorkspaceContext, opts?: { env?: NodeJS.ProcessEnv }): Promise<void>
+  // wirft IpaError mit Exit-Code 6, wenn Claude fehlt oder Pflichtoptionen fehlen (§18)
 
 // analysis
 analysisStatus(ctx: WorkspaceContext, snapshotId: string): Promise<AnalysisStatus>
@@ -1117,8 +1141,9 @@ Cursor-Regel: `lastAnalysedSnapshotId` ist der letzte Snapshot des längsten lü
 
 - Programm und Vorargumente stammen aus `claude.command`. Der Prozess wird mit `spawn` ohne Shell gestartet.
 - Das Arbeitsverzeichnis ist ein neuer, leerer Ordner gemäss D-22. Er enthält nur eine Kopie von `prompt.md`.
-  - Vor dem Start prüft der Runner, dass der Ordner weder im Repository noch im Arbeitsbereich liegt. Andernfalls endet der Lauf mit Exit-Code 2, zum Beispiel wenn `TMP` auf das Repository zeigt.
-  - Nach dem Aufruf wird der Ordner gelöscht. Verwaiste Ordner älter als 24 Stunden unter `<os.tmpdir()>/ipa-assistant/claude/<repositoryId>/` entfernt der nächste Lauf.
+  - Vor dem Start prüft der Runner, dass der Ordner weder im Repository noch im Arbeitsbereich liegt. Andernfalls endet der Lauf mit Exit-Code 2, zum Beispiel wenn `TMP` auf das Repository zeigt. Geprüft wird der kanonische Pfad von `<os.tmpdir()>/ipa-assistant/claude/<repositoryId>` vor und nach dem Anlegen; er darf Repository und Arbeitsbereich auch nicht enthalten. Vorher wird nichts angelegt (§18).
+  - Nach dem Aufruf wird der Ordner gelöscht. Verwaiste Ordner älter als 24 Stunden unter `<os.tmpdir()>/ipa-assistant/claude/<repositoryId>/` entfernt der nächste Lauf, und zwar nur solche mit dem Namen `<runId>-<n>`. `<n>` zählt pro Prozess.
+  - Auch die Prüfprozesse von `ipa doctor` (Version, Anmeldung, Optionen) laufen in einem solchen Ordner.
 - Die Eingabe (`input.json`) wird ausschliesslich über stdin übergeben (I-11). Die Artefakte (Eingabe, Prompt, Schema, Antwort) speichert der Aufrufer im Arbeitsbereich.
 
 Argumente in dieser Reihenfolge:
@@ -1145,7 +1170,7 @@ Für Journale wird der `-p`-Text sinngemäss angepasst.
 Weitere Regeln:
 
 - Die Prozessumgebung wird für die Anmeldung durchgereicht. Es werden keine zusätzlichen Geheimnisse gesetzt, und die Umgebung wird nicht protokolliert.
-- Läuft `ipa` selbst innerhalb einer Claude-Code-Sitzung, erbt `claude` deren Variablen (`CLAUDECODE`, `CLAUDE_CODE_*`). Paket 05 entscheidet, ob der Runner sie entfernt (§18).
+- Läuft `ipa` selbst innerhalb einer Claude-Code-Sitzung (`CLAUDECODE=1` oder `CLAUDE_CODE_ENTRYPOINT` gesetzt), gibt es deren Variablen nicht an `claude` weiter: `CLAUDECODE`, `CLAUDE_*`, `MCP_CONNECTION_NONBLOCKING` und `MCP_SERVER_CONNECTION_BATCH_SIZE`, ausgenommen dokumentierte Benutzervariablen für Anmeldung, Anbieter und Konfiguration wie `CLAUDE_CONFIG_DIR` und `CLAUDE_CODE_OAUTH_TOKEN`. Ausserhalb einer Sitzung bleibt die Umgebung unverändert (§18).
 - Nach `claude.timeoutSeconds` wird der Prozess beendet. Das Ergebnis ist `timeout`.
 - stdout wird vollständig gelesen. stderr wird auf höchstens 64 KiB begrenzt gespeichert.
 
@@ -1180,6 +1205,8 @@ Die lokale Prüfung von 2.1.114 erfolgte ohne Modellaufruf. Die Kombination `cla
 
 Erkennt `doctor` eine Pflichtoption nicht, endet es mit Exit-Code 7. `capture` und `journal` lehnen den Claude-Aufruf dann mit Exit-Code 6 ab.
 
+Stand 29.09.2026, Umsetzungssitzung von Paket 05 unter Linux mit Claude Code 2.1.284: Alle Optionen der Tabelle einschliesslich `--safe-mode` werden erkannt, und `ipa doctor --live` ist bestanden. Laut `claude --help` gibt es dort auch `--permission-prompts` und `--restricted`; `--append-system-prompt-file` und `--max-turns` stehen nicht in der Hilfe, werden aber erkannt (§18).
+
 ### 13.3 Auswertung der Antwort
 
 Die Antwort wird in dieser Reihenfolge geprüft:
@@ -1188,7 +1215,7 @@ Die Antwort wird in dieser Reihenfolge geprüft:
 2. Das Timeout ist überschritten: `timeout`.
 3. stdout ist kein einzelnes JSON-Objekt: `invalid_envelope`.
 4. `type` ist nicht `"result"`, `subtype` ist nicht `"success"` oder `is_error` ist `true`: `error_result`, mit `subtype` in der Meldung.
-5. Der Exit-Code ist nicht 0, und es liegt kein auswertbares Ergebnis vor: `nonzero_exit`.
+5. Der Exit-Code ist nicht 0, und es liegt kein auswertbares Ergebnis vor: `nonzero_exit`. Das gilt für ein leeres stdout mit Exit-Code ≠ 0 oder nach einem Signal; ein nicht leeres, nicht auswertbares stdout ist schon in Schritt 3 `invalid_envelope`, und ein auswertbares Erfolgsergebnis gilt auch bei Exit-Code ≠ 0 (§18).
 6. `structured_output` fehlt oder ist kein Objekt: `missing_structured_output`.
 7. Danach folgt die fachliche Validierung durch den Aufrufer mit den Ergebnissen `schema_invalid`, `evidence_invalid` oder `rule_violation`.
 
@@ -1211,7 +1238,7 @@ Restrisiken:
 - Benutzerweite Einstellungen wie Hooks oder `~/.claude/CLAUDE.md` wirken unabhängig vom Arbeitsverzeichnis (A-07). Ein externer Ordner allein verhindert das nicht. `--setting-sources project,local` klammert die Benutzereinstellungen aus, sofern A-08 bestätigt ist. `~/.claude/CLAUDE.md` betrifft das nach heutigem Kenntnisstand nicht.
 - Das Betriebssystem verhindert keine Schreibzugriffe. Eine Isolation über einen eigenen Benutzer oder einen Container ist nicht Teil von V1.
 
-`ipa doctor --live` weist nach, dass das Init-Ereignis von `stream-json` keine MCP-Server und ausser `StructuredOutput` keine Werkzeuge meldet. `StructuredOutput` erscheint, weil der Aufruf `--json-schema` verwendet, und dient der Übergabe der strukturierten Antwort (beobachtet in der Vorabprüfung vom 29.09.2026, §18). Die Dokumentation beschreibt dieses Werkzeug nicht; weitergehende Eigenschaften sind nicht geprüft. README und Ausgaben DÜRFEN keinen weitergehenden Schutz behaupten. Ein Prompt allein gilt nie als Schutzmassnahme.
+`ipa doctor --live` macht zwei Modellaufrufe mit künstlicher Eingabe, Timeout `min(claude.timeoutSeconds, 180)` Sekunden: Aufruf 1 mit `--output-format stream-json --verbose`, Aufruf 2 nur nach erfolgreichem Aufruf 1 mit `--output-format json` und `--setting-sources project,local`, der `settingSourcesAuthOk` bestimmt (A-02, A-03, A-08). Nach zwei Ereignissen `system/api_retry` mit `authentication_failed` wird Aufruf 1 abgebrochen und als `error_result` gewertet (§18). `ipa doctor --live` weist nach, dass das Init-Ereignis von `stream-json` keine MCP-Server und ausser `StructuredOutput` keine Werkzeuge meldet. `StructuredOutput` erscheint, weil der Aufruf `--json-schema` verwendet, und dient der Übergabe der strukturierten Antwort (beobachtet in der Vorabprüfung vom 29.09.2026, §18). Die Dokumentation beschreibt dieses Werkzeug nicht; weitergehende Eigenschaften sind nicht geprüft. README und Ausgaben DÜRFEN keinen weitergehenden Schutz behaupten. Ein Prompt allein gilt nie als Schutzmassnahme.
 
 ### 13.5 Prompts
 
@@ -1370,8 +1397,8 @@ Leere Listen werden als „nicht erfasst“ dargestellt (I-13). Jeder Work-Log u
 - Integrationstests verwenden echte temporäre Git-Repositories unter `os.tmpdir()` über `test/helpers/git-repo.ts` (Paket 01). Diese Repositories setzen lokal `user.name`, `user.email` und `core.autocrlf=false`. Tests zu `autocrlf` setzen die Option ausdrücklich.
 - Jeder Test verwendet eine eigene temporäre Datenwurzel über `--data-dir` oder die Kontextoption. Ein globales Vitest-Setup setzt `IPA_ASSISTANT_HOME` auf ein Temp-Verzeichnis, damit die echte Datenwurzel nie berührt wird. Es setzt zusätzlich `LOCALAPPDATA` und `XDG_DATA_HOME` auf das Temp-Verzeichnis, blendet die System- und Benutzerkonfiguration von Git aus, baut `dist/` für Tests des echten CLI-Einstiegs und prüft am Ende, dass die echte Datenwurzel unverändert ist.
 - `test/helpers/repo-fingerprint.ts` (Paket 01) prüft die Unversehrtheit des Repositorys. Der Helfer bildet SHA-256-Werte über `.git/index`, `HEAD`, alle Refs und alle Dateien des Working Trees ausser `.git/` und vergleicht sie vor und nach dem Lauf. Liegt der Arbeitsbereich im Repository, wird sein Pfad ausgenommen und separat geprüft: Nur dort dürfen sich Dateien ändern.
-- Automatische Tests rufen Claude nie echt auf. Die Fake-CLI `test/helpers/fake-claude.mjs` (Paket 05) wird über `claude.command = [process.execPath, <pfad>]` eingebunden und über Umgebungsvariablen gesteuert. Sie protokolliert Argumente und stdin in eine Datei.
-- Live-Prüfungen mit echtem Claude laufen nur über `npm run test:live` mit `IPA_LIVE_CLAUDE=1` und nur nach ausdrücklicher Freigabe durch den Benutzer. Sie gehören nicht zu `npm test`.
+- Automatische Tests rufen Claude nie echt auf. Die Fake-CLI `test/helpers/fake-claude.mjs` (Paket 05) wird über `claude.command = [process.execPath, <pfad>]` eingebunden und über Umgebungsvariablen gesteuert. Sie protokolliert Argumente und stdin in eine Datei. Das globale Setup nimmt zusätzlich jeden Ordner mit `claude` aus dem PATH der Testprozesse (ersetzt durch Links auf die übrigen Einträge) und legt deren Temp-Verzeichnis (`TMPDIR`, `TMP`, `TEMP`) in den Test-Ordner (§18).
+- Live-Prüfungen mit echtem Claude laufen nur über `npm run test:live` mit `IPA_LIVE_CLAUDE=1` und nur nach ausdrücklicher Freigabe durch den Benutzer. Sie gehören nicht zu `npm test`: Sie liegen unter `test/live/*.live.ts` und laufen mit `vitest.live.config.ts`, dessen Setup `claude` im PATH lässt.
 - Künstliche Secrets in Tests haben die Form `IPA_TEST_SECRET_<zufall>` und stehen in einem Muster, das ein Detektor erkennt, zum Beispiel `api_key = "IPA_TEST_SECRET_…"`. Echte Zugangsdaten sind verboten.
 - Jedes Akzeptanzkriterium ist durch mindestens einen benannten Test oder eine dokumentierte manuelle Prüfung nachgewiesen.
 
@@ -1441,3 +1468,12 @@ Die Einträge entstehen während der Umsetzung. Jeder Eintrag nennt Datum, Paket
 | 2026-09-29 | 04 | Paket 04 §4 regelt nicht: `--measured` oder `--estimated` ohne Zeitangabe, leere Werte von `--reason`, `--alternative`, `--cause` und `--solution`, eine mehrfach angegebene `--ref`, Optionen im interaktiven Modus, den Abbruch der interaktiven Eingabe und die Berechnung der Minuten über eine Sommerzeitumstellung. | Eine Basis ohne `--minutes`, `--start`/`--end` und `--delay` ergibt Exit-Code 2, ebenso ein leerer Wert. Texte werden ohne Leerzeichen am Rand gespeichert, eine doppelte `--ref` einmal. Im interaktiven Modus gelten Optionen als beantwortete Fragen. Ungültige Antworten werden erneut erfragt, auch ein Typ, der nicht zu den Optionen passt (etwa `--reason` ohne `decision` oder ein Tag in der Zukunft ohne `plan`). Die Frage nach der Basis erscheint auch für eine `--delay` der Befehlszeile. Endet die Eingabe (Strg+C, Strg+D), endet der Befehl mit Exit-Code 2 ohne Notiz. Die Minuten aus `--start`/`--end` sind die Differenz der Uhrzeiten am selben Tag, eine Sommerzeitumstellung dazwischen zählt nicht. | §6.3; Paket 04 §4, §9 |
 | 2026-09-29 | 04 | §9.5 beschränkt `reason` und `alternatives` auf `decision` sowie `cause` und `solution` auf `problem`; `start` und `end` entstehen nur gemeinsam. Von Hand bearbeitete Zeilen können diese Regeln verletzen. | `schemas/note.schema.json` prüft diese Regeln mit `if`/`then`/`else`, `readNotes` meldet eine verletzende Zeile als ungültig. Das Schemaregister übersetzt die Ajv-Meldung zu `if` ins Deutsche. Dass `minutes` zu `start` und `end` passt, prüft `addNote`. | §9.5 |
 | 2026-09-29 | 04 | **Befund (Node.js 24.21.0, beim Benutzer unter Windows, hier unter Linux nachgestellt):** Ab Node.js 24 werfen `resume()` und `pause()` einer geschlossenen readline-Schnittstelle `ERR_USE_AFTER_CLOSE`, und `prompt()` ruft `resume()` auf. readline schliesst, sobald die Eingabe endet. Mit vorab geschriebenen Antworten schlugen 9 Tests der interaktiven Eingabe fehl; im Terminal endete eine ungültige Antwort mit sofortigem Strg+D mit Exit-Code 1 statt 2. Die Cloud-Sitzungen der Pakete 03 und 04 prüften nur mit Node.js 22, das nicht wirft. | Der Dialog merkt sich das Ereignis `close` und schreibt die Frage danach direkt, ohne `prompt()`. Bereits gelesene Zeilen liefert der Iterator weiterhin, danach folgt der Abbruch mit Exit-Code 2. Empfehlung: Sitzungen ohne Node.js 24 führen Typecheck, Tests und Build zusätzlich mit Node.js 24 aus, zum Beispiel aus dem npm-Paket `node@24` in einem temporären Ordner ausserhalb des Projekts. | Paket 04; Prüfungen der Pakete 05 bis 08 |
+| 2026-09-29 | 05 | **Umgebung der Umsetzungssitzung:** Cloud-Container unter Linux mit Node.js 22.22.2, npm 10.9.7, Git 2.43.0 und Claude Code 2.1.284 (npm-Installation, `claude` im PATH, `claude auth status`: angemeldet, Anmeldeart `oauth_token`); die Sitzung läuft selbst in Claude Code. §2.2 nennt für den Entwicklungsrechner Windows 11 mit Claude Code 2.1.114. Die Optionsprüfung von 2.1.284 über den Unknown-Option-Pfad, ohne Modellaufruf, erkennt alle Optionen aus §13.1 einschliesslich `--safe-mode` und `--verbose`. `claude --help` nennt zusätzlich `--permission-prompts` und `--restricted`; `--append-system-prompt-file` und `--max-turns` fehlen in der Hilfe, werden aber erkannt. | §2.2 bleibt die Angabe des Entwicklungsrechners, Linux bleibt ungeprüfte Plattform (§2.3). `--safe-mode` verwendet der Runner, sobald `doctor` die Option findet (§13.1); mit 2.1.114 bleibt es weg. `--permission-prompts none` und `--restricted` bleiben eine spätere Härtung ausserhalb von V1. Typecheck, Tests und Build laufen in dieser Sitzung mit Node.js 22 und zusätzlich mit Node.js 24.21.0 aus dem npm-Paket `node@24` (Empfehlung aus Paket 04). | §2.2, §13.2 |
+| 2026-09-29 | 05 | §13.1 überlässt Paket 05, ob der Runner die Variablen einer umgebenden Claude-Code-Sitzung entfernt. In der Vorabprüfung erbte `claude` innerhalb der Desktop-Sitzung deren Variablen, und alle Aufrufe hingen bis zum Timeout (Paket 01). | Läuft `ipa` in einer Claude-Code-Sitzung (`CLAUDECODE=1` oder `CLAUDE_CODE_ENTRYPOINT` gesetzt), gehen `CLAUDECODE`, `CLAUDE_*`, `MCP_CONNECTION_NONBLOCKING` und `MCP_SERVER_CONNECTION_BATCH_SIZE` nicht an `claude`. Ausgenommen sind dokumentierte Benutzervariablen für Anmeldung, Anbieter und Konfiguration: `CLAUDE_CONFIG_DIR`, `CLAUDE_CODE_OAUTH_TOKEN`, `CLAUDE_CODE_USE_BEDROCK`, `…_USE_VERTEX`, `…_USE_FOUNDRY`, `CLAUDE_CODE_SKIP_BEDROCK_AUTH`, `…_SKIP_VERTEX_AUTH`, `…_SKIP_FOUNDRY_AUTH`, `CLAUDE_CODE_CLIENT_CERT`, `…_CLIENT_KEY`, `…_CLIENT_KEY_PASSPHRASE`, `CLAUDE_CODE_API_KEY_HELPER_TTL_MS`, `CLAUDE_CODE_MAX_OUTPUT_TOKENS`, `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` und `CLAUDE_CODE_GIT_BASH_PATH`. Ausserhalb einer Sitzung bleibt die Umgebung unverändert. Das gilt für jeden `claude`-Prozess, auch die Prüfungen von `doctor`; `doctor` meldet den Fall mit Anzahl und einigen Namen, nie mit Werten. `--isolate-env` der Vorabprüfung entfällt damit. | §13.1 |
+| 2026-09-29 | 05 | §13.3 prüft „kein einzelnes JSON-Objekt“ (Schritt 3) vor „Exit-Code ≠ 0 ohne auswertbares Ergebnis“ (Schritt 5). Wörtlich genommen wäre Schritt 5 nie erreichbar: Ohne Ausgabe greift schon Schritt 3, mit auswertbarem Ergebnis Schritt 4 oder 6. AK-05-03 verlangt aber `nonzero_exit` als erzeugbare Fehlerklasse. | Ein leeres stdout (nur Leerraum) mit Exit-Code ≠ 0 oder nach einem Signal ergibt `nonzero_exit`. Ein nicht leeres, nicht auswertbares stdout bleibt `invalid_envelope`, auch bei Exit-Code ≠ 0. Ein auswertbares Erfolgsergebnis gilt auch bei Exit-Code ≠ 0. Meldungen enthalten weder Modelltext noch Eingabe noch stderr; `type` und `subtype` erscheinen nur als Bezeichner. | §13.3 |
+| 2026-09-29 | 05 | AK-05-04 verlangt die Schema-Version in `ai-usage.jsonl`, `ClaudeRequest` liefert sie nicht. §9.12 legt die Werte von `outcome` und die Bedeutung von `durationMs` nicht fest und nennt eine Zeile „pro `ipa doctor --live`“, obwohl die Live-Prüfung zwei Modellaufrufe braucht (Paket 05 §4). §9.13 lässt Typen und die Menge der Optionen offen. `probeClaude` braucht einen Ausgabeweg für den Hinweis vor dem Modellaufruf und für Befunde, die nicht in `doctor.json` gehören, und Tests brauchen eine Umgebung ohne globale Änderungen. | `ClaudeRequest.outputSchemaVersion: string \| null`, zum Beispiel `analysis-output@1`. `ClaudeMeta` wie in §10, zusätzlich mit `startedAt`, `endedAt` und `stderrTruncated`. `createClaudeRunner({ env? })`, `probeClaude(ctx, { live, env?, onNotice? })` mit `DoctorReport = { record, findings, missingFlags, liveCarriedOver, droppedSessionVariables }`, `ensureClaudeReady(ctx, { env? })`; das CLI übergibt seine Umgebung. `ai-usage.jsonl`: eine Zeile pro Modellaufruf (`doctor --live`: zwei), `outcome` `success`, `claude_error` oder `invalid_response`, `errorCode` wie in §9.9, `durationMs` aus `duration_ms` des Umschlags, sonst gemessen. `doctor.json`: `loggedIn: boolean \| null`, `authMethod` nur `[A-Za-z0-9._-]{1,40}`, sonst `unbekannt`, `flags` mit genau den geprüften Optionen (leer, wenn Claude fehlt), `live: null` ohne Live-Prüfung. Das Schema `attempt-outcome` prüft zusätzlich, dass die Fehlerklasse zum Ergebnis passt. `ensureClaudeReady` wirft auch, wenn Claude nicht gefunden wird. | §9.9, §9.12, §9.13, §10 |
+| 2026-09-29 | 05 | Offen waren: ob `doctor` in `runs.jsonl` protokolliert (§9.11, Eintrag zu Paket 04), ob es ein initialisiertes Repository braucht, welche Optionen Pflicht sind, wie lange die Live-Aufrufe dauern dürfen und was mit einem früheren Live-Ergebnis geschieht. | `doctor` braucht ein initialisiertes Repository (sonst Exit-Code 2), weil es `config.json` liest und `doctor.json` schreibt. Es nimmt keinen Lock und schreibt keinen Eintrag in `runs.jsonl`: `doctor.json` mit `checkedAt` und `ai-usage.jsonl` sind der Nachweis, und ein Exit-Code 7 erschiene sonst als `lastRun` und im Journal als Fehlerlauf. Pflicht sind die elf Optionen aus §13.1 ohne die bedingten, `--model` nur mit `claude.model`. `--live`: Aufruf 1 mit `stream-json --verbose`, Aufruf 2 mit `json` und `--setting-sources project,local` nur nach erfolgreichem Aufruf 1; `settingSourcesAuthOk` ist `true`, wenn Aufruf 2 gemäss §13.3 gelingt und `structured_output` dem Prüfschema `{ ok: boolean }` entspricht. Die Live-Aufrufe haben das Timeout `min(claude.timeoutSeconds, 180)`; nach zwei Ereignissen `system/api_retry` mit `authentication_failed` wird Aufruf 1 abgebrochen und als `error_result` gewertet. Ohne `--live` übernimmt `doctor` `live` und `settingSourcesAuthOk` aus dem vorigen Ergebnis, wenn die Claude-Version gleich ist, damit ein einfaches `ipa doctor` `--setting-sources` nicht abschaltet; nach einem Update sind beide `null`. Eine ungültige `doctor.json` ersetzt `doctor`, andere Befehle melden sie mit Exit-Code 2 (§8.4). | §6.3, §9.11, §9.13, §13.2, §13.4 |
+| 2026-09-29 | 05 | D-22 und §13.1 regeln nicht, was gilt, wenn das Temp-Verzeichnis Repository oder Arbeitsbereich enthält, welche Ordner als verwaist gelten, wie `<n>` gebildet wird und wo die Prüfprozesse von `doctor` laufen. | Der kanonische Pfad von `<os.tmpdir()>/ipa-assistant/claude/<repositoryId>` wird vor dem Anlegen und danach erneut geprüft; er darf Repository und Arbeitsbereich weder enthalten noch in ihnen liegen, sonst `IpaError` mit Exit-Code 2 ohne Prozessstart. Verwaist sind nur Ordner mit dem Namen `<runId>-<n>` und einer Änderungszeit älter als 24 Stunden. `<n>` zählt pro Prozess. `prompt.md` wird mit `createFileExclusive` geschrieben. Die Prüfprozesse von `doctor` laufen im selben Ordnerschema. Dateien, die ein Live-Aufruf zusätzlich anlegt, meldet `doctor` als Befund. | D-22, §13.1 |
+| 2026-09-29 | 05 | §8.4 verlangt „kürzer als 8000 Zeichen“, AK-05-08 nennt „über 8000 Zeichen“. Offen ist auch, ob `format` als Name einer Eigenschaft verboten ist. | Es gilt §8.4: kompakt höchstens 7999 Zeichen. `format`, `$schema` und `$id` sind als Schlüsselwort an jeder Schemaposition verboten (auch in `properties`, `items`, `definitions`, `allOf` …), als Name einer Eigenschaft erlaubt. Das Schema muss im strikten Ajv-Modus kompilieren. Ein Verstoss ist ein Programmierfehler (`OutputSchemaError`, Exit-Code 1) vor jedem Prozessstart. | §8.4 |
+| 2026-09-29 | 05 | Seit Paket 05 prüft `ipa init` Claude Code. Liegt `claude` im PATH des Rechners, würden alle Tests mit `init` die echte CLI starten, entgegen §16.2, und ihre Claude-Arbeitsordner lägen im Temp-Verzeichnis des Rechners. | Das globale Vitest-Setup ersetzt jeden PATH-Ordner mit `claude`, `claude.exe`, `claude.cmd`, `claude.bat`, `claude.com` oder `claude.ps1` für die Testprozesse durch einen Ordner mit Links auf dessen übrige Einträge, damit etwa Git erreichbar bleibt, und prüft danach, dass kein `claude` erreichbar ist. `TMPDIR`, `TMP` und `TEMP` zeigen in den Test-Ordner. Tests mit `init` sehen daher die Warnung „nicht gefunden“. Der Live-Test (`npm run test:live` mit `vitest.live.config.ts`, Dateien `test/live/*.live.ts`) verwendet dasselbe Setup ohne PATH-Filter und läuft nur mit `IPA_LIVE_CLAUDE=1`. | §16.2 |
+| 2026-09-29 | 05 | **Live-Prüfung AK-05-09 mit Produktcode**, vom Benutzer freigegeben: `npm run test:live` (`ipa doctor --live`) im Linux-Container mit Claude Code 2.1.284, Anmeldeart `oauth_token`, innerhalb einer Claude-Code-Sitzung, deren Variablen das Tool nicht weitergab. Zwei Läufe mit je zwei Modellaufrufen; der erste zeigte keine Einzelheiten, weil Vitest in einer KI-Agenten-Sitzung die Ausgabe bestandener Tests unterdrückt, und wurde mit `--reporter=default` wiederholt. Beide Läufe: bestanden, Exit-Code 0. Zweiter Lauf: `system/init` meldet `tools: ["StructuredOutput"]` und `mcp_servers: []`, `structured_output` entspricht dem Prüfschema; Aufruf 2 mit `--output-format json` und `--setting-sources project,local` liefert genau ein JSON-Objekt mit gültigem `structured_output`; beide Aufrufe mit `--safe-mode`; Modell `claude-opus-5-5`, Kosten 0.0106 und 0.0070 USD, Dauer 3.4 s und 2.1 s; keine Befunde; Repository unverändert. Ohne Modellaufruf: `--tools` mit leerem Wert wird erkannt, `claude` startet ohne Shell über den Namen. | Für 2.1.284: A-01 **bestätigt** (nur `StructuredOutput`, §13.4), A-02 sinngemäss **bestätigt** (`structured_output` mit `--json-schema` in beiden Ausgabeformaten), A-03 **bestätigt**, A-08 **bestätigt**, soweit prüfbar: Die Anmeldung bleibt mit `--setting-sources project,local` erhalten, die Wirkung auf Benutzer-Hooks ist nicht nachweisbar. A-04 und A-05 gelten auch unter Linux, für Windows sind sie aus Paket 01 bestätigt. A-07 bleibt ein dokumentiertes Restrisiko (README, §13.4), das `--setting-sources` und `--safe-mode` mildern. Für 2.1.114 auf dem Entwicklungsrechner, der Zielplattform, bleiben A-02, A-03 und A-08 **unklar**; `ipa doctor --live` soll dort vor Paket 06 laufen. Keine Annahme ist widerlegt, O-02 wird nicht vorgezogen. | §3.3, §13.4; Paket 05 AK-05-09 |

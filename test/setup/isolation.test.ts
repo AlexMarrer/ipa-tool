@@ -1,10 +1,11 @@
-import { realpathSync } from 'node:fs';
+import { readdirSync, realpathSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, inject, it } from 'vitest';
 import type { Registry } from '../../src/core/registry.js';
 import { createTempRepo } from '../helpers/git-repo.js';
 import { portable, readJsonFile, runCli } from '../helpers/workspace.js';
+import { CLAUDE_EXECUTABLE } from './global-setup.js';
 
 function inside(child: string, parent: string): boolean {
   const relative = path.relative(parent, child);
@@ -14,7 +15,7 @@ function inside(child: string, parent: string): boolean {
 describe('Globales Vitest-Setup (AK-01-14)', () => {
   it('lässt IPA_ASSISTANT_HOME und die Standard-Datenorte auf ein Temp-Verzeichnis zeigen', () => {
     const root = inject('ipaTestRoot');
-    expect(inside(root, realpathSync.native(os.tmpdir()))).toBe(true);
+    expect(inside(root, inject('ipaSystemTmpDir'))).toBe(true);
     for (const name of ['IPA_ASSISTANT_HOME', 'LOCALAPPDATA', 'XDG_DATA_HOME']) {
       const value = process.env[name];
       expect(value, name).toBeDefined();
@@ -24,6 +25,22 @@ describe('Globales Vitest-Setup (AK-01-14)', () => {
       expect(inside(process.env['IPA_ASSISTANT_HOME'] ?? '', real)).toBe(false);
       expect(path.resolve(process.env['IPA_ASSISTANT_HOME'] ?? '')).not.toBe(path.resolve(real));
     }
+  });
+
+  it('blendet claude aus dem PATH aus und legt das Temp-Verzeichnis in den Test-Ordner (spec.md §16.2)', () => {
+    expect(inject('ipaClaudeHidden')).toBe(true);
+    const reachable = (process.env['PATH'] ?? '')
+      .split(path.delimiter)
+      .filter((dir) => dir !== '')
+      .filter((dir) => {
+        try {
+          return readdirSync(dir).some((name) => CLAUDE_EXECUTABLE.test(name));
+        } catch {
+          return false;
+        }
+      });
+    expect(reachable).toEqual([]);
+    expect(inside(realpathSync.native(os.tmpdir()), inject('ipaTestRoot'))).toBe(true);
   });
 
   it('ohne --data-dir verwendet das CLI IPA_ASSISTANT_HOME aus dem Temp-Verzeichnis', async () => {

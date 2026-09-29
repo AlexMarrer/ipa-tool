@@ -1,0 +1,88 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "IPA Assistant – Zeile in ai-usage.jsonl, eine pro Modellaufruf (spec.md §9.12)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "runId",
+    "purpose",
+    "subjectId",
+    "startedAt",
+    "endedAt",
+    "cliVersion",
+    "models",
+    "promptVersion",
+    "outputSchemaVersion",
+    "inputSha256",
+    "inputIds",
+    "outcome",
+    "errorCode",
+    "costUsd",
+    "durationMs"
+  ],
+  "properties": {
+    "schemaVersion": { "type": "integer", "const": 1 },
+    "runId": { "type": "string", "pattern": "^R[0-9]{8}T[0-9]{6}Z-[0-9a-f]{4}$" },
+    "purpose": { "type": "string", "enum": ["analysis", "journal", "doctor"] },
+    "subjectId": { "type": ["string", "null"], "pattern": "^(S[0-9]{6}|[0-9]{4}-[0-9]{2}-[0-9]{2})$" },
+    "startedAt": { "$ref": "#/definitions/timestamp" },
+    "endedAt": { "$ref": "#/definitions/timestamp" },
+    "cliVersion": { "type": ["string", "null"], "pattern": "^[0-9][0-9A-Za-z.+-]{0,63}$" },
+    "models": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "promptVersion": { "type": ["string", "null"], "minLength": 1 },
+    "outputSchemaVersion": { "type": ["string", "null"], "minLength": 1 },
+    "inputSha256": { "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$" },
+    "inputIds": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "outcome": { "type": "string", "enum": ["success", "claude_error", "invalid_response"] },
+    "errorCode": {
+      "type": ["string", "null"],
+      "enum": [
+        "not_found",
+        "not_executable",
+        "timeout",
+        "nonzero_exit",
+        "invalid_envelope",
+        "error_result",
+        "missing_structured_output",
+        null
+      ]
+    },
+    "costUsd": { "type": ["number", "null"], "minimum": 0 },
+    "durationMs": { "type": "integer", "minimum": 0 }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "purpose": { "const": "analysis" } } },
+      "then": { "properties": { "subjectId": { "type": "string", "pattern": "^S[0-9]{6}$" } } }
+    },
+    {
+      "if": { "properties": { "purpose": { "const": "journal" } } },
+      "then": { "properties": { "subjectId": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" } } }
+    },
+    {
+      "if": { "properties": { "purpose": { "const": "doctor" } } },
+      "then": { "properties": { "subjectId": { "type": "null" } } }
+    },
+    {
+      "if": { "properties": { "outcome": { "const": "success" } } },
+      "then": { "properties": { "errorCode": { "type": "null" } } }
+    },
+    {
+      "if": { "properties": { "outcome": { "const": "claude_error" } } },
+      "then": {
+        "properties": { "errorCode": { "type": "string", "enum": ["not_found", "not_executable", "timeout", "nonzero_exit", "error_result"] } }
+      }
+    },
+    {
+      "if": { "properties": { "outcome": { "const": "invalid_response" } } },
+      "then": { "properties": { "errorCode": { "type": "string", "enum": ["invalid_envelope", "missing_structured_output"] } } }
+    }
+  ],
+  "definitions": {
+    "timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(Z|[+-][0-9]{2}:[0-9]{2})$"
+    }
+  }
+}

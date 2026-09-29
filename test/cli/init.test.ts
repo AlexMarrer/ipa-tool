@@ -2,12 +2,15 @@ import { existsSync } from 'node:fs';
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import { describe, expect, it } from 'vitest';
+import { CLAUDE_CHECK_WARNING } from '../../src/cli/commands/doctor.js';
+import type { DoctorRecord } from '../../src/claude/types.js';
 import type { Config } from '../../src/core/config.js';
 import { readJsonl } from '../../src/core/jsonl.js';
 import type { Registry } from '../../src/core/registry.js';
 import type { RunRecord } from '../../src/core/run-log.js';
 import { validate } from '../../src/core/schemas.js';
 import type { State } from '../../src/core/state.js';
+import { withoutClaudeWarning } from '../helpers/claude.js';
 import { createTempRepo } from '../helpers/git-repo.js';
 import { expectRepoUnchanged, fingerprintRepo } from '../helpers/repo-fingerprint.js';
 import { createTempDataRoot, createTempDir, listTree, readJsonFile, runCli } from '../helpers/workspace.js';
@@ -25,7 +28,8 @@ describe('ipa init (Paket 01, mit Ausgangs-Snapshot aus Paket 02)', () => {
     const before = await fingerprintRepo(repo.root);
 
     const result = await runCli(['init'], { dataDir, cwd: repo.root });
-    expect(result.stderr).toBe('');
+    // The only message is the warning of the Claude check; the tests hide claude (AK-05-07).
+    expect(withoutClaudeWarning(result.stderr)).toBe('');
     expect(result.exitCode).toBe(0);
 
     const registry = await readRegistry(dataDir);
@@ -71,7 +75,7 @@ describe('ipa init (Paket 01, mit Ausgangs-Snapshot aus Paket 02)', () => {
     });
 
     const names = (await readdir(entry.workspacePath)).sort();
-    expect(names).toEqual([...SUBDIRS, 'config.json', 'runs.jsonl', 'state.json'].sort());
+    expect(names).toEqual([...SUBDIRS, 'config.json', 'doctor.json', 'runs.jsonl', 'state.json'].sort());
     expect((await readdir(`${entry.workspacePath}/journal`)).sort()).toEqual(['drafts', 'final', 'runs']);
     expect(existsSync(`${dataDir}/registry.lock`)).toBe(false);
 
@@ -179,7 +183,7 @@ describe('ipa init (Paket 01, mit Ausgangs-Snapshot aus Paket 02)', () => {
 
       const entry = (await readRegistry(dataDir)).repositories[0]!;
       expect(entry).toMatchObject({ workspaceMode: 'explicit', workspacePath: `${repo.root}/.ipa` });
-      expect((await readdir(`${repo.root}/.ipa`)).sort()).toEqual([...SUBDIRS, 'config.json', 'runs.jsonl', 'state.json'].sort());
+      expect((await readdir(`${repo.root}/.ipa`)).sort()).toEqual([...SUBDIRS, 'config.json', 'doctor.json', 'runs.jsonl', 'state.json'].sort());
       expect(await readFile(`${repo.root}/.gitignore`, 'utf8')).toBe('node_modules/\n');
 
       const after = await fingerprintRepo(repo.root, { workspace: '.ipa' });
@@ -197,7 +201,7 @@ describe('ipa init (Paket 01, mit Ausgangs-Snapshot aus Paket 02)', () => {
       const dataDir = await createTempDataRoot();
       const result = await runCli(['init', '--workspace', '.ipa'], { dataDir, repo: repo.root });
       expect(result.exitCode).toBe(0);
-      expect(result.stderr).toBe('');
+      expect(withoutClaudeWarning(result.stderr)).toBe('');
     });
 
     it('akzeptiert einen leeren Ordner und einen Ordner ausserhalb des Repositorys', async () => {
@@ -296,5 +300,50 @@ describe('ipa init (Paket 01, mit Ausgangs-Snapshot aus Paket 02)', () => {
     expect(existsSync(`${dataDir}/registry.json`)).toBe(false);
     expect(await readdir(`${dataDir}/workspaces`)).toEqual([]);
     expect(JSON.parse(await readFile(`${dataDir}/registry.lock`, 'utf8'))).toEqual(lock);
+  });
+});
+
+describe('Claude-Prüfung in ipa init (Paket 05)', () => {
+  async function expectCompleteWorkspace(dataDir: string): Promise<string> {
+    const entry = (await readRegistry(dataDir)).repositories[0]!;
+    expect(validate('config', await readJsonFile(`${entry.workspacePath}/config.json`))).toEqual({ ok: true });
+    expect((await readJsonFile<State>(`${entry.workspacePath}/state.json`)).baselineSnapshotId).toBe('S000001');
+    expect(existsSync(`${entry.workspacePath}/snapshots/S000001/manifest.json`)).toBe(true);
+    const runs = await readJsonl<RunRecord>(`${entry.workspacePath}/runs.jsonl`, 'run-record');
+    expect(runs.records.map((run) => [run.command, run.exitCode])).toEqual([['init', 0]]);
+    // Without --live there is no model call.
+    expect(existsSync(`${entry.workspacePath}/ai-usage.jsonl`)).toBe(false);
+    return entry.workspacePath;
+  }
+
+  it('führt doctor ohne --live aus; eine gescheiterte Prüfung ergibt nur eine Warnung (AK-05-07)', async () => {
+    const repo = await createTempRepo();
+    const dataDir = await createTempDataRoot();
+    const before = await fingerprintRepo(repo.root);
+    // The tests hide claude from the PATH, so the check fails with "not found".
+    const result = await runCli(['init'], { dataDir, repo: repo.root });
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toContain(`${CLAUDE_CHECK_WARNING} Claude Code wurde nicht gefunden`);
+    expect(result.stderr).toContain('Der Arbeitsbereich ist vollständig angelegt; Details mit ipa doctor.');
+    const workspace = await expectCompleteWorkspace(dataDir);
+    const doctor = await readJsonFile<DoctorRecord>(`${workspace}/doctor.json`);
+    expect(validate('doctor', doctor)).toEqual({ ok: true });
+    expect(doctor).toMatchObject({ ok: false, live: null, git: { found: true }, claude: { found: false, flags: {} } });
+    expectRepoUnchanged(before, await fingerprintRepo(repo.root));
+  });
+
+  it('meldet auch einen Abbruch der Prüfung nur als Warnung, etwa bei einem Temp-Verzeichnis im Repository (AK-05-07)', async () => {
+    const repo = await createTempRepo();
+    const dataDir = await createTempDataRoot();
+    const before = await fingerprintRepo(repo.root);
+    const inRepo = `${repo.root}/temp`;
+    const result = await runCli(['init'], { dataDir, repo: repo.root, env: { TMPDIR: inRepo, TMP: inRepo, TEMP: inRepo } });
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toContain(CLAUDE_CHECK_WARNING);
+    expect(result.stderr).toContain('ausserhalb von Repository und Arbeitsbereich');
+    const workspace = await expectCompleteWorkspace(dataDir);
+    expect(existsSync(`${workspace}/doctor.json`)).toBe(false);
+    expect(existsSync(inRepo)).toBe(false);
+    expectRepoUnchanged(before, await fingerprintRepo(repo.root));
   });
 });

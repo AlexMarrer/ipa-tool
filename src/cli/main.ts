@@ -3,6 +3,7 @@ import { EXIT, type ExitCode, IpaError } from '../core/errors.js';
 import { toolVersion } from '../core/tool.js';
 import { registerBaselineCommand } from './commands/baseline.js';
 import { registerCaptureCommand } from './commands/capture.js';
+import { registerDoctorCommand } from './commands/doctor.js';
 import { registerInitCommand } from './commands/init.js';
 import { registerNoteCommand } from './commands/note.js';
 import { registerStatusCommand } from './commands/status.js';
@@ -45,6 +46,7 @@ export function createProgram(io: CliIo, state: CliState): Command {
   // Commands of later packages are registered only by their package (spec.md §6.2).
   registerInitCommand(program, io, state);
   registerStatusCommand(program, io, state);
+  registerDoctorCommand(program, io, state);
   registerCaptureCommand(program, io, state);
   registerBaselineCommand(program, io, state);
   registerNoteCommand(program, io, state);
