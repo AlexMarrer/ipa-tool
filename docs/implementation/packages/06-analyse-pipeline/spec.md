@@ -211,7 +211,7 @@ Weitere Regeln:
 
 Folgen aus der Umsetzung (29.09.2026, Einzelheiten in spec.md §18):
 
-- Die Live-Analyse (§8) ist ohne Freigabe des Benutzers nicht gelaufen. Ob fünf Turns (`claude.maxTurns`) für die strukturierte Ausgabe genügen, ist damit nicht geprüft. Der Test liegt in `test/live/analysis.live.ts` und macht einen Modellaufruf.
+- Die Live-Analyse (§8) ist nach Freigabe im Linux-Container mit Claude Code 2.1.285 bestanden: ein Modellaufruf, Erfolg im ersten Versuch; fünf Turns (`claude.maxTurns`) genügen. `claude.maxAnalysesPerRun` (5) bleibt ein Schätzwert, der sich erst im Betrieb zeigt. Auf dem Entwicklungsrechner (Windows, 2.1.201) steht die Live-Analyse noch aus. Der Test liegt in `test/live/analysis.live.ts`.
 - Bei `capture` hat ein Halt (4) Vorrang vor einer nicht abgeschlossenen Analyse (6); spec.md §6.4 nennt die Ausnahme. Die Warteschlange läuft nach jedem Ergebnis der Aufnahme, auch nach einer instabilen (Exit-Code 5, oder 6, wenn eine Analyse offen bleibt).
 - `outcome.json` ist der letzte Schritt eines Versuchs, bei Erfolg nach `complete.json`. Ein Abbruch vorher ergibt `interrupted`, eine gescheiterte Ablage ebenfalls, mit dem Fehlercode in `message`.
 - `<n>` in `retry-<n>.json` ist die Nummer des letzten Versuchs bei der Freigabe. `--retry` ist nur für `exhausted` erlaubt.
