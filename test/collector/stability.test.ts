@@ -95,6 +95,8 @@ describe('Wiederanlauf der Aufnahme (spec.md §11.6, AK-02-10)', () => {
     await mkdir(`${workspace}/snapshots/.tmp-S000009-0badc0de/content`, { recursive: true });
     await writeFile(`${workspace}/snapshots/.tmp-S000009-0badc0de/content/E001.patch`, 'Rest');
     await writeFile(`${workspace}/tmp/hilfsdatei.txt`, 'Rest');
+    // Without a further change the next capture would be `unchanged` (package 03).
+    await repo.write('datei.txt', 'eins\nzwei\ndrei\n');
 
     const before = await fingerprintRepo(repo.root);
     const result = await runCli(['capture'], { dataDir, repo: repo.root });

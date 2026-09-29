@@ -7,7 +7,7 @@ import { createTempRepo } from '../helpers/git-repo.js';
 import { expectRepoUnchanged, fingerprintRepo } from '../helpers/repo-fingerprint.js';
 import { createTempDataRoot, listTree, readJsonFile, runCli } from '../helpers/workspace.js';
 
-// Fields of packages 01 and 02 from spec.md §6.6, in the prescribed order.
+// Fields of packages 01 to 03 from spec.md §6.6, in the prescribed order.
 const STATUS_FIELDS = [
   'repositoryId',
   'repoPath',
@@ -21,6 +21,7 @@ const STATUS_FIELDS = [
   'lastSuccessfulRun',
   'lastRun',
   'snapshots',
+  'halt',
 ];
 
 async function initialized(options: { workspace?: string } = {}) {
@@ -33,8 +34,8 @@ async function initialized(options: { workspace?: string } = {}) {
   return { repo, dataDir, entry };
 }
 
-describe('ipa status (Pakete 01 und 02)', () => {
-  it('liefert mit --json genau die Felder der Pakete 01 und 02 und schreibt keine Datei (AK-01-13, AK-02-18)', async () => {
+describe('ipa status (Pakete 01 bis 03)', () => {
+  it('liefert mit --json genau die Felder der Pakete 01 bis 03 und schreibt keine Datei (AK-01-13, AK-02-18, AK-03-14)', async () => {
     const { repo, dataDir, entry } = await initialized();
     const treeBefore = await listTree(dataDir);
     const repoBefore = await fingerprintRepo(repo.root);
@@ -56,18 +57,37 @@ describe('ipa status (Pakete 01 und 02)', () => {
       lastAnalysedSnapshotId: null,
       lastSuccessfulRun: null,
       snapshots: { total: 1, baseline: 1, work: 0 },
+      halt: null,
     });
     expect(report['lastRun']).toMatchObject({ command: 'init', outcome: 'ok', exitCode: 0, errors: [] });
 
     const human = await runCli(['status'], { dataDir, repo: repo.root });
     expect(human.exitCode).toBe(0);
-    for (const label of ['Repository-ID:', 'Arbeitsbereich:', 'Speichermodus:', 'Datenwurzel:', 'Zeitzone:', 'Letzter Lauf:', 'Snapshots:']) {
+    for (const label of ['Repository-ID:', 'Arbeitsbereich:', 'Speichermodus:', 'Datenwurzel:', 'Zeitzone:', 'Letzter Lauf:', 'Snapshots:', 'Halt:']) {
       expect(human.stdout).toContain(label);
     }
     expect(human.stdout).toContain('Standard (Datenwurzel, ausserhalb des Repositorys)');
 
     expect(await listTree(dataDir)).toEqual(treeBefore);
     expectRepoUnchanged(repoBefore, await fingerprintRepo(repo.root));
+  });
+
+  it('zeigt einen aktiven Halt mit Grund und Hinweis auf ipa baseline (AK-03-14)', async () => {
+    const { repo, dataDir } = await initialized();
+    await repo.git('checkout', '-q', '-b', 'anderer');
+    const before = await fingerprintRepo(repo.root);
+    expect((await runCli(['capture'], { dataDir, repo: repo.root })).exitCode).toBe(4);
+
+    const result = await runCli(['status', '--json'], { dataDir, repo: repo.root });
+    expect(result.exitCode).toBe(0);
+    const report = JSON.parse(result.stdout) as Record<string, unknown>;
+    expect(Object.keys(report)).toEqual(STATUS_FIELDS);
+    expect(report['halt']).toMatchObject({ reason: 'branch_changed', expected: { branch: 'main' }, observed: { branch: 'anderer' } });
+    expect(report['lastRun']).toMatchObject({ command: 'capture', exitCode: 4, outcome: 'halted' });
+    const human = await runCli(['status'], { dataDir, repo: repo.root });
+    expect(human.stdout).toMatch(/Halt:\s+Der Branch hat gewechselt \(branch_changed/);
+    expect(human.stdout).toContain('ipa baseline --reason');
+    expectRepoUnchanged(before, await fingerprintRepo(repo.root));
   });
 
   it('meldet ein nicht initialisiertes Repository mit Exit-Code 2', async () => {

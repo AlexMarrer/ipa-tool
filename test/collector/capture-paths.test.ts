@@ -71,6 +71,8 @@ describe('Pfade, Autorschaft und Links (AK-02-13, AK-02-14, AK-02-16)', () => {
     } catch {
       return;
     }
+    // Paths behind a junction have no determined state and alone make no capture relevant (package 03).
+    await repo.write('lesbar.txt', 'lesbar\n');
     await unchanged(repo, () => captureRepo(repo, dataDir));
     expect(await filesContaining(dataDir, marker)).toEqual([]);
     const manifest = await readManifestFile(workspace, 'S000002');
@@ -183,13 +185,16 @@ describe('Arbeitsbereich .ipa im Repository (AK-02-19)', () => {
 });
 
 describe('Manifest und Zustand nach mehreren Aufnahmen', () => {
-  it('nimmt auch ohne Änderungen einen Arbeits-Snapshot auf, bis Paket 03 das unterdrückt', async () => {
+  it('schreibt den Zustand nach einer Aufnahme fort; ohne Änderung entsteht seit Paket 03 kein Snapshot', async () => {
     const repo = await createTempRepo();
     const dataDir = await createTempDataRoot();
     const workspace = await initRepo(repo, dataDir);
+    const nothing = await unchanged(repo, () => captureRepo(repo, dataDir));
+    expect(nothing.stdout).toContain('Keine neue Arbeit');
+    await repo.write('neu.txt', 'neu\n');
     await unchanged(repo, () => captureRepo(repo, dataDir));
     const manifest: Manifest = await readManifestFile(workspace, 'S000002');
-    expect(manifest).toMatchObject({ kind: 'work', commits: [], fileStates: [], evidence: [], analysisRequired: true });
+    expect(manifest).toMatchObject({ kind: 'work', commits: [], analysisRequired: true });
     const state = await readJsonFile<State>(`${workspace}/state.json`);
     expect(state).toMatchObject({ lastSnapshotId: 'S000002', nextSnapshotSeq: 3, baselineSnapshotId: 'S000001', lastAnalysedSnapshotId: null });
     expect(state.lastSuccessfulRun).toMatch(/^\d{4}-\d{2}-\d{2}T/);

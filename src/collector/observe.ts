@@ -42,6 +42,8 @@ export interface Observation {
   staged: DiffUnit[];
   unstaged: DiffUnit[];
   files: ObservedFile[];
+  /** Stage-0 index entries of allowed and excluded paths alike. */
+  index: Map<string, { mode: string; blob: string }>;
   /** Paths removed by the path filter, with the matching rule. */
   excluded: Map<string, string>;
   /** Untracked nested repositories; Git reports them as folders. */
@@ -61,7 +63,7 @@ const READ_CONCURRENCY = 8;
 const HASH_CONCURRENCY = 4;
 const COMMIT_CONCURRENCY = 3;
 
-async function mapLimit<T, R>(items: readonly T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+export async function mapLimit<T, R>(items: readonly T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   const results: R[] = new Array<R>(items.length);
   let next = 0;
   const worker = async (): Promise<void> => {
@@ -335,6 +337,7 @@ export async function observe(env: ObserveEnv, kind: SnapshotKind, previousHead:
     staged,
     unstaged,
     files,
+    index,
     excluded,
     nestedRepositories,
     configuredEmail,

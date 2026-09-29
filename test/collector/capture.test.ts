@@ -227,8 +227,11 @@ describe('Filter und Inhaltsprüfung (AK-02-05, AK-02-06)', () => {
     expect(evidenceFor(manifest, 'commit_diff', 'src/alt.ts')).toMatchObject({ file: null, omitted: withheld });
     expect(evidenceFor(manifest, 'unstaged_diff', 'src/neu.ts')).toMatchObject({ file: null, omitted: withheld });
     expect(manifest.fileStates.find((state) => state.path === 'src/neu.ts')).toMatchObject({ copy: null, copyOmitted: 'secret_suspected' });
+    // Package 03: both state deltas carry the secret too, the removed line included (AK-03-12).
+    expect(evidenceFor(manifest, 'state_delta', 'src/alt.ts')).toMatchObject({ file: null, omitted: withheld });
+    expect(evidenceFor(manifest, 'state_delta', 'src/neu.ts')).toMatchObject({ file: null, omitted: withheld });
     const decisions = manifest.filterDecisions.filter((entry) => entry.decision === 'withheld');
-    expect(decisions).toHaveLength(4);
+    expect(decisions).toHaveLength(6);
     for (const decision of decisions) expect(decision).toMatchObject({ reason: 'secret_suspected', detector: 'assignment', line: expect.any(Number) });
   });
 });

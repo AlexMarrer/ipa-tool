@@ -30,11 +30,11 @@ function listedCommands(help: string): string[] {
     .filter((name): name is string => name !== undefined);
 }
 
-describe('CLI-Rahmen (AK-01-02, AK-02-18)', () => {
-  it('ipa --help listet init, status und capture, aber keine Befehle späterer Pakete', async () => {
+describe('CLI-Rahmen (AK-01-02, AK-02-18, AK-03-14)', () => {
+  it('ipa --help listet init, status, capture und baseline, aber keine Befehle späterer Pakete (AK-03-14)', async () => {
     const result = await runCli(['--help'], { dataDir: null });
     expect(result.exitCode).toBe(0);
-    expect(listedCommands(result.stdout)).toEqual(['init', 'status', 'capture']);
+    expect(listedCommands(result.stdout)).toEqual(['init', 'status', 'capture', 'baseline']);
     expect(result.stdout).toContain('--repo <pfad>');
     expect(result.stdout).toContain('--data-dir <pfad>');
     expect(result.stdout).not.toMatch(/\bhelp \[command\]/);

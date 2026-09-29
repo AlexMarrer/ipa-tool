@@ -126,3 +126,15 @@ Nicht im Umfang:
 ## 9. Offene Annahmen
 
 - Die Freshness-Regel über `mtime` ist eine Heuristik. Den getesteten Codezustand kann V1 nicht nachweisen. Das bleibt im Journal als „nicht nachgewiesen“ sichtbar (Paket 07).
+
+Folgen aus der Umsetzung (29.09.2026, Einzelheiten in spec.md §18):
+
+- Umgesetzt in `src/collector/attribution.ts` (reine Planung), `lineage.ts` (dokumentierte und Ausgangs-Blobs), `delta.ts` (wirksame Stände, Patches), `halt.ts`, `test-reports.ts`; angebunden in `capture.ts`, `src/cli/commands/capture.ts`, `baseline.ts` und `status.ts`.
+- Bei `unchanged` ändert sich in `state.json` nur `lastSuccessfulRun` (§9.1). Paket 06 muss beachten, dass `unchanged` trotzdem ein erfolgreicher Lauf ist.
+- `state_delta` und `test_report` erhalten IDs nach den Diffs aus Paket 02, haben bei `snapshot_limit` aber Vorrang vor ihnen.
+- Der Patch-Kopf eines `state_delta` stammt vom Tool; Worktree-Inhalte werden bei `core.autocrlf` in Blob-Form verglichen. Andere Clean-Filter (zum Beispiel Git LFS) werden für den Patch nicht angewendet; ein Delta kann dann Filterunterschiede zeigen.
+- Eine vorher erfasste neue Datei, die danach nur ignoriert wird (Eintrag in `.gitignore`), erscheint wie eine Löschung, weil `git status` ignorierte Dateien nicht meldet.
+- Ein Zwischenstand, der vor der nächsten Aufnahme committet und wieder zurückgenommen wird, bleibt `unclear` und macht den Snapshot analysepflichtig, obwohl kein Delta entsteht.
+- Submodule ohne eigenes Repository (nicht ausgecheckt) gelten als nicht ermittelt und ergeben kein Delta.
+- Dasselbe gilt für Dateien hinter einer Ordner-Junction, die Git für Windows auflistet (spec.md §18, Paket 02). Eine neue Junction allein macht eine Aufnahme daher nicht relevant; die Pfade erscheinen erst mit der nächsten relevanten Aufnahme in `fileStates` und `filterDecisions`. Gefunden beim Testlauf unter Windows am 29.09.2026 (AK-02-16).
+- Die Tests liefen in einer Linux-Cloud-Umgebung (Node.js 22.22, Git 2.43) und am 29.09.2026 auf dem Windows-Entwicklungsrechner (Node.js 24, Git 2.51); dort schlug nur der Junction-Test aus Paket 02 fehl, der danach angepasst und erneut grün geprüft wurde.

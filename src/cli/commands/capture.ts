@@ -3,9 +3,10 @@
  */
 import type { Command } from 'commander';
 import { captureSnapshot } from '../../collector/capture.js';
+import { BASELINE_HINT, describeHalt } from '../../collector/halt.js';
 import { recoverWorkspace } from '../../collector/recovery.js';
 import { readManifest } from '../../collector/snapshots.js';
-import type { CaptureHooks, Manifest } from '../../collector/types.js';
+import type { CaptureHooks, CaptureOutcome, Manifest } from '../../collector/types.js';
 import { resolveContext, type WorkspaceContext } from '../../core/context.js';
 import { EXIT, type ExitCode, exitCodeOf, IpaError, LockHeldError } from '../../core/errors.js';
 import { withLock } from '../../core/lock.js';
@@ -23,6 +24,7 @@ export interface CaptureRunOptions {
 export interface CaptureRunResult {
   exitCode: ExitCode;
   snapshotId: string | null;
+  outcome: CaptureOutcome;
   recovered: string[];
 }
 
@@ -36,6 +38,7 @@ export async function runCapture(ctx: WorkspaceContext, options: CaptureRunOptio
     return await withLock(ctx, 'capture', async ({ lockBroken }) => {
       let recovered: string[] = [];
       let snapshotId: string | null = null;
+      let outcome: CaptureOutcome | null = null;
       let failure: unknown = null;
       try {
         ({ recovered } = await recoverWorkspace(ctx));
@@ -47,13 +50,13 @@ export async function runCapture(ctx: WorkspaceContext, options: CaptureRunOptio
             'Es gibt noch keinen Ausgangs-Snapshot. Bitte zuerst ipa init ausführen; bei einem bereits angelegten Arbeitsbereich holt es den Ausgangs-Snapshot nach.',
           );
         }
-        const outcome = await captureSnapshot(ctx, { kind: 'work', hooks: options.hooks, onWarning: options.onWarning });
+        outcome = await captureSnapshot(ctx, { kind: 'work', hooks: options.hooks, onWarning: options.onWarning });
         if (outcome.type === 'created') snapshotId = outcome.snapshotId;
       } catch (error) {
         failure = error;
       }
       const endedAt = ctx.clock.now();
-      const exitCode = failure === null ? EXIT.ok : exitCodeOf(failure);
+      const exitCode = failure !== null ? exitCodeOf(failure) : outcome?.type === 'halted' ? EXIT.halted : EXIT.ok;
       if (exitCode === EXIT.ok) {
         const state = await readState(ctx.workspaceDir);
         await writeState(ctx.workspaceDir, { ...state, lastSuccessfulRun: formatZoned(endedAt, ctx.config.timezone) });
@@ -67,6 +70,7 @@ export async function runCapture(ctx: WorkspaceContext, options: CaptureRunOptio
           endedAt,
           timezone: ctx.config.timezone,
           exitCode,
+          outcome: failure === null && outcome?.type === 'unchanged' ? 'unchanged' : undefined,
           lockBroken,
           snapshotCreated: snapshotId,
           recovered,
@@ -74,7 +78,7 @@ export async function runCapture(ctx: WorkspaceContext, options: CaptureRunOptio
         }),
       );
       if (failure !== null) throw failure;
-      return { exitCode, snapshotId, recovered };
+      return { exitCode, snapshotId, outcome: outcome!, recovered };
     });
   } catch (error) {
     if (error instanceof LockHeldError) await appendLockHeldRecord(ctx, 'capture', startedAt, error);
@@ -84,12 +88,18 @@ export async function runCapture(ctx: WorkspaceContext, options: CaptureRunOptio
 
 function summarize(manifest: Manifest): string {
   const count = (decision: string) => manifest.filterDecisions.filter((entry) => entry.decision === decision).length;
+  const kinds = (kind: string) => manifest.evidence.filter((entry) => entry.kind === kind).length;
   return (
     `Snapshot ${manifest.snapshotId} gespeichert (Arbeits-Snapshot, ohne Analyse).\n` +
     formatFields([
       ['Commits', String(manifest.commits.length)],
       ['Dateizustände', String(manifest.fileStates.length)],
       ['Belege', String(manifest.evidence.length)],
+      ['Zustandsdeltas', String(kinds('state_delta'))],
+      ['Statusänderungen', String(manifest.statusChanges.length)],
+      ['Testberichte', String(kinds('test_report'))],
+      ['Lücken', String(manifest.gaps.length)],
+      ['Analyse nötig', manifest.analysisRequired ? 'ja' : 'nein'],
       ['Ausgeschlossen', String(count('excluded'))],
       ['Zurückgehalten', String(count('withheld'))],
       ['Ausgelassen', String(count('omitted'))],
@@ -128,6 +138,11 @@ export function registerCaptureCommand(program: Command, io: CliIo, state: CliSt
         io.stdout(summarize(manifest));
         const notice = withheldNotice(manifest);
         if (notice !== null) io.stderr(`${notice}\n`);
+      } else if (result.outcome.type === 'unchanged') {
+        const { lastSnapshotId } = await readState(ctx.workspaceDir);
+        io.stdout(`Keine neue Arbeit seit Snapshot ${lastSnapshotId ?? '–'}. Es wurde kein Snapshot gespeichert.\n`);
+      } else if (result.outcome.type === 'halted') {
+        io.stderr(`Angehalten: ${describeHalt(result.outcome.halt)}\n${BASELINE_HINT}\n`);
       }
       state.exitCode = result.exitCode;
     });

@@ -1,6 +1,7 @@
 import { Command, CommanderError } from 'commander';
 import { EXIT, type ExitCode, IpaError } from '../core/errors.js';
 import { toolVersion } from '../core/tool.js';
+import { registerBaselineCommand } from './commands/baseline.js';
 import { registerCaptureCommand } from './commands/capture.js';
 import { registerInitCommand } from './commands/init.js';
 import { registerStatusCommand } from './commands/status.js';
@@ -44,6 +45,7 @@ export function createProgram(io: CliIo, state: CliState): Command {
   registerInitCommand(program, io, state);
   registerStatusCommand(program, io, state);
   registerCaptureCommand(program, io, state);
+  registerBaselineCommand(program, io, state);
   return program;
 }
 

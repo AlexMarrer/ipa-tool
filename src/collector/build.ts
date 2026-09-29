@@ -5,19 +5,24 @@
 import { formatZoned } from '../core/time.js';
 import { toolVersion } from '../core/tool.js';
 import type { SecretScanner } from '../filter/secret-scanner.js';
+import type { CommitFileAttribution } from './attribution.js';
+import type { DeltaUnit } from './delta.js';
 import type { DiffUnit } from './diffs.js';
 import { renderNewFilePatch } from './new-file-patch.js';
 import { type Observation, type ObservedFile, unreadableReason } from './observe.js';
+import { isFresh, type ObservedReport } from './test-reports.js';
 import type {
   CommitRecord,
-  DiffEvidence,
   DiffEvidenceKind,
+  Evidence,
   FileState,
   FilterDecision,
+  Gap,
   Manifest,
   Omission,
   OmitReason,
   SnapshotKind,
+  StatusChange,
 } from './types.js';
 import { isBinaryContent, sha256Hex } from './worktree.js';
 
@@ -31,6 +36,18 @@ export interface BuildInput {
   timezone: string;
   limits: { maxFileBytes: number; maxSnapshotBytes: number };
   scanner: SecretScanner;
+  /** Result of the attribution (spec.md §11.4); absent for baseline snapshots. */
+  attribution?: {
+    deltas: readonly DeltaUnit[];
+    statusChanges: readonly StatusChange[];
+    /** Same shape as `observation.commits` and their units. */
+    commitFiles: readonly (readonly CommitFileAttribution[])[];
+  };
+  /** Every configured report that exists now; the comparison base of the next snapshot. */
+  reports: readonly ObservedReport[];
+  /** Reports that are new or changed; each becomes a `test_report` (empty for baselines). */
+  newReports: readonly ObservedReport[];
+  gaps: readonly Gap[];
 }
 
 export interface BuiltSnapshot {
@@ -50,11 +67,13 @@ interface Unit {
 }
 
 interface EvidenceDraft extends Unit {
-  kind: DiffEvidenceKind;
+  kind: DiffEvidenceKind | 'state_delta' | 'test_report';
   path: string | null;
   oldPath: string | null;
   commit: string | null;
   extension: 'patch' | 'txt';
+  delta?: { fromBlob: string | null; toBlob: string | null };
+  report?: { label: string; mtime: string; fresh: boolean };
 }
 
 interface CopyDraft extends Unit {
@@ -161,10 +180,16 @@ function decisionOf(unit: Unit, path: string | null, evidence: string | null): F
   };
 }
 
+/** spec.md §11.3 (D-08): a delta, a new test report or a commit file that is new or unclear. */
+export function analysisRequired(evidence: readonly Evidence[], commits: readonly CommitRecord[]): boolean {
+  if (evidence.some((entry) => entry.kind === 'state_delta' || entry.kind === 'test_report')) return true;
+  return commits.some((commit) => commit.files.some((file) => file.attribution === 'new' || file.attribution === 'unclear'));
+}
+
 export function buildSnapshot(input: BuildInput): BuiltSnapshot {
   const { observation, timezone, scanner, limits } = input;
   const drafts: EvidenceDraft[] = [];
-  const commitDrafts: { messageIndex: number | null; files: { unit: DiffUnit; draftIndex: number }[] }[] = [];
+  const commitDrafts: { messageIndex: number | null; files: { unit: DiffUnit; draftIndex: number; unitIndex: number }[] }[] = [];
 
   for (const commit of observation.commits) {
     let messageIndex: number | null = null;
@@ -173,9 +198,10 @@ export function buildSnapshot(input: BuildInput): BuiltSnapshot {
       const message = Buffer.from(commit.meta.message, 'utf8');
       drafts.push({ ...unitOf(message, null), kind: 'commit_message', path: null, oldPath: null, commit: commit.meta.sha, extension: 'txt' });
     }
-    const commitFiles: { unit: DiffUnit; draftIndex: number }[] = [];
-    for (const unit of [...commit.units].sort((a, b) => comparePaths(a.path, b.path))) {
-      commitFiles.push({ unit, draftIndex: drafts.length });
+    const commitFiles: { unit: DiffUnit; draftIndex: number; unitIndex: number }[] = [];
+    const ordered = commit.units.map((unit, unitIndex) => ({ unit, unitIndex })).sort((a, b) => comparePaths(a.unit.path, b.unit.path));
+    for (const { unit, unitIndex } of ordered) {
+      commitFiles.push({ unit, draftIndex: drafts.length, unitIndex });
       drafts.push(diffDraft('commit_diff', unit, commit.meta.sha));
     }
     commitDrafts.push({ messageIndex, files: commitFiles });
@@ -189,6 +215,37 @@ export function buildSnapshot(input: BuildInput): BuiltSnapshot {
   ].sort((a, b) => comparePaths(a.path ?? '', b.path ?? ''));
   drafts.push(...unstaged);
 
+  // IDs continue after the diffs so that package 02 numbering stays stable (spec.md §18).
+  const deltaStart = drafts.length;
+  for (const delta of input.attribution?.deltas ?? []) {
+    drafts.push({
+      ...unitOf(delta.content, delta.omitted, delta.size, delta.binary),
+      kind: 'state_delta',
+      path: delta.path,
+      oldPath: null,
+      commit: null,
+      extension: 'patch',
+      delta: { fromBlob: delta.fromBlob, toBlob: delta.toBlob },
+    });
+  }
+  const reportStart = drafts.length;
+  for (const report of input.newReports) {
+    const omitted: Omission | null = report.content === null ? { reason: report.binary ? 'binary' : 'file_too_large' } : null;
+    drafts.push({
+      ...unitOf(report.content, omitted, report.size, report.binary),
+      kind: 'test_report',
+      path: report.path,
+      oldPath: null,
+      commit: null,
+      extension: 'txt',
+      report: {
+        label: report.label,
+        mtime: formatZoned(new Date(report.mtimeMs), timezone),
+        fresh: isFresh(report.mtimeMs, input.previous?.capturedAt ?? null, observation.capturedAt),
+      },
+    });
+  }
+
   const files = [...observation.files].sort((a, b) => comparePaths(a.path, b.path));
   const copies = new Map<string, CopyDraft | OmitReason>();
   for (const file of files) {
@@ -198,8 +255,9 @@ export function buildSnapshot(input: BuildInput): BuiltSnapshot {
   const copyUnits = [...copies.values()].filter((copy): copy is CopyDraft => typeof copy !== 'string');
 
   for (const unit of [...copyUnits, ...drafts]) screen(unit, scanner, limits.maxFileBytes);
-  // Copies first: they are the previous state for the next capture.
-  applySnapshotLimit([...copyUnits, ...drafts], limits.maxSnapshotBytes);
+  // Copies first: they are the previous state for the next capture. Then the evidence that goes to
+  // Claude, so that diffs which are never sent cannot crowd it out (spec.md §18).
+  applySnapshotLimit([...copyUnits, ...drafts.slice(deltaStart), ...drafts.slice(0, deltaStart)], limits.maxSnapshotBytes);
 
   const stored = new Map<string, Buffer>();
   const store = (unit: Unit, file: string): { file: string | null; sha256: string | null } => {
@@ -208,12 +266,11 @@ export function buildSnapshot(input: BuildInput): BuiltSnapshot {
     return { file, sha256: sha256Hex(unit.content) };
   };
 
-  const evidence: DiffEvidence[] = drafts.map((draft, index) => {
+  const evidence: Evidence[] = drafts.map((draft, index): Evidence => {
     const id = `E${String(index + 1).padStart(3, '0')}`;
     const { file, sha256 } = store(draft, `content/${id}.${draft.extension}`);
-    return {
+    const common = {
       id,
-      kind: draft.kind,
       path: draft.path,
       oldPath: draft.oldPath,
       commit: draft.commit,
@@ -223,7 +280,11 @@ export function buildSnapshot(input: BuildInput): BuiltSnapshot {
       binary: draft.binary,
       omitted: draft.omitted,
     };
+    if (draft.kind === 'state_delta') return { ...common, kind: 'state_delta', fromBlob: draft.delta!.fromBlob, toBlob: draft.delta!.toBlob };
+    if (draft.kind === 'test_report') return { ...common, kind: 'test_report', ...draft.report! };
+    return { ...common, kind: draft.kind };
   });
+  const deltaIds = new Map(evidence.slice(deltaStart, reportStart).map((entry) => [entry.path!, entry.id]));
 
   let copyNumber = 0;
   const fileStates: FileState[] = files.map((file) => {
@@ -264,16 +325,20 @@ export function buildSnapshot(input: BuildInput): BuiltSnapshot {
       authoredByConfiguredUser: email !== null && commit.meta.authorEmail.trim().toLowerCase() === email,
       isMerge: commit.meta.parents.length > 1,
       messageEvidence: links.messageIndex === null ? null : evidence[links.messageIndex]!.id,
-      files: links.files.map(({ unit, draftIndex }) => ({
-        path: unit.path,
-        oldPath: unit.oldPath,
-        change: unit.change,
-        blob: unit.dstBlob,
-        evidence: evidence[draftIndex]!.id,
-        attribution: null,
-        coveredBy: [],
-        previousEvidence: [],
-      })),
+      files: links.files.map(({ unit, draftIndex, unitIndex }) => {
+        const assigned = input.attribution?.commitFiles[index]?.[unitIndex];
+        const covering = assigned?.coveredByPath == null ? undefined : deltaIds.get(assigned.coveredByPath);
+        return {
+          path: unit.path,
+          oldPath: unit.oldPath,
+          change: unit.change,
+          blob: unit.dstBlob,
+          evidence: evidence[draftIndex]!.id,
+          attribution: assigned?.attribution ?? null,
+          coveredBy: covering === undefined ? [] : [covering],
+          previousEvidence: assigned?.previousEvidence ?? [],
+        };
+      }),
     };
   });
 
@@ -318,15 +383,19 @@ export function buildSnapshot(input: BuildInput): BuiltSnapshot {
       indexFingerprint: observation.indexFingerprint,
       statusFingerprint: observation.statusFingerprint,
     },
-    // Until package 03 decides relevance, every work snapshot needs an analysis; baselines never do.
-    analysisRequired: input.kind === 'work',
+    analysisRequired: input.kind === 'work' && analysisRequired(evidence, commits),
     commits,
     fileStates,
     evidence,
-    statusChanges: [],
-    testReports: [],
+    statusChanges: [...(input.attribution?.statusChanges ?? [])],
+    testReports: input.reports.map((report) => ({
+      path: report.path,
+      label: report.label,
+      sha256: report.sha256,
+      mtime: formatZoned(new Date(report.mtimeMs), timezone),
+    })),
     filterDecisions,
-    gaps: [],
+    gaps: [...input.gaps],
     stability: { attempts: input.attempts, stable: true },
     tool: { name: 'ipa-assistant', version: toolVersion() },
   };
