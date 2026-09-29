@@ -1,0 +1,72 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "IPA Assistant – doctor.json, letztes Ergebnis von ipa doctor (spec.md §9.13)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "checkedAt", "git", "claude", "live", "ok"],
+  "properties": {
+    "schemaVersion": { "type": "integer", "const": 1 },
+    "checkedAt": { "$ref": "#/definitions/timestamp" },
+    "git": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["found", "version"],
+      "properties": {
+        "found": { "type": "boolean" },
+        "version": { "$ref": "#/definitions/versionOrNull" }
+      }
+    },
+    "claude": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["found", "version", "loggedIn", "authMethod", "flags", "settingSourcesAuthOk"],
+      "properties": {
+        "found": { "type": "boolean" },
+        "version": { "$ref": "#/definitions/versionOrNull" },
+        "loggedIn": { "type": ["boolean", "null"] },
+        "authMethod": { "type": ["string", "null"], "pattern": "^[A-Za-z0-9._-]{1,40}$" },
+        "flags": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "-p": { "type": "boolean" },
+            "--output-format": { "type": "boolean" },
+            "--json-schema": { "type": "boolean" },
+            "--tools": { "type": "boolean" },
+            "--disallowedTools": { "type": "boolean" },
+            "--strict-mcp-config": { "type": "boolean" },
+            "--permission-mode": { "type": "boolean" },
+            "--disable-slash-commands": { "type": "boolean" },
+            "--no-session-persistence": { "type": "boolean" },
+            "--max-turns": { "type": "boolean" },
+            "--append-system-prompt-file": { "type": "boolean" },
+            "--setting-sources": { "type": "boolean" },
+            "--model": { "type": "boolean" },
+            "--safe-mode": { "type": "boolean" },
+            "--verbose": { "type": "boolean" }
+          }
+        },
+        "settingSourcesAuthOk": { "type": ["boolean", "null"] }
+      }
+    },
+    "live": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["checkedAt", "ok", "toolsReported", "mcpServersReported"],
+      "properties": {
+        "checkedAt": { "$ref": "#/definitions/timestamp" },
+        "ok": { "type": "boolean" },
+        "toolsReported": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "mcpServersReported": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "ok": { "type": "boolean" }
+  },
+  "definitions": {
+    "timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(Z|[+-][0-9]{2}:[0-9]{2})$"
+    },
+    "versionOrNull": { "type": ["string", "null"], "pattern": "^[0-9][0-9A-Za-z.+-]{0,63}$" }
+  }
+}

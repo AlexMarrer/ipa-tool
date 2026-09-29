@@ -7,7 +7,7 @@ import { createTempRepo } from '../helpers/git-repo.js';
 import { expectRepoUnchanged, fingerprintRepo } from '../helpers/repo-fingerprint.js';
 import { createTempDataRoot, listTree, readJsonFile, runCli } from '../helpers/workspace.js';
 
-// Fields of packages 01 to 04 from spec.md §6.6, in the prescribed order.
+// Fields of packages 01 to 05 from spec.md §6.6, in the prescribed order.
 const STATUS_FIELDS = [
   'repositoryId',
   'repoPath',
@@ -23,6 +23,7 @@ const STATUS_FIELDS = [
   'snapshots',
   'halt',
   'notesToday',
+  'claude',
 ];
 
 async function initialized(options: { workspace?: string } = {}) {
@@ -35,8 +36,8 @@ async function initialized(options: { workspace?: string } = {}) {
   return { repo, dataDir, entry };
 }
 
-describe('ipa status (Pakete 01 bis 04)', () => {
-  it('liefert mit --json genau die Felder der Pakete 01 bis 04 und schreibt keine Datei (AK-01-13, AK-02-18, AK-03-14, AK-04-11)', async () => {
+describe('ipa status (Pakete 01 bis 05)', () => {
+  it('liefert mit --json genau die Felder der Pakete 01 bis 05 und schreibt keine Datei (AK-01-13, AK-02-18, AK-03-14, AK-04-11, AK-05-10)', async () => {
     const { repo, dataDir, entry } = await initialized();
     const treeBefore = await listTree(dataDir);
     const repoBefore = await fingerprintRepo(repo.root);
@@ -60,12 +61,15 @@ describe('ipa status (Pakete 01 bis 04)', () => {
       snapshots: { total: 1, baseline: 1, work: 0 },
       halt: null,
       notesToday: 0,
+      // init ran the Claude check; in the tests claude is not on the PATH.
+      claude: { ok: false, cliVersion: null },
     });
+    expect((report['claude'] as { checkedAt: string }).checkedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/);
     expect(report['lastRun']).toMatchObject({ command: 'init', outcome: 'ok', exitCode: 0, errors: [] });
 
     const human = await runCli(['status'], { dataDir, repo: repo.root });
     expect(human.exitCode).toBe(0);
-    for (const label of ['Repository-ID:', 'Arbeitsbereich:', 'Speichermodus:', 'Datenwurzel:', 'Zeitzone:', 'Letzter Lauf:', 'Snapshots:', 'Halt:', 'Notizen heute:']) {
+    for (const label of ['Repository-ID:', 'Arbeitsbereich:', 'Speichermodus:', 'Datenwurzel:', 'Zeitzone:', 'Letzter Lauf:', 'Snapshots:', 'Halt:', 'Notizen heute:', 'Claude-Prüfung:']) {
       expect(human.stdout).toContain(label);
     }
     expect(human.stdout).toContain('Standard (Datenwurzel, ausserhalb des Repositorys)');

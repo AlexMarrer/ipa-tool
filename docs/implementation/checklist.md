@@ -19,7 +19,7 @@ Nachfolgende Pakete dürfen beginnen, sobald ihre Voraussetzungen mindestens `te
 | 02 – Snapshot-Erfassung | abgeschlossen | [checklist](packages/02-snapshot-erfassung/checklist.md) | AK-02-16 mit echtem Symlink auf dem Entwicklungsrechner übersprungen (Windows ohne Entwicklermodus), D-20 dort über Junction geprüft. Git 2.31 oder neuer nötig. Anzeige zurückgehaltener Einheiten in `status` offen für Paket 06/07 (spec.md §18). |
 | 03 – Änderungszuordnung | abgeschlossen | [checklist](packages/03-aenderungszuordnung/checklist.md) | Geprüft am 29.09.2026 unter Linux (Node.js 22, Git 2.43) und Windows (Node.js 24, Git 2.51). Vorbedingungsfehler AK-01-16 unter Linux behoben (spec.md §18). Junction-Test AK-02-16 an die Relevanzprüfung angepasst. |
 | 04 – Notizen | technisch abgeschlossen | [checklist](packages/04-notizen/checklist.md) | Offen: manuelle Prüfung der interaktiven Eingabe in der Windows-Konsole mit Zeitmessung (Ziel unter einer Minute). Automatisch geprüft am 29.09.2026 unter Windows (357 bestanden, 1 übersprungen, nach der Korrektur für Node.js 24, spec.md §18) und unter Linux mit Node.js 22 und 24 (Git 2.43), die interaktive Eingabe zusätzlich in einem Linux-Pseudo-Terminal. `note` schreibt keinen Eintrag in `runs.jsonl` (spec.md §9.11, §18). |
-| 05 – Claude-Anbindung | offen | [checklist](packages/05-claude-anbindung/checklist.md) | – |
+| 05 – Claude-Anbindung | abgeschlossen | [checklist](packages/05-claude-anbindung/checklist.md) | Live-Prüfung am 29.09.2026 im Linux-Container (Claude Code 2.1.284) und auf dem Entwicklungsrechner (Windows 11, Claude Code 2.1.201) bestanden: nur `StructuredOutput`, keine MCP-Server, `--setting-sources` bestätigt. Tests: Linux mit Node.js 22 und 24 je 421 bestanden, Windows 423 bestanden. Update auf mindestens 2.1.205 empfohlen (O-02). `doctor` schreibt keinen Eintrag in `runs.jsonl`, `init` prüft Claude ohne Modellaufruf und warnt nur (spec.md §18). |
 | 06 – Analyse-Pipeline | offen | [checklist](packages/06-analyse-pipeline/checklist.md) | – |
 | 07 – Tagesjournal | offen | [checklist](packages/07-tagesjournal/checklist.md) | – |
 | 08 – Zeitsteuerung und Abnahme | offen | [checklist](packages/08-zeitsteuerung-und-abnahme/checklist.md) | – |
@@ -28,7 +28,7 @@ Nachfolgende Pakete dürfen beginnen, sobald ihre Voraussetzungen mindestens `te
 - [x] Paket 02 abgeschlossen. Nachweis: 29.09.2026, alle Punkte der Paketcheckliste erledigt.
 - [x] Paket 03 abgeschlossen. Nachweis: 29.09.2026, alle Punkte der Paketcheckliste erledigt.
 - [ ] Paket 04 abgeschlossen
-- [ ] Paket 05 abgeschlossen
+- [x] Paket 05 abgeschlossen. Nachweis: 29.09.2026, alle Punkte der Paketcheckliste erledigt, Live-Prüfung auf dem Entwicklungsrechner bestanden.
 - [ ] Paket 06 abgeschlossen
 - [ ] Paket 07 abgeschlossen
 - [ ] Paket 08 abgeschlossen

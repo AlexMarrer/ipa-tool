@@ -40,7 +40,7 @@ const registry = () => ({
 
 describe('Schemaregister (spec.md §8.4)', () => {
   it('kompiliert alle Schemas im strikten draft-07-Modus', () => {
-    expect(SCHEMA_IDS).toEqual(['config', 'state', 'registry', 'run-record', 'manifest', 'note']);
+    expect(SCHEMA_IDS).toEqual(['config', 'state', 'registry', 'run-record', 'manifest', 'note', 'ai-usage', 'doctor', 'attempt-outcome']);
     for (const id of SCHEMA_IDS) {
       expect(() => validate(id, {})).not.toThrow();
     }
@@ -202,6 +202,114 @@ describe('Schemaregister (spec.md §8.4)', () => {
       expect(paths({ type: 'decision', cause: 'x', solution: 'y' })).toEqual(['/cause', '/solution', '/']);
       expect(paths({ type: 'decision', reason: '' })).toEqual(['/reason']);
       expect(paths({ type: 'decision', alternatives: [''] })).toEqual(['/alternatives/0']);
+    });
+  });
+  describe('ai-usage (spec.md §9.12)', () => {
+    const usage = (patch: Record<string, unknown> = {}) => ({
+      schemaVersion: 1,
+      runId: 'R20261014T080312Z-a3f9',
+      purpose: 'analysis',
+      subjectId: 'S000002',
+      startedAt: '2026-10-14T10:03:12+02:00',
+      endedAt: '2026-10-14T10:04:01+02:00',
+      cliVersion: '2.1.114',
+      models: ['claude-opus-4-7'],
+      promptVersion: 'analyze-work@1',
+      outputSchemaVersion: 'analysis-output@1',
+      inputSha256: 'a'.repeat(64),
+      inputIds: ['E001', 'N20261014T081500Z-0c1d'],
+      outcome: 'success',
+      errorCode: null,
+      costUsd: 0.12,
+      durationMs: 48000,
+      ...patch,
+    });
+
+    it('akzeptiert Analyse, Journal, Doctor und Fehlschläge', () => {
+      expect(validate('ai-usage', usage())).toEqual({ ok: true });
+      expect(validate('ai-usage', usage({ purpose: 'journal', subjectId: '2026-10-14' }))).toEqual({ ok: true });
+      expect(validate('ai-usage', usage({ purpose: 'doctor', subjectId: null, promptVersion: null, inputSha256: null, inputIds: [] }))).toEqual({ ok: true });
+      expect(validate('ai-usage', usage({ outcome: 'claude_error', errorCode: 'timeout', costUsd: null, models: [] }))).toEqual({ ok: true });
+      expect(validate('ai-usage', usage({ outcome: 'invalid_response', errorCode: 'missing_structured_output' }))).toEqual({ ok: true });
+    });
+
+    it('lehnt unpassende Subjekte, Ergebnisse, Fehlerklassen und Zusatzfelder ab', () => {
+      const paths = (patch: Record<string, unknown>) => issues(validate('ai-usage', usage(patch))).map((issue) => issue.path);
+      expect(paths({ subjectId: '2026-10-14' })).toContain('/subjectId');
+      expect(paths({ purpose: 'doctor' })).toContain('/subjectId');
+      expect(paths({ outcome: 'validation_failed', errorCode: 'schema_invalid' })).toContain('/outcome');
+      expect(paths({ errorCode: 'timeout' })).toContain('/errorCode');
+      expect(paths({ outcome: 'claude_error', errorCode: 'invalid_envelope' })).toContain('/errorCode');
+      expect(paths({ inputSha256: 'xyz' })).toEqual(['/inputSha256']);
+      expect(paths({ prompt: 'Text' })).toEqual(['/prompt']);
+    });
+  });
+
+  describe('doctor (spec.md §9.13)', () => {
+    const record = (patch: Record<string, unknown> = {}) => ({
+      schemaVersion: 1,
+      checkedAt: '2026-10-14T10:03:12+02:00',
+      git: { found: true, version: '2.51.0.windows.1' },
+      claude: {
+        found: true,
+        version: '2.1.114',
+        loggedIn: true,
+        authMethod: 'claude.ai',
+        flags: { '-p': true, '--tools': true, '--safe-mode': false },
+        settingSourcesAuthOk: null,
+      },
+      live: { checkedAt: '2026-10-14T10:03:40+02:00', ok: true, toolsReported: ['StructuredOutput'], mcpServersReported: [] },
+      ok: true,
+      ...patch,
+    });
+
+    it('akzeptiert Ergebnisse mit und ohne Live-Prüfung', () => {
+      expect(validate('doctor', record())).toEqual({ ok: true });
+      expect(validate('doctor', record({ live: null }))).toEqual({ ok: true });
+      const notFound = { found: false, version: null, loggedIn: null, authMethod: null, flags: {}, settingSourcesAuthOk: null };
+      expect(validate('doctor', record({ claude: notFound, live: null, ok: false }))).toEqual({ ok: true });
+    });
+
+    it('lehnt persönliche Felder, unbekannte Optionen und eine E-Mail als Anmeldeart ab', () => {
+      const claude = record().claude;
+      expect(issues(validate('doctor', record({ claude: { ...claude, email: 'person@example.com' } }))).map((issue) => issue.path)).toEqual(['/claude/email']);
+      expect(issues(validate('doctor', record({ claude: { ...claude, authMethod: 'person@example.com' } }))).map((issue) => issue.path)).toEqual(['/claude/authMethod']);
+      expect(issues(validate('doctor', record({ claude: { ...claude, flags: { '--bare': true } } }))).map((issue) => issue.path)).toEqual(['/claude/flags/--bare']);
+      expect(issues(validate('doctor', record({ live: { ok: true } }))).map((issue) => issue.path)).toContain('/live/checkedAt');
+    });
+  });
+
+  describe('attempt-outcome (spec.md §9.9)', () => {
+    const outcome = (patch: Record<string, unknown> = {}) => ({
+      schemaVersion: 1,
+      snapshotId: 'S000002',
+      runId: 'R20261014T080312Z-a3f9',
+      attempt: 1,
+      startedAt: '2026-10-14T10:03:12+02:00',
+      endedAt: '2026-10-14T10:04:01+02:00',
+      outcome: 'success',
+      errorCode: null,
+      message: null,
+      ...patch,
+    });
+
+    it('akzeptiert jedes Ergebnis mit passender Fehlerklasse', () => {
+      expect(validate('attempt-outcome', outcome())).toEqual({ ok: true });
+      expect(validate('attempt-outcome', outcome({ snapshotId: null }))).toEqual({ ok: true });
+      expect(validate('attempt-outcome', outcome({ outcome: 'claude_error', errorCode: 'not_executable', message: 'claude.cmd' }))).toEqual({ ok: true });
+      expect(validate('attempt-outcome', outcome({ outcome: 'invalid_response', errorCode: 'invalid_envelope', message: 'x' }))).toEqual({ ok: true });
+      expect(validate('attempt-outcome', outcome({ outcome: 'validation_failed', errorCode: 'rule_violation', message: 'R-02' }))).toEqual({ ok: true });
+      expect(validate('attempt-outcome', outcome({ outcome: 'input_too_large', message: 'Limit' }))).toEqual({ ok: true });
+    });
+
+    it('lehnt unpassende Fehlerklassen, Versuchsnummern und leere Meldungen ab', () => {
+      const paths = (patch: Record<string, unknown>) => issues(validate('attempt-outcome', outcome(patch))).map((issue) => issue.path);
+      expect(paths({ outcome: 'validation_failed', errorCode: 'timeout' })).toContain('/errorCode');
+      expect(paths({ outcome: 'success', errorCode: 'timeout' })).toContain('/errorCode');
+      expect(paths({ outcome: 'claude_error', errorCode: null })).toContain('/errorCode');
+      expect(paths({ attempt: 0 })).toEqual(['/attempt']);
+      expect(paths({ message: '' })).toEqual(['/message']);
+      expect(paths({ outcome: 'unbekannt' })).toContain('/outcome');
     });
   });
 });

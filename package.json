@@ -19,7 +19,7 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
-    "probe:claude": "node scripts/claude-probe.mjs"
+    "test:live": "vitest run --config vitest.live.config.ts"
   },
   "dependencies": {
     "ajv": "^8.20.0",

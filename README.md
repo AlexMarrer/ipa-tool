@@ -4,14 +4,14 @@ Lokales Kommandozeilenwerkzeug für die IPA. Es soll den Arbeitsstand eines beli
 
 Die Umsetzung erfolgt in Paketen, geplant in [`docs/implementation/`](docs/implementation/README.md).
 
-**Stand: Paket 04 (Notizen).** Verfügbar sind `ipa init` mit Ausgangs-Snapshot, `ipa capture` ohne KI mit Zuordnung der Änderungen zum Vorgänger-Snapshot, `ipa baseline`, `ipa note`, `ipa status` sowie eine Claude-Vorabprüfung. Noch nicht umgesetzt sind Analyse, Journal und Zeitsteuerung.
+**Stand: Paket 05 (Claude-Anbindung).** Verfügbar sind `ipa init` mit Ausgangs-Snapshot, `ipa capture` ohne KI mit Zuordnung der Änderungen zum Vorgänger-Snapshot, `ipa baseline`, `ipa note`, `ipa status` und `ipa doctor`, das Git und Claude Code prüft. Der Aufruf von Claude Code ist vorbereitet, wird aber erst mit der Analyse genutzt. Noch nicht umgesetzt sind Analyse, Journal und Zeitsteuerung.
 
 ## Voraussetzungen
 
 - Windows 11. Das ist die einzige geprüfte Plattform. Linux und macOS sind nicht geprüft.
 - Node.js 24 oder neuer
 - Git 2.31 oder neuer (geprüft mit 2.51)
-- Für die Claude-Vorabprüfung: eine installierte Claude-Code-CLI (geprüft mit Version 2.1.114)
+- Für `ipa doctor` und die spätere Analyse: eine installierte und angemeldete Claude-Code-CLI. Geprüft mit Version 2.1.201 unter Windows 11, einschliesslich [`ipa doctor --live`](#ipa-doctor---live). Ein Update auf mindestens 2.1.205 wird empfohlen: Ältere Versionen ignorieren ein ungültiges Ausgabeschema still (das Tool prüft seine Schemas deshalb selbst).
 
 ## Installation
 
@@ -62,6 +62,8 @@ config.json    Konfiguration (von Hand bearbeitbar, wird bei jedem Befehl validi
 state.json     Fortschritt und Cursor
 runs.jsonl     Laufprotokoll: eine Zeile pro Lauf von init, capture und baseline
 lock           nur während eines Laufs von init, capture oder baseline
+doctor.json    letztes Ergebnis von ipa doctor (auch aus init)
+ai-usage.jsonl KI-Nutzung: eine Zeile pro Modellaufruf, ohne Prompt, Eingabe und Antwort
 snapshots/S000001/manifest.json          Manifest eines Snapshots
 snapshots/S000001/content/E001.patch     gespeicherte Belege (Diffs, Commit-Nachrichten als .txt)
 snapshots/S000001/content/state/0001.dat Kopie des aktuellen Stands einer geänderten Datei
@@ -104,6 +106,8 @@ Unter Windows werden Pfade unabhängig von Gross- und Kleinschreibung und von `\
 
 Legt den Arbeitsbereich für das Repository an: Unterordner, `config.json` mit Standardwerten, `state.json`, Registry-Eintrag und einen Eintrag in `runs.jsonl`. Danach nimmt `init` den **Ausgangs-Snapshot** `S000001` auf. Er hält fest, was beim Start schon geändert, gestagt oder neu war, und gilt nie als geleistete Arbeit. Commits vor `init` erfasst er nicht. Während des ganzen Befehls wird der Lock gehalten.
 
+Zum Schluss prüft `init` Claude Code wie [`ipa doctor`](#ipa-doctor---live) ohne `--live`, also ohne Modellaufruf. Scheitert die Prüfung, etwa weil Claude Code fehlt oder nicht angemeldet ist, erscheint nur eine Warnung. Der Arbeitsbereich ist trotzdem vollständig, und der Exit-Code bleibt 0.
+
 - `--timezone`: IANA-Name wie `Europe/Zurich` (Standard). Eine unbekannte Zeitzone ergibt Exit-Code 2.
 - `--workspace`: ausdrücklich gewählter Arbeitsbereich, siehe oben.
 - Ist das Repository bereits mit Ausgangs-Snapshot initialisiert, endet `init` mit Exit-Code 2 und ändert nichts.
@@ -119,6 +123,7 @@ Arbeitsbereich:    C:/GIT/mein-projekt/.ipa
 Speichermodus:     ausdrücklich gewählt (im Repository)
 Zeitzone:          Europe/Zurich
 Ausgangs-Snapshot: S000001
+Claude-Prüfung: bereit (Claude Code 2.1.201, ohne Modellaufruf). Einen echten Aufruf prüft ipa doctor --live.
 ```
 
 ### `ipa capture [--no-analysis]`
@@ -183,6 +188,47 @@ Arbeit zwischen dem letzten Snapshot und diesem Ausgangspunkt bleibt als Lücke 
 
 Erfasst eine Notiz: eine Tätigkeit, ein Problem, eine Entscheidung, eine Erkenntnis oder eine Planung, auf Wunsch mit gemessenem oder geschätztem Zeitaufwand. Ohne Text fragt der Befehl im Terminal nach. `note` braucht keinen Snapshot und nimmt keinen Lock, es funktioniert also direkt nach `ipa init` und auch während eines laufenden `capture`. Einzelheiten und Beispiele stehen unter [Notizen](#notizen).
 
+### `ipa doctor [--live]`
+
+Prüft, ob Git und Claude Code für die Analyse bereit sind. Ohne `--live` findet **kein Modellaufruf** statt.
+
+- **Git:** `git --version`
+- **Claude Code:** Version (`claude --version`) und Anmeldung (`claude auth status`). Übernommen werden nur, ob eine Anmeldung besteht, und die Anmeldeart, nie E-Mail-Adresse, Organisation oder Token.
+- **Optionen:** Für jede Option des [Claude-Aufrufs](#claude-code-aufruf-schutzwirkung-und-grenzen) startet `doctor` `claude -p <option> [wert] --zz-ipa-probe` mit leerer Eingabe. Meldet Claude Code die Prüfoption als unbekannt, kennt es die geprüfte Option. Es entsteht kein Prompt und damit kein Modellaufruf. Pflicht sind die elf Optionen des Aufrufs, `--model` nur mit einem Modell in `claude.model`. `--safe-mode`, `--setting-sources` und `--verbose` sind optional; `--safe-mode` verwendet `ipa`, sobald `doctor` die Option findet.
+- **Ergebnis:** eine kompakte Liste auf stdout, Befunde auf stderr, Exit-Code 0 (bereit) oder 7 (nicht bereit). Das Ergebnis steht in `doctor.json` im Arbeitsbereich, `ipa status` zeigt es unter `claude`.
+- `doctor` braucht ein initialisiertes Repository (sonst Exit-Code 2), nimmt keinen Lock und schreibt keinen Eintrag in `runs.jsonl`. Die Prüfprozesse laufen im selben leeren Temp-Ordner wie jeder Claude-Aufruf.
+- Ob die Anmeldung der zugelassene geschäftliche Zugang ist, lässt sich technisch nicht prüfen und ist organisatorisch zu bestätigen. `doctor` weist darauf hin.
+
+```text
+> ipa doctor
+Git:               gefunden, Version 2.52.0.windows.1
+Claude Code:       gefunden, Version 2.1.201
+Anmeldung:         angemeldet, Anmeldeart claude.ai
+Pflichtoptionen:   alle 11 erkannt
+Weitere Optionen:  --safe-mode ja, --setting-sources ja, --model ja, --verbose ja
+--safe-mode:       wird verwendet
+--setting-sources: wird nicht verwendet, bis ipa doctor --live die Anmeldung damit bestätigt (A-08)
+Live-Prüfung:      nicht ausgeführt (ipa doctor --live)
+Ergebnis:          bereit
+Hinweis: Ob diese Anmeldung der zugelassene geschäftliche Zugang ist, lässt sich technisch nicht prüfen und ist organisatorisch zu bestätigen (O-02).
+```
+
+#### `ipa doctor --live`
+
+`--live` führt zusätzlich **zwei kleine echte Modellaufrufe** aus und verbraucht Kontingent. Vorher erscheint ein Hinweis auf stderr. Beide Aufrufe verwenden die Optionen des Claude-Aufrufs, ein triviales Schema (`{ "ok": boolean }`) und eine künstliche Eingabe mit einer eingebetteten Aufforderung, Dateien zu löschen und Befehle auszuführen.
+
+1. Mit `--output-format stream-json --verbose` meldet Claude Code im Ereignis `system/init` seine Werkzeuge und MCP-Server. Die Live-Prüfung ist bestanden, wenn es keine MCP-Server und ausser `StructuredOutput` keine Werkzeuge meldet und das `structured_output` dem Schema entspricht. `StructuredOutput` erscheint, weil der Aufruf `--json-schema` verwendet; es dient der Übergabe der strukturierten Antwort.
+2. Mit `--output-format json` und `--setting-sources project,local` prüft `doctor`, ob die Ausgabe genau ein JSON-Objekt mit `structured_output` ist und ob die Anmeldung mit dieser Option funktioniert. Nur dann verwendet `ipa` die Option danach bei jedem Aufruf. Sie soll verhindern, dass Benutzereinstellungen wie Hooks aus `~/.claude/settings.json` geladen werden; nachweisen lässt sich das ohne Änderung der Benutzereinstellungen nicht.
+
+Weitere Regeln:
+
+- Scheitert der erste Aufruf, entfällt der zweite.
+- Lehnt die API die Anmeldung wiederholt ab (`authentication_failed`), obwohl `claude auth status` angemeldet meldet, bricht `doctor` ab, statt auf das Timeout zu warten. Abhilfe: `claude` einmal in einem normalen Terminal starten oder `claude auth login` ausführen, danach die Prüfung wiederholen.
+- Jeder Modellaufruf ergibt eine Zeile in `ai-usage.jsonl`.
+- Ein späteres `ipa doctor` ohne `--live` übernimmt das Live-Ergebnis, solange die Claude-Version gleich bleibt. Nach einem Update gilt es erst nach einem neuen `--live` wieder.
+- Läuft `ipa` innerhalb einer Claude-Code-Sitzung, gibt es deren Umgebungsvariablen (`CLAUDECODE`, `CLAUDE_CODE_ENTRYPOINT` …) nicht an `claude` weiter; Anmelde- und Anbietervariablen wie `CLAUDE_CONFIG_DIR` bleiben. `doctor` weist darauf hin. Für eine belastbare Live-Prüfung empfiehlt sich trotzdem ein normales Terminal.
+- Die Live-Prüfung zeigt, was Claude Code meldet. Sie ist keine Sandbox und kein Nachweis eines Schreibschutzes.
+
 ### `ipa status [--json]`
 
 Zeigt den Zustand des Arbeitsbereichs. Der Befehl ist nur lesend: kein Lock, kein Laufprotokoll, keine Datei wird geschrieben. Ein nicht initialisiertes Repository ergibt Exit-Code 2, ebenso eine ungültige `config.json`. Die Meldung nennt dann den JSON-Pfad des Fehlers.
@@ -198,6 +244,7 @@ Mit `--json` erscheint ein JSON-Objekt. Dieses Format ist ein stabiler Vertrag. 
 | `snapshots` | `{ total, baseline, work }`: Anzahl aller Snapshots, der Ausgangs- und der Arbeits-Snapshots |
 | `halt` | `null` oder `{ reason, detectedAt, expected: { branch, head }, observed: { branch, head } }` bei aktivem Halt |
 | `notesToday` | Anzahl der gültigen Notizen, deren Tätigkeitstag heute ist (in der Zeitzone aus `config.json`). Ungültige Zeilen der Notizdatei meldet `status` als Warnung auf stderr. |
+| `claude` | `null` oder `{ checkedAt, ok, cliVersion }` aus `doctor.json`: Zeitpunkt und Ergebnis der letzten Prüfung und die Version von Claude Code |
 
 ### Exit-Codes
 
@@ -205,11 +252,12 @@ Mit `--json` erscheint ein JSON-Objekt. Dieses Format ist ein stabiler Vertrag. 
 | --- | --- |
 | 0 | Erfolg, auch wenn `capture` keine neue Arbeit findet |
 | 1 | Unerwarteter interner Fehler. Mit `IPA_DEBUG=1` wird der Stacktrace ausgegeben. |
-| 2 | Bedienungs- oder Konfigurationsfehler: ungültige Argumente oder Konfiguration, kein Git-Repository, nicht initialisiert, kein Ausgangs-Snapshot, unzulässige oder nicht beschreibbare Datenwurzel, unbekannte Schemaversion, `ipa note` ohne Text und ohne Terminal oder mit abgebrochener Eingabe |
+| 2 | Bedienungs- oder Konfigurationsfehler: ungültige Argumente oder Konfiguration, kein Git-Repository, nicht initialisiert, kein Ausgangs-Snapshot, unzulässige oder nicht beschreibbare Datenwurzel, unbekannte Schemaversion, `ipa note` ohne Text und ohne Terminal oder mit abgebrochener Eingabe, ein Temp-Verzeichnis im Repository oder im Arbeitsbereich |
 | 3 | Ein anderer Lauf hält den Lock. |
 | 4 | Die Zuordnung ist wegen Branchwechsel oder umgeschriebener Historie angehalten. `ipa baseline` ist erforderlich. |
 | 5 | Der Arbeitsstand hat sich während der Aufnahme wiederholt verändert. Es wurde kein Snapshot gespeichert. |
-| 6, 7 | vorgesehen für spätere Pakete (KI-Schritt, Voraussetzungsprüfung) |
+| 6 | Der KI-Schritt ist nicht abgeschlossen, etwa weil Claude nicht einsatzbereit ist oder einen Fehler meldet. Gesicherte Daten bleiben offen. Tritt ab Paket 06 auf. |
+| 7 | `ipa doctor`: Die Voraussetzungen sind nicht erfüllt. |
 
 ## Zuordnung von Änderungen
 
@@ -407,36 +455,45 @@ Jede Auslassung steht mit Grund im Manifest, in `filterDecisions` und beim betro
 - **Git-Konfiguration:** Git wendet beim Berechnen der Blob-IDs konfigurierte Clean-Filter an, wie es auch `git status` tut. SHA-256-Repositories sind nicht geprüft.
 - Geprüft ist nur Windows 11 mit Node.js 24.
 
-## Claude-Vorabprüfung
+## Claude Code: Aufruf, Schutzwirkung und Grenzen
 
-Ein Skript prüft früh und nur mit künstlichen Daten, ob die installierte Claude-Code-CLI mit den vorgesehenen Optionen funktioniert. Es liest und schreibt nichts im Repository oder im Arbeitsbereich. Jeder Claude-Aufruf läuft ohne Shell in einem neuen, leeren Ordner unter dem Temp-Verzeichnis. Paket 05 ersetzt das Skript durch `ipa doctor --live`.
+Ab Paket 06 analysiert Claude Code neue Snapshots. Der Aufruf ist mit Paket 05 vorbereitet und mit `ipa doctor` prüfbar. Jeder Aufruf:
 
-```bash
-npm run probe:claude
-```
+- startet das Programm aus `claude.command` in `config.json` ohne Shell. Standard ist `["claude"]`. Ist Claude Code über npm installiert (`claude.cmd`), startet es ohne Shell nicht; dann gehört der absolute Pfad der `claude.exe` oder `["<pfad zu node.exe>", "<pfad zur cli.js von Claude Code>"]` in `claude.command`.
+- läuft in einem neuen, leeren Ordner `<Temp>/ipa-assistant/claude/<repositoryId>/<runId>-<n>/`, der nur `prompt.md` enthält und danach gelöscht wird. Er liegt immer ausserhalb von Repository und Arbeitsbereich, auch bei `--workspace .ipa`. Zeigt das Temp-Verzeichnis (unter Windows `TEMP` oder `TMP`, sonst `TMPDIR`) in das Repository oder den Arbeitsbereich, bricht der Aufruf vor dem Start mit Exit-Code 2 ab. Verwaiste Ordner älter als 24 Stunden entfernt der nächste Aufruf.
+- übergibt die Eingabe ausschliesslich über stdin und verwendet diese Optionen:
 
-Ohne `--live` findet **kein Modellaufruf** statt. Geprüft werden `claude --version`, `claude auth status` (übernommen werden nur `loggedIn` und `authMethod`) und alle vorgesehenen Optionen. Die Optionen prüft das Skript über die Meldung zu einer unbekannten Option.
+  ```text
+  -p "<Auftrag>" --output-format json --json-schema <Ausgabeschema> --tools "" --disallowedTools "mcp__*"
+  --strict-mcp-config --permission-mode dontAsk --disable-slash-commands --no-session-persistence
+  --max-turns <claude.maxTurns> --append-system-prompt-file <prompt.md im leeren Ordner>
+  [--setting-sources project,local]   nur nach bestandener Live-Prüfung damit
+  [--model <claude.model>]            nur mit konfiguriertem Modell
+  [--safe-mode]                       nur wenn ipa doctor die Option findet
+  ```
 
-```bash
-npm run probe:claude -- --live
-```
+- wird nach `claude.timeoutSeconds` (Standard 600 s) beendet.
+- wertet die Antwort in dieser Reihenfolge aus: nicht gefunden, nicht startbar, Timeout, kein einzelnes JSON-Objekt, Fehlerergebnis, Exit-Code ungleich 0 ohne Ergebnis, fehlendes `structured_output`. Die Rohausgabe bleibt zur Diagnose erhalten, stderr bis 64 KiB.
+- schreibt eine Zeile in `ai-usage.jsonl` mit Zweck, Zeitpunkten, CLI-Version, Modellen, Prompt- und Schemaversion, SHA-256 der Eingabe, IDs der Belege, Ergebnis, Kosten und Dauer. Prompt, Eingabe und Antwort stehen nicht darin.
+- gibt Variablen einer umgebenden Claude-Code-Sitzung nicht weiter, siehe `ipa doctor --live`. Sonst wird die Umgebung für die Anmeldung unverändert weitergegeben; das Tool setzt keine Geheimnisse und protokolliert die Umgebung nicht.
 
-`--live` führt höchstens drei kleine echte Modellaufrufe aus und verbraucht Kontingent. Nach einem Timeout folgen keine weiteren Aufrufe. Die Eingabe ist ein künstliches Paket mit einer eingebetteten Aufforderung, Dateien zu löschen und Befehle auszuführen. Ausgewertet werden:
+Vor dem ersten Aufruf eines Laufs prüft `ipa`, ob `doctor.json` alle Pflichtoptionen meldet. Sonst führt es `ipa doctor` ohne `--live` einmal aus. Scheitert das, endet der Lauf mit Exit-Code 6.
 
-- die im Ereignis `system/init` gemeldeten Werkzeuge und MCP-Server
-- ob stdout genau ein JSON-Objekt ist
-- ob `structured_output` dem Schema entspricht
-- ob die Anmeldung auch mit `--setting-sources project,local` funktioniert
-- ob im Temp-Ordner Dateien entstanden sind
+**Schutzwirkung:** Die Optionen schränken die Möglichkeiten des Modells ein. Sie sind **keine Betriebssystem-Sandbox und kein garantierter Schreibschutz**. Der Schutz des Projekts beruht auf diesen Massnahmen zusammen:
 
-Das Ergebnis erscheint als JSON auf stdout, ohne E-Mail-Adresse, Organisation oder Token. Pro Annahme steht `bestätigt`, `widerlegt` oder `unklar`. Exit-Codes: 0 alles in Ordnung, 1 Claude nicht startbar, 2 ungültige Argumente, 3 Befunde.
+1. keine eingebauten und keine MCP-Werkzeuge, zusätzlich `--permission-mode dontAsk`
+2. ein leeres Arbeitsverzeichnis ausserhalb von Repository und Arbeitsbereich, ohne Freigabe weiterer Ordner
+3. die Eingabe nur über stdin
+4. `ipa` führt keine Vorschläge des Modells aus
 
-Hinweise:
+**Restrisiken:**
 
-- Die Prüfung sollte in einem normalen Terminal laufen, nicht innerhalb einer Claude-Code-Sitzung. Deren Umgebungsvariablen (`CLAUDECODE`, `CLAUDE_CODE_*`) verändern das Verhalten von `claude`. Das Skript erkennt diesen Fall. Mit `--isolate-env` gibt es diese Variablen nicht an `claude` weiter.
-- `claude auth status` meldet nur, ob Anmeldedaten vorhanden sind. Meldet die Live-Prüfung `authentication_failed`, hilft es, `claude` einmal interaktiv in einem normalen Terminal zu starten oder `claude auth login` auszuführen und die Prüfung zu wiederholen.
-- Die Prüfung zeigt, welche Werkzeuge Claude Code meldet. Sie ist keine Sandbox und kein Nachweis eines Schreibschutzes.
-- Die Ergebnisse der bisherigen Prüfungen stehen in `docs/implementation/spec.md` §18.
+- Verwaltete Firmenrichtlinien und deren Hooks wirken immer.
+- Benutzerweite Einstellungen wie Hooks oder `~/.claude/CLAUDE.md` wirken unabhängig vom Arbeitsverzeichnis. `--setting-sources project,local` klammert die Benutzereinstellungen aus, sobald die Live-Prüfung zeigt, dass die Anmeldung damit funktioniert. `~/.claude/CLAUDE.md` betrifft das nach heutigem Kenntnisstand nicht. `--safe-mode` schaltet laut Beschreibung von Claude Code Anpassungen wie `CLAUDE.md`, Hooks und Plugins ab; geprüft ist diese Wirkung nicht.
+- Das Betriebssystem verhindert keine Schreibzugriffe. Eine Isolation über einen eigenen Benutzer oder einen Container gehört nicht zu V1.
+- `ipa doctor --live` zeigt nur, welche Werkzeuge Claude Code meldet. Ein Prompt allein ist nie eine Schutzmassnahme.
+
+Die Claude-Vorabprüfung aus Paket 01 ist durch `ipa doctor --live` ersetzt. Ihre Ergebnisse und die der späteren Prüfungen stehen in `docs/implementation/spec.md` §18.
 
 ## Entwicklung
 
@@ -445,14 +502,15 @@ Hinweise:
 | `npm run build` | TypeScript nach `dist/` übersetzen |
 | `npm run typecheck` | Typprüfung von Quellcode, Tests und Skripten |
 | `npm test` | alle automatischen Tests (Vitest) |
-| `npm run probe:claude` | Claude-Vorabprüfung, siehe oben |
+| `npm run test:live` | Live-Test mit dem installierten Claude Code (`ipa doctor --live`, zwei kleine Modellaufrufe). Läuft nur mit `IPA_LIVE_CLAUDE=1` und ist nicht Teil von `npm test`. |
 
 Zu den Tests:
 
 - `npm test` baut zuerst `dist/`, weil Integrationstests den echten CLI-Einstieg starten.
 - Jeder Test arbeitet mit temporären Git-Repositories und einer eigenen temporären Datenwurzel. Das globale Setup setzt `IPA_ASSISTANT_HOME`, `LOCALAPPDATA` und `XDG_DATA_HOME` auf ein Temp-Verzeichnis, blendet die Git-Konfiguration des Rechners aus und prüft am Ende, dass die echte Datenwurzel unverändert ist.
 - Die Tests prüfen die Unversehrtheit der Test-Repositories über einen Fingerprint.
-- Automatische Tests rufen Claude nie echt auf.
+- Automatische Tests rufen Claude nie echt auf. Sie verwenden die Fake-CLI `test/helpers/fake-claude.mjs` über `claude.command`. Das globale Setup nimmt `claude` zusätzlich aus dem PATH der Testprozesse und legt ihr Temp-Verzeichnis in den Test-Ordner.
+- Der Live-Test verbraucht Claude-Kontingent und läuft nur auf ausdrücklichen Wunsch, in PowerShell mit `$env:IPA_LIVE_CLAUDE = '1'; npm run test:live`.
 
 Aufbau:
 
@@ -464,7 +522,7 @@ src/git/            Git-Aufrufe nur über die Leseliste, Parser für -z-Ausgaben
 src/filter/         Pfadfilter und Secret-Prüfung
 src/collector/      Aufnahme, Konsistenzprüfung, Manifest, atomare Ablage, Wiederanlauf
 src/notes/          Notizen: Regeln der Eingabe, Ablage und Lesen (hängt nur von src/core/ ab)
+src/claude/         Claude-Aufruf ohne Werkzeuge und ohne Shell, Auswertung, ipa doctor, KI-Nutzungsprotokoll
 schemas/            JSON Schemas (draft-07)
-scripts/            Claude-Vorabprüfung
-test/               Tests und Test-Helfer
+test/               Tests und Test-Helfer, test/live/ für den Live-Test
 ```

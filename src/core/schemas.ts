@@ -6,7 +6,17 @@ import path from 'node:path';
 import { Ajv, type ErrorObject, type ValidateFunction } from 'ajv';
 import { TOOL_ROOT } from './tool.js';
 
-export const SCHEMA_IDS = ['config', 'state', 'registry', 'run-record', 'manifest', 'note'] as const;
+export const SCHEMA_IDS = [
+  'config',
+  'state',
+  'registry',
+  'run-record',
+  'manifest',
+  'note',
+  'ai-usage',
+  'doctor',
+  'attempt-outcome',
+] as const;
 export type SchemaId = (typeof SCHEMA_IDS)[number];
 
 /** V1 has no migration (D-18). */

@@ -394,7 +394,8 @@ describe('ipa note und ipa status (AK-04-10, AK-04-11)', () => {
     const status = await runCli(['status', '--json'], { dataDir, repo: repo.root });
     expect(status.exitCode).toBe(0);
     const report = JSON.parse(status.stdout) as Record<string, unknown>;
-    expect(Object.keys(report).at(-1)).toBe('notesToday');
+    // Package 05 appends `claude` after `notesToday` (spec.md §6.6).
+    expect(Object.keys(report).slice(-2)).toEqual(['notesToday', 'claude']);
     // Only a run across midnight in Zurich would see a different day.
     if (zurichDay() === today) expect(report['notesToday']).toBe(2);
     const human = await runCli(['status'], { dataDir, repo: repo.root });

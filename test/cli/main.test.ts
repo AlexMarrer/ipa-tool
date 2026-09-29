@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { CommanderError } from 'commander';
@@ -30,11 +31,11 @@ function listedCommands(help: string): string[] {
     .filter((name): name is string => name !== undefined);
 }
 
-describe('CLI-Rahmen (AK-01-02, AK-02-18, AK-03-14, AK-04-11)', () => {
-  it('ipa --help listet init, status, capture, baseline und note, aber keine Befehle späterer Pakete (AK-04-11)', async () => {
+describe('CLI-Rahmen (AK-01-02, AK-02-18, AK-03-14, AK-04-11, AK-05-10)', () => {
+  it('ipa --help listet init, status, doctor, capture, baseline und note, aber keine Befehle späterer Pakete (AK-05-10)', async () => {
     const result = await runCli(['--help'], { dataDir: null });
     expect(result.exitCode).toBe(0);
-    expect(listedCommands(result.stdout)).toEqual(['init', 'status', 'capture', 'baseline', 'note']);
+    expect(listedCommands(result.stdout)).toEqual(['init', 'status', 'doctor', 'capture', 'baseline', 'note']);
     expect(result.stdout).toContain('--repo <pfad>');
     expect(result.stdout).toContain('--data-dir <pfad>');
     expect(result.stdout).not.toMatch(/\bhelp \[command\]/);
@@ -74,6 +75,24 @@ describe('CLI-Rahmen (AK-01-02, AK-02-18, AK-03-14, AK-04-11)', () => {
     expect(result.stdout).toContain('--timezone <iana>');
     expect(result.stdout).toContain('Globale Optionen:');
     expect(result.stdout).toContain('--data-dir <pfad>');
+  });
+
+  it('ersetzt die Claude-Vorabprüfung aus Paket 01 durch ipa doctor --live (AK-05-10, D-24)', async () => {
+    const pkg = JSON.parse(await readFile(path.join(TOOL_ROOT, 'package.json'), 'utf8')) as { scripts: Record<string, string> };
+    expect(pkg.scripts['probe:claude']).toBeUndefined();
+    expect(existsSync(path.join(TOOL_ROOT, 'scripts', 'claude-probe.mjs'))).toBe(false);
+    // The live tests are a separate configuration that `npm test` (test/**/*.test.ts) does not include.
+    expect(pkg.scripts['test:live']).toBe('vitest run --config vitest.live.config.ts');
+    expect(pkg.scripts['test']).toBe('vitest run');
+    expect(existsSync(path.join(TOOL_ROOT, 'test', 'live', 'doctor.live.ts'))).toBe(true);
+    const readme = await readFile(path.join(TOOL_ROOT, 'README.md'), 'utf8');
+    expect(readme).toContain('ipa doctor --live');
+    expect(readme).not.toContain('probe:claude');
+    expect(readme).not.toContain('claude-probe');
+
+    const help = await runCli(['doctor', '--help'], { dataDir: null });
+    expect(help.exitCode).toBe(0);
+    expect(help.stdout).toContain('--live');
   });
 
   it('übersetzt Commander-Meldungen ins Deutsche', () => {

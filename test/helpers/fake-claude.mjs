@@ -1,0 +1,222 @@
+/**
+ * Fake Claude Code CLI for the automatic tests (spec.md §16.2). It never calls a model.
+ *
+ * Used via `claude.command = [process.execPath, <this file>]` and controlled only by environment
+ * variables of the test (the tool itself sets none of them):
+ *   FAKE_CLAUDE_MODE         ok (default) | invalid-json | extra-text | error-result | no-structured | exit-nonzero
+ *                            | hang | hang-no-stdin | hang-ignore-term | stderr-flood | writes-file | tools | mcp
+ *                            | settings-auth-fail | auth-retry | logged-out | auth-no-json
+ *   FAKE_CLAUDE_UNSUPPORTED  comma-separated options reported as unknown, for example "--safe-mode" like 2.1.114
+ *   FAKE_CLAUDE_VERSION      output of --version, default 9.9.9
+ *   FAKE_CLAUDE_OUTPUT       JSON text for structured_output, default {"ok":true}
+ *   FAKE_CLAUDE_LOG          file that receives one JSON line per call
+ */
+import { createHash } from 'node:crypto';
+import { appendFileSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
+
+const mode = process.env['FAKE_CLAUDE_MODE'] ?? 'ok';
+const logFile = process.env['FAKE_CLAUDE_LOG'];
+const unsupported = new Set((process.env['FAKE_CLAUDE_UNSUPPORTED'] ?? '').split(',').filter((flag) => flag !== ''));
+const version = process.env['FAKE_CLAUDE_VERSION'] ?? '9.9.9';
+const args = process.argv.slice(2);
+
+const VALUE_OPTIONS = new Set([
+  '--output-format',
+  '--json-schema',
+  '--tools',
+  '--disallowedTools',
+  '--permission-mode',
+  '--max-turns',
+  '--append-system-prompt-file',
+  '--setting-sources',
+  '--model',
+]);
+const FLAG_OPTIONS = new Set([
+  '-p',
+  '--print',
+  '--strict-mcp-config',
+  '--disable-slash-commands',
+  '--no-session-persistence',
+  '--verbose',
+  '--safe-mode',
+]);
+
+/** @param {Record<string, unknown>} entry */
+function record(entry) {
+  if (logFile) appendFileSync(logFile, `${JSON.stringify({ ...entry, pid: process.pid })}\n`);
+}
+
+/** @param {unknown} value */
+function print(value) {
+  process.stdout.write(`${typeof value === 'string' ? value : JSON.stringify(value)}\n`);
+}
+
+function hang() {
+  setInterval(() => undefined, 60_000);
+}
+
+/** @returns {Promise<Buffer>} */
+async function readStdin() {
+  /** @type {Buffer[]} */
+  const chunks = [];
+  for await (const chunk of process.stdin) chunks.push(/** @type {Buffer} */ (chunk));
+  return Buffer.concat(chunks);
+}
+
+if (args[0] === '--version' || args[0] === '-v') {
+  record({ kind: 'version' });
+  print(`${version} (Claude Code)`);
+  process.exit(0);
+}
+
+if (args[0] === 'auth' && args[1] === 'status') {
+  record({ kind: 'auth' });
+  if (mode === 'auth-no-json') {
+    print('Not logged in');
+    process.exit(1);
+  }
+  const loggedIn = mode !== 'logged-out';
+  // Personal fields that the tool must drop (AK-05-06).
+  print({
+    loggedIn,
+    authMethod: loggedIn ? 'claude.ai' : 'none',
+    apiProvider: 'firstParty',
+    email: 'person@example.com',
+    orgId: '5f3c0000-1111-2222-3333-444455556666',
+    orgName: 'Geheime Firma AG',
+    subscriptionType: 'max',
+    accessToken: 'sk-ant-oat01-FAKEFAKEFAKEFAKEFAKEFAKE',
+  });
+  process.exit(loggedIn ? 0 : 1);
+}
+
+/** @type {Record<string, string | boolean>} */
+const options = {};
+/** @type {string | null} */
+let prompt = null;
+for (let index = 0; index < args.length; index += 1) {
+  const arg = /** @type {string} */ (args[index]);
+  if (arg.startsWith('-') && unsupported.has(arg)) {
+    record({ kind: 'unknown-option', option: arg, args });
+    process.stderr.write(`error: unknown option '${arg}'\n`);
+    process.exit(1);
+  }
+  if (VALUE_OPTIONS.has(arg)) {
+    options[arg] = args[index + 1] ?? '';
+    index += 1;
+  } else if (FLAG_OPTIONS.has(arg)) {
+    options[arg] = true;
+  } else if (arg.startsWith('-')) {
+    // Like Commander: the first unknown option ends the program before anything else happens.
+    record({ kind: 'unknown-option', option: arg, args });
+    process.stderr.write(`error: unknown option '${arg}'\n`);
+    process.exit(1);
+  } else if (prompt === null) {
+    prompt = arg;
+  }
+}
+
+if (options['-p'] !== true && options['--print'] !== true) {
+  process.stderr.write('fake-claude: interaktiver Modus wird nicht nachgebildet\n');
+  process.exit(2);
+}
+
+const promptFile = typeof options['--append-system-prompt-file'] === 'string' ? options['--append-system-prompt-file'] : null;
+/** @param {Buffer | null} stdin */
+function modelCall(stdin) {
+  let promptFileSha256 = null;
+  try {
+    if (promptFile !== null) promptFileSha256 = createHash('sha256').update(readFileSync(promptFile)).digest('hex');
+  } catch {
+    promptFileSha256 = 'nicht lesbar';
+  }
+  record({
+    kind: 'model-call',
+    args,
+    stdin: stdin !== null && stdin.length <= 65536 ? stdin.toString('utf8') : null,
+    stdinBytes: stdin === null ? null : stdin.length,
+    stdinSha256: stdin === null ? null : createHash('sha256').update(stdin).digest('hex'),
+    cwd: process.cwd(),
+    cwdFiles: readdirSync(process.cwd()).sort(),
+    promptFileSha256,
+    env: Object.keys(process.env)
+      .filter((name) => /^(CLAUDE|MCP_)/i.test(name))
+      .sort(),
+  });
+}
+
+if (mode === 'hang-no-stdin') {
+  modelCall(null);
+  hang();
+} else {
+  const stdin = await readStdin();
+  modelCall(stdin);
+  respond();
+}
+
+function respond() {
+  const streaming = options['--output-format'] === 'stream-json';
+  const settingSources = typeof options['--setting-sources'] === 'string';
+  if (mode === 'hang' || (mode === 'auth-retry' && !streaming)) return hang();
+  if (mode === 'hang-ignore-term') {
+    process.on('SIGTERM', () => undefined);
+    return hang();
+  }
+  if (mode === 'exit-nonzero') {
+    process.stderr.write('Fehler: künstlicher Absturz der Fake-CLI\n');
+    process.exitCode = 3;
+    return;
+  }
+  if (mode === 'invalid-json') {
+    print('{"type":"result", kaputt');
+    return;
+  }
+  if (mode === 'stderr-flood') process.stderr.write('x'.repeat(100 * 1024));
+  if (mode === 'writes-file') writeFileSync(path.join(process.cwd(), 'doctor-injektion.txt'), 'nicht erlaubt');
+
+  const structured = JSON.parse(process.env['FAKE_CLAUDE_OUTPUT'] ?? '{"ok":true}');
+  const success = {
+    type: 'result',
+    subtype: 'success',
+    is_error: false,
+    duration_ms: 1234,
+    num_turns: 2,
+    result: '',
+    ...(mode === 'no-structured' ? {} : { structured_output: structured }),
+    total_cost_usd: 0.0123,
+    modelUsage: { 'claude-fake-model': { inputTokens: 10, outputTokens: 5 } },
+    permission_denials: [],
+  };
+  const failed =
+    mode === 'error-result'
+      ? { type: 'result', subtype: 'error_max_turns', is_error: true, duration_ms: 2000, total_cost_usd: 0.002, modelUsage: {} }
+      : mode === 'settings-auth-fail' && settingSources
+        ? { type: 'result', subtype: 'success', is_error: true, result: 'Invalid API key · Please run /login', modelUsage: {} }
+        : null;
+
+  if (streaming) {
+    const tools = mode === 'tools' ? ['Bash', 'Read', 'StructuredOutput'] : ['StructuredOutput'];
+    const servers = mode === 'mcp' ? [{ name: 'firma-server', status: 'connected' }] : [];
+    print({ type: 'system', subtype: 'init', tools, mcp_servers: servers, model: 'claude-fake-model', cwd: process.cwd() });
+    if (mode === 'auth-retry') {
+      // Like the real CLI after a rejected login: retries until the timeout.
+      let attempt = 0;
+      const retry = () => {
+        attempt += 1;
+        print({ type: 'system', subtype: 'api_retry', attempt, error: 'authentication_failed' });
+      };
+      retry();
+      setInterval(retry, 200);
+      return;
+    }
+    print({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'StructuredOutput', input: structured }] } });
+    print(failed ?? success);
+    process.exitCode = failed === null ? 0 : 1;
+    return;
+  }
+  if (mode === 'extra-text') print('Eine neue Version von Claude Code ist verfügbar.');
+  print(failed ?? success);
+  // No process.exit(): large outputs such as the stderr flood must reach the pipe completely.
+  process.exitCode = failed === null ? 0 : 1;
+}

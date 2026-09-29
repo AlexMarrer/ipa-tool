@@ -6,7 +6,7 @@ import path from 'node:path';
 import { inject } from 'vitest';
 
 const root = inject('ipaTestRoot');
-Object.assign(process.env, inject('ipaTestEnv'));
+Object.assign(process.env, inject('ipaTestEnv'), inject('ipaWorkerEnv'));
 
 const home = process.env['IPA_ASSISTANT_HOME'] ?? '';
 const relative = path.relative(root, home);
