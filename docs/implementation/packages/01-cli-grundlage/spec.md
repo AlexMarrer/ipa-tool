@@ -207,5 +207,13 @@ Das Ergebnis lautet pro Annahme `bestätigt`, `widerlegt` oder `unklar`. Die tem
 
 ## 9. Offene Annahmen
 
-- Der Befehlsname `ipa` kann auf einem Rechner mit einem anderen Programm kollidieren. Tritt das auf, wird der Konflikt in spec.md §18 dokumentiert. Eine Umbenennung entscheidet der Benutzer.
+- Der Befehlsname `ipa` kann auf einem Rechner mit einem anderen Programm kollidieren. Tritt das auf, wird der Konflikt in spec.md §18 dokumentiert. Eine Umbenennung entscheidet der Benutzer. Stand 29.09.2026: Auf dem Entwicklungsrechner gibt es keine Kollision (spec.md §18).
 - Die Vorabprüfung prüft A-08 nur auf Anmeldung und Funktion. Ob Benutzer-Hooks tatsächlich ausgeklammert sind, lässt sich ohne Änderung der Benutzereinstellungen nicht nachweisen (spec.md §13.4).
+
+Folgen aus der Umsetzung (29.09.2026, Einzelheiten in spec.md §18):
+
+- Die Live-Vorabprüfung wurde zweimal ausgeführt. A-01, A-04 und A-05 sind bestätigt. A-02, A-03 und A-08 blieben unklar, weil die API die gespeicherte Anmeldung der CLI mit `authentication_failed` ablehnte, obwohl `claude auth status` angemeldet meldet. Vor Paket 05 soll der Benutzer `claude` in einem normalen Terminal neu anmelden und `npm run probe:claude -- --live` dort wiederholen. Spätestens AK-05-09 bestätigt die Annahmen mit Produktcode.
+- Das Init-Ereignis meldet mit `--json-schema` das Werkzeug `StructuredOutput`. spec.md §13.4 erlaubt genau dieses Werkzeug; Paket 05 übernimmt das für `live.ok` und AK-05-09.
+- Innerhalb einer Claude-Code-Sitzung erbt `claude` deren Umgebungsvariablen. Die Vorabprüfung erkennt das und bietet `--isolate-env`. Über die Behandlung im `ClaudeRunner` entscheidet Paket 05.
+- Mit dem Skript entfallen in Paket 05 auch `test/scripts/claude-probe.test.ts` und `test/helpers/fake-claude-probe.mjs`.
+- Zusätzlich zur Paketspezifikation serialisiert `init` die Registry-Ergänzung über `registry.lock` und räumt bei einem Abbruch vor dem Registry-Eintrag die eigenen Dateien auf (spec.md §5.3, §8.5).

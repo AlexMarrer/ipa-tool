@@ -15,7 +15,7 @@ Nachfolgende Pakete dürfen beginnen, sobald ihre Voraussetzungen mindestens `te
 
 | Paket | Status | Checkliste | Offene Punkte / Hinweis |
 | --- | --- | --- | --- |
-| 01 – CLI-Grundlage | offen | [checklist](packages/01-cli-grundlage/checklist.md) | – |
+| 01 – CLI-Grundlage | technisch abgeschlossen | [checklist](packages/01-cli-grundlage/checklist.md) | Offen ist nur die manuelle Prüfung `npm install --global .` mit `ipa init` in einer Windows-Konsole (Ersatzprüfung mit Temp-Prefix bestanden). Live-Vorabprüfung am 29.09.2026 ausgeführt: A-02, A-03 und A-08 unklar wegen abgelehnter Anmeldung, Wiederholung vor Paket 05 empfohlen (spec.md §18). |
 | 02 – Snapshot-Erfassung | offen | [checklist](packages/02-snapshot-erfassung/checklist.md) | – |
 | 03 – Änderungszuordnung | offen | [checklist](packages/03-aenderungszuordnung/checklist.md) | – |
 | 04 – Notizen | offen | [checklist](packages/04-notizen/checklist.md) | – |
@@ -54,7 +54,7 @@ Eine Zeile wird abgehakt, wenn alle genannten Akzeptanzkriterien nachgewiesen si
 
 ## Übergreifende Punkte
 
-- [ ] Claude-Vorabprüfung aus Paket 01 durchgeführt, Ergebnis in spec.md §18 (AK-01-18). Bei widerlegtem A-01 oder A-02 ist O-02 vor Paket 05 entschieden.
+- [x] Claude-Vorabprüfung aus Paket 01 durchgeführt, Ergebnis in spec.md §18 (AK-01-18). Bei widerlegtem A-01 oder A-02 ist O-02 vor Paket 05 entschieden. Nachweis: 29.09.2026, Claude Code 2.1.114. A-01, A-04 und A-05 bestätigt, A-02, A-03 und A-08 unklar (Anmeldung abgelehnt), keine Annahme widerlegt; O-02 daher nicht vorgezogen. Wiederholung in einem normalen Terminal nach neuer Anmeldung empfohlen.
 - [ ] Alle Annahmen A-01 bis A-08 in spec.md §18 als bestätigt oder widerlegt eingetragen
 - [ ] Offene Entscheidungen O-02 bis O-08 mit dem Benutzer geklärt oder bewusst mit Standardwert belassen, Ergebnis in spec.md §18. O-01 ist bereits entschieden.
 - [ ] Stichprobenprüfung „Beleg trägt Aussage“ für Work-Logs und Journale im Abnahmeprotokoll dokumentiert (AK-08-08)

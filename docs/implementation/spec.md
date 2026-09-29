@@ -202,7 +202,7 @@ Keine dieser Entscheidungen blockiert die Pakete 01 bis 07. Die gewählten Stand
 ### 4.3 Abhängigkeitsregeln
 
 - `cli` darf alle Komponenten verwenden. Keine andere Komponente importiert `cli`.
-- `core` importiert keine andere Komponente des Tools.
+- `core` importiert keine andere Komponente des Tools. Einzige Ausnahme ist `src/git/runner.ts` (`createGitRunner`) für die Repository-Auflösung in `resolveContext` und `init` (§5.4, §14.2). `src/git/runner.ts` importiert seinerseits nichts aus anderen Komponenten, damit kein Importzyklus entsteht (§18).
 - `collector` und `claude` hängen nur von `core`, `git` und `filter` ab. `notes` hängt nur von `core` ab (D-23).
 - `analysis` darf Lesefunktionen von `collector` sowie `notes` und `claude` verwenden. `journal` darf zusätzlich Lesefunktionen von `analysis` verwenden.
 - Schreibzugriffe auf den Arbeitsbereich laufen über die Schreibfunktionen aus §8.5. Das Repository wird nur gelesen.
@@ -247,6 +247,8 @@ Die Datenwurzel wird in dieser Reihenfolge bestimmt:
    - macOS: `~/Library/Application Support/ipa-assistant` (nicht geprüft)
    - Linux: `$XDG_DATA_HOME/ipa-assistant`, sonst `~/.local/share/ipa-assistant` (nicht geprüft)
 
+Eine leere Option `--data-dir` ist ein Bedienungsfehler (Exit-Code 2). Eine leere Umgebungsvariable `IPA_ASSISTANT_HOME` gilt als nicht gesetzt. Fehlt unter Windows `LOCALAPPDATA`, endet der Befehl mit Exit-Code 2 und verweist auf `--data-dir` und `IPA_ASSISTANT_HOME` (§18).
+
 Regeln für die Datenwurzel:
 
 - Liegt die Datenwurzel im Repository oder das Repository in der Datenwurzel, bricht der Befehl mit Exit-Code 2 ab.
@@ -261,7 +263,8 @@ Speicherort des Arbeitsbereichs:
 - **Alternative:** ein bei `ipa init --workspace <pfad>` ausdrücklich gewählter Ordner (D-21)
   - Relative Pfade gelten relativ zur Repository-Wurzel. `--workspace .ipa` ergibt also `<repo>/.ipa/`.
   - Der Ordner muss leer sein oder darf noch nicht existieren.
-  - Er darf nicht die Repository-Wurzel selbst sein und nicht in `.git/` liegen. Andernfalls endet `init` mit Exit-Code 2.
+  - Er darf nicht die Repository-Wurzel selbst sein und nicht in `.git/` liegen. Andernfalls endet `init` mit Exit-Code 2. Als `.git/` gelten `<repo>/.git` sowie das tatsächliche und das gemeinsame Git-Verzeichnis (`git rev-parse --git-dir`, `--git-common-dir`).
+  - Er darf das Repository nicht enthalten und weder die Datenwurzel sein noch sie enthalten (§18).
   - Liegt der Ordner im Repository und ist er laut `git check-ignore` nicht ignoriert, gibt `init` einen Hinweis aus: Eintrag in `.gitignore` oder `.git/info/exclude` empfohlen. Das Tool ändert diese Dateien nicht.
 
 Der Aufbau des Arbeitsbereichs steht in §8.1 und ist unabhängig vom Speicherort.
@@ -283,6 +286,7 @@ Liegt der Arbeitsbereich im Repository:
 2. `git rev-parse --show-toplevel` liefert die Wurzel. Bare-Repositories werden abgelehnt.
 3. Der kanonische Pfad ist `fs.realpath` der Wurzel mit `/` als Trennzeichen. Unter Windows wird der Laufwerksbuchstabe gross geschrieben, und Vergleiche unterscheiden nicht zwischen Gross- und Kleinschreibung.
 4. Danach wird der Pfad in der Registry nachgeschlagen. Ohne Eintrag melden alle Befehle ausser `init` „nicht initialisiert“ mit Exit-Code 2.
+5. Verweist der Eintrag auf einen fehlenden Arbeitsbereich (Ordner oder `config.json` fehlt), melden alle Befehle einschliesslich `init` Exit-Code 2 mit Hinweis. Es gibt keine automatische Neuanlage, auch nicht am registrierten Ort (§18).
 
 Ein verschobenes Repository muss in V1 neu initialisiert werden. Das README dokumentiert diese Grenze.
 
@@ -384,7 +388,9 @@ Ein Feld erscheint erst, wenn das genannte Paket es liefert.
 | `repositoryId`, `repoPath`, `workspacePath`, `dataRoot`, `timezone` | string | 01 |
 | `workspaceMode` | `"default"` \| `"explicit"` | 01 |
 | `baselineSnapshotId`, `lastSnapshotId`, `lastAnalysedSnapshotId`, `lastSuccessfulRun` | string \| null | 01 |
-| `lastRun` | letzter Eintrag aus `runs.jsonl` ohne Details in `errors`, oder null | 01 |
+| `lastRun` | letzter gültiger Eintrag aus `runs.jsonl`, dessen `errors` nur `{ code }` ohne `message` enthält, oder null | 01 |
+
+Die Felder erscheinen in der Reihenfolge der Tabelle. Ungültige Zeilen in `runs.jsonl` meldet `status` als Warnung auf stderr.
 | `snapshots` | `{ total, baseline, work }` | 02 |
 | `halt` | Halt-Objekt (§9.1) oder null | 03 |
 | `notesToday` | number | 04 |
@@ -469,6 +475,7 @@ Der Arbeitsbereich liegt standardmässig unter `<Datenwurzel>/workspaces/<reposi
 ```text
 <Datenwurzel>/
   registry.json
+  registry.lock                          nur während init die Registry ergänzt (§8.5)
   workspaces/<repositoryId>/             Standardort; alternativ z. B. <repo>/.ipa/
     config.json                          Konfiguration (§7)
     state.json                           Fortschritt und Cursor (§9.1)
@@ -526,7 +533,7 @@ Diese Regex-Muster gelten in allen Schemas:
 
 - Jede gespeicherte JSON-Datei und jede JSONL-Zeile trägt `schemaVersion: 1`.
 - Für jede Dateiart gibt es ein Schema unter `schemas/`. Die Dateinamen lauten `config`, `state`, `registry`, `manifest`, `note`, `analysis-input`, `analysis-output`, `analysis-record`, `complete`, `skip`, `retry`, `attempt-outcome`, `journal-input`, `journal-output`, `journal-record`, `run-record`, `ai-usage` und `doctor`, jeweils mit der Endung `.schema.json`.
-- Ajv läuft im draft-07-Modus mit `strict: true` und `allErrors: true`. Alle Objekte verwenden `additionalProperties: false`.
+- Ajv läuft im draft-07-Modus mit `strict: true`, `allErrors: true` und `allowUnionTypes: true`. Die letzte Option erlaubt im strikten Modus Typen wie `["string", "null"]` (§18). Alle Objekte verwenden `additionalProperties: false`.
 - Die Schemas, die an Claude gehen (`analysis-output`, `journal-output`), enthalten kein `$schema`, kein `$id` und kein `format` (A-02). Kompakt serialisiert sind sie kürzer als 8000 Zeichen, damit das Windows-Limit für Befehlszeilen eingehalten wird.
 - Jede Datei wird beim Lesen validiert. Eine ungültige Einzeldatei führt zu Exit-Code 2 mit Pfad und Schemafehler. JSONL-Leser überspringen ungültige Zeilen und melden sie (§8.5).
 
@@ -542,10 +549,12 @@ Diese Regex-Muster gelten in allen Schemas:
 
 Regeln für den Lock:
 
-- Die Datei `lock` enthält `{ pid, hostname, command, runId, startedAt }` und wird mit `wx` angelegt.
+- Die Datei `lock` enthält `{ pid, hostname, command, runId, startedAt }` und wird mit `wx` angelegt. Sie ist eine flüchtige Steuerdatei ohne `schemaVersion` und ohne Schema; §8.4 gilt für sie nicht (§18).
 - Hält ein anderer Lauf den Lock, endet der Befehl mit Exit-Code 3.
 - Stammt der Lock vom selben Rechner und läuft der Prozess `pid` nicht mehr (`process.kill(pid, 0)`), wird der Lock entfernt und im Laufprotokoll als `lockBroken` vermerkt.
 - Stammt der Lock von einem anderen Rechner, wird er nie automatisch entfernt.
+- Eine unlesbare Lock-Datei gilt nach einem zweiten Leseversuch als gehalten und wird nicht entfernt.
+- `init` ergänzt die Registry unter `<Datenwurzel>/registry.lock` mit denselben Regeln, damit gleichzeitige Läufe keinen Eintrag verlieren. Auf diesen Lock wird höchstens 5 Sekunden gewartet, danach folgt Exit-Code 3 (§18).
 
 ---
 
@@ -803,8 +812,11 @@ interface WorkspaceContext {
   dataRoot: string; repoRoot: string; repositoryId: string; workspaceDir: string;
   config: Config; clock: Clock; runId: string;
 }
-resolveContext(opts: { repo?: string; dataDir?: string; requireInit: boolean }): Promise<WorkspaceContext>
-withLock<T>(ctx: WorkspaceContext, command: string, fn: () => Promise<T>): Promise<T> // wirft LockHeldError
+resolveContext(opts: { repo?: string; dataDir?: string; requireInit: true; clock?: Clock }): Promise<WorkspaceContext>
+resolveContext(opts: { repo?: string; dataDir?: string; requireInit: boolean; clock?: Clock }): Promise<WorkspaceContext | null>
+  // requireInit: true → nicht registriert ergibt Exit-Code 2; false → null. Fehlender Arbeitsbereich: immer Exit-Code 2.
+  // Ohne clock gilt die Systemuhr. resolveContext schreibt nichts.
+withLock<T>(ctx: WorkspaceContext, command: string, fn: (lock: { lockBroken: boolean }) => Promise<T>): Promise<T> // wirft LockHeldError
 writeFileAtomic(path: string, data: string | Uint8Array): Promise<void>
 createFileExclusive(path: string, data: string): Promise<void>
 appendJsonl(path: string, record: unknown, schemaId: SchemaId): Promise<void>
@@ -818,8 +830,10 @@ class IpaError extends Error { code: string; exitCode: 0|1|2|3|4|5|6|7 }
 interface GitRunner {
   run(args: readonly string[], opts?: { cwd?: string; input?: Uint8Array; okExitCodes?: number[] }):
     Promise<{ stdout: Buffer; stderr: string; exitCode: number }>
+  // Verstösse gegen die Leseliste ergeben ein abgelehntes Promise (GitPolicyError), ohne Prozessstart.
 }
-createGitRunner(repoRoot: string): GitRunner   // Leseliste §14.2
+createGitRunner(repoRoot: string, opts?: { workspaceDir?: string }): GitRunner
+  // Leseliste §14.2. Liegt workspaceDir im Repository, erhalten auflistende Aufrufe die Ausschluss-Pathspec.
 
 // filter
 interface PathFilter { decide(path: string): { allowed: true } | { allowed: false; rule: string } }
@@ -1107,6 +1121,7 @@ Für Journale wird der `-p`-Text sinngemäss angepasst.
 Weitere Regeln:
 
 - Die Prozessumgebung wird für die Anmeldung durchgereicht. Es werden keine zusätzlichen Geheimnisse gesetzt, und die Umgebung wird nicht protokolliert.
+- Läuft `ipa` selbst innerhalb einer Claude-Code-Sitzung, erbt `claude` deren Variablen (`CLAUDECODE`, `CLAUDE_CODE_*`). Paket 05 entscheidet, ob der Runner sie entfernt (§18).
 - Nach `claude.timeoutSeconds` wird der Prozess beendet. Das Ergebnis ist `timeout`.
 - stdout wird vollständig gelesen. stderr wird auf höchstens 64 KiB begrenzt gespeichert.
 
@@ -1118,7 +1133,7 @@ Quellen, abgerufen am 29.09.2026:
 - Headless-Betrieb: https://code.claude.com/docs/en/headless
 - Strukturierte Ausgabe: https://code.claude.com/docs/en/agent-sdk/structured-outputs
 
-Die lokale Prüfung von 2.1.114 erfolgte ohne Modellaufruf. Die Kombination `claude -p <option> --zz-bogus-probe x` meldet die erste unbekannte Option. Eine Probe über `--version` ist nicht aussagekräftig, weil `--version` unbekannte Optionen übergeht.
+Die lokale Prüfung von 2.1.114 erfolgte ohne Modellaufruf. Die Kombination `claude -p <option> --zz-bogus-probe x` meldet die erste unbekannte Option. Eine Probe über `--version` ist nicht aussagekräftig, weil `--version` unbekannte Optionen übergeht. Die Vorabprüfung aus Paket 01 verwendet `claude -p <option> [wert] --zz-ipa-probe` ohne Positionsargument. So entsteht auch bei einer unerwartet akzeptierten Option kein Prompt und damit kein Modellaufruf (§18).
 
 | Option | Doku 29.09.2026 | Lokal 2.1.114 | Verwendung |
 | --- | --- | --- | --- |
@@ -1172,7 +1187,7 @@ Restrisiken:
 - Benutzerweite Einstellungen wie Hooks oder `~/.claude/CLAUDE.md` wirken unabhängig vom Arbeitsverzeichnis (A-07). Ein externer Ordner allein verhindert das nicht. `--setting-sources project,local` klammert die Benutzereinstellungen aus, sofern A-08 bestätigt ist. `~/.claude/CLAUDE.md` betrifft das nach heutigem Kenntnisstand nicht.
 - Das Betriebssystem verhindert keine Schreibzugriffe. Eine Isolation über einen eigenen Benutzer oder einen Container ist nicht Teil von V1.
 
-`ipa doctor --live` weist nach, dass das Init-Ereignis von `stream-json` keine Werkzeuge und keine MCP-Server meldet. README und Ausgaben DÜRFEN keinen weitergehenden Schutz behaupten. Ein Prompt allein gilt nie als Schutzmassnahme.
+`ipa doctor --live` weist nach, dass das Init-Ereignis von `stream-json` keine MCP-Server und ausser `StructuredOutput` keine Werkzeuge meldet. `StructuredOutput` erscheint, weil der Aufruf `--json-schema` verwendet, und dient der Übergabe der strukturierten Antwort (beobachtet in der Vorabprüfung vom 29.09.2026, §18). Die Dokumentation beschreibt dieses Werkzeug nicht; weitergehende Eigenschaften sind nicht geprüft. README und Ausgaben DÜRFEN keinen weitergehenden Schutz behaupten. Ein Prompt allein gilt nie als Schutzmassnahme.
 
 ### 13.5 Prompts
 
@@ -1205,12 +1220,12 @@ Alle Git-Aufrufe laufen über `GitRunner`:
   - `rev-parse`, `rev-list`, `cat-file`, `show`, `log`, `diff`, `ls-files`, `status`
   - `symbolic-ref`, nur als `-q --short HEAD`
   - `merge-base`, nur mit `--is-ancestor`
-  - `hash-object`, nur ohne `-w` und `--write`
-  - `config`, nur mit `--get`
+  - `hash-object`, nur ohne `-w` und `--write`, auch nicht abgekürzt (`--wr`) oder gebündelt (`-tw`)
+  - `config`, nur als `config --get [--local|--global|--system|--worktree|--null|-z|--includes|--no-includes|--type=…] <name> [<wertmuster>]`
   - `--version` ohne Unterbefehl, nur für `ipa doctor`
-  - `check-ignore`, nur mit `-q`, für den Hinweis bei `init --workspace`
-- `diff` und `show` erhalten immer `--no-ext-diff --no-textconv`.
-- Liegt der Arbeitsbereich im Repository, erhalten `status`, `ls-files` und `diff` gegen den Working Tree oder Index zusätzlich die Pathspec `:(exclude,top)<arbeitsbereich-relativ>`.
+  - `check-ignore`, nur mit `-q` und Pfaden, für den Hinweis bei `init --workspace`
+- `diff`, `show` und `log` erhalten immer `--no-ext-diff --no-textconv` direkt nach dem Unterbefehl. `--ext-diff` und `--textconv` sind abgelehnt, ebenso `--output` samt Abkürzungen bei allen Unterbefehlen, weil es in eine Datei schreibt (§18).
+- Liegt der Arbeitsbereich im Repository, erhalten `status`, `ls-files` und jedes `diff` ausser `diff --no-index` zusätzlich die Pathspec `:(exclude,top,literal)<arbeitsbereich-relativ>`. `literal` verhindert, dass Sonderzeichen im Ordnernamen als Muster wirken (§18).
 - Jeder andere Aufruf löst einen Programmierfehler aus, bevor ein Prozess startet.
 
 `hash-object --path` wendet konfigurierte Clean-Filter an, wie es auch `git status` tut. Das ist dokumentiert und akzeptiert.
@@ -1326,7 +1341,7 @@ Leere Listen werden als „nicht erfasst“ dargestellt (I-13). Jeder Work-Log u
 - `npm test` führt alle automatischen Tests aus. Tests liegen unter `test/` und spiegeln die Struktur von `src/`.
 - Unit-Tests decken Parser, Filter, Validatoren, Renderer sowie Zeit- und ID-Funktionen ab.
 - Integrationstests verwenden echte temporäre Git-Repositories unter `os.tmpdir()` über `test/helpers/git-repo.ts` (Paket 01). Diese Repositories setzen lokal `user.name`, `user.email` und `core.autocrlf=false`. Tests zu `autocrlf` setzen die Option ausdrücklich.
-- Jeder Test verwendet eine eigene temporäre Datenwurzel über `--data-dir` oder die Kontextoption. Ein globales Vitest-Setup setzt `IPA_ASSISTANT_HOME` auf ein Temp-Verzeichnis, damit die echte Datenwurzel nie berührt wird.
+- Jeder Test verwendet eine eigene temporäre Datenwurzel über `--data-dir` oder die Kontextoption. Ein globales Vitest-Setup setzt `IPA_ASSISTANT_HOME` auf ein Temp-Verzeichnis, damit die echte Datenwurzel nie berührt wird. Es setzt zusätzlich `LOCALAPPDATA` und `XDG_DATA_HOME` auf das Temp-Verzeichnis, blendet die System- und Benutzerkonfiguration von Git aus, baut `dist/` für Tests des echten CLI-Einstiegs und prüft am Ende, dass die echte Datenwurzel unverändert ist.
 - `test/helpers/repo-fingerprint.ts` (Paket 01) prüft die Unversehrtheit des Repositorys. Der Helfer bildet SHA-256-Werte über `.git/index`, `HEAD`, alle Refs und alle Dateien des Working Trees ausser `.git/` und vergleicht sie vor und nach dem Lauf. Liegt der Arbeitsbereich im Repository, wird sein Pfad ausgenommen und separat geprüft: Nur dort dürfen sich Dateien ändern.
 - Automatische Tests rufen Claude nie echt auf. Die Fake-CLI `test/helpers/fake-claude.mjs` (Paket 05) wird über `claude.command = [process.execPath, <pfad>]` eingebunden und über Umgebungsvariablen gesteuert. Sie protokolliert Argumente und stdin in eine Datei.
 - Live-Prüfungen mit echtem Claude laufen nur über `npm run test:live` mit `IPA_LIVE_CLAUDE=1` und nur nach ausdrücklicher Freigabe durch den Benutzer. Sie gehören nicht zu `npm test`.
@@ -1360,3 +1375,15 @@ Die Einträge entstehen während der Umsetzung. Jeder Eintrag nennt Datum, Paket
 | 2026-09-29 | Planung | Benutzerentscheidung zum Speicherort: Standard ausserhalb, alternativ ein ausdrücklich gewählter Ordner, bei Bedarf `.ipa/` im Repository. Datenablage und Claude-Arbeitsverzeichnis werden getrennt. | D-02, D-21, D-22 übernommen, I-01 und I-14 angepasst, O-01 entschieden | §1.4, §3, §5.2, §5.3, §6, §8.1, §9.2, §10, §13, §14, §16.2; Pakete 01, 02, 03, 05, 06 |
 | 2026-09-29 | Planung | Benutzerwunsch: Claude-Verbindung früh praktisch prüfen | D-24: Vorabprüfung in Paket 01, Ersatz durch `ipa doctor --live` in Paket 05. A-08 ergänzt. | §3.2, §3.3, §4.2, §13; Pakete 01, 05 |
 | 2026-09-29 | Planung | Benutzerwunsch: `ipa note` schon nach Paket 01 | D-23: Paket 04 hängt nur von 01 ab. Die Secret-Prüfung von Notizen erfolgt beim Paketbau. Existenzprüfung von `--ref` und Warnung ergänzt Paket 06. `secretSuspected` entfällt im Notizmodell. | §4.3, §9.5, §9.6, §9.10, §12.2, §14.4; Pakete 04, 06, 07 |
+| 2026-09-29 | 01 | §4.3 verbietet `core` Importe anderer Komponenten. `resolveContext` (core, §10) muss das Repository aber mit Git auflösen (§5.4), und alle Git-Aufrufe laufen über den `GitRunner` (§14.2). | `core` darf `src/git/runner.ts` importieren. Der Runner importiert nichts aus anderen Komponenten, es entsteht kein Zyklus. | §4.3 |
+| 2026-09-29 | 01 | Die Signaturen in §10 lassen offen: die Bedeutung von `requireInit: false`, wie die Uhr injiziert wird (§4.3, AK-08-01), wie `lockBroken` aus `withLock` ins Laufprotokoll gelangt und woher der Runner den Arbeitsbereich für die Pathspec kennt (AK-01-10). | `resolveContext` liefert bei `requireInit: false` für ein nicht registriertes Repository `null` und nimmt optional `clock`. `withLock` übergibt `fn` den Wert `{ lockBroken }`. `createGitRunner(repoRoot, { workspaceDir })`. `run` meldet Verstösse gegen die Leseliste als abgelehntes Promise. Aufrufe ohne die neuen Parameter bleiben gültig. | §10 |
+| 2026-09-29 | 01 | „Registry-Eintrag atomar ergänzen“: Temp-Datei und Umbenennen verhindern eine kaputte Datei, aber nicht den Verlust eines Eintrags bei zwei gleichzeitigen `init`. Ausserdem verlangt §8.4 `schemaVersion` in jeder JSON-Datei, §8.5 legt den Lock-Inhalt aber ohne `schemaVersion` fest. | `init` ergänzt die Registry unter `<Datenwurzel>/registry.lock` mit den Lock-Regeln aus §8.5, wartet darauf höchstens 5 s und endet sonst mit Exit-Code 3. Lock-Dateien sind flüchtige Steuerdateien ohne `schemaVersion` und ohne Schema; §8.5 hat Vorrang. | §8.1, §8.5 |
+| 2026-09-29 | 01 | Lücken in der Leseliste: `log`, `diff` und `show` schreiben mit `--output` in Dateien; Git akzeptiert Abkürzungen (`--wr` für `--write`); `log -p` würde Textconv verwenden; Sonderzeichen im Ordnernamen wirken in der Pathspec als Muster; ob ein `diff` gegen Index oder Working Tree läuft, ist am Aufruf nicht sicher erkennbar. | Abgelehnt werden `--output` samt Abkürzungen, `--ext-diff`, `--textconv` sowie abgekürzte oder gebündelte Schreiboptionen von `hash-object`. `log` erhält wie `diff` und `show` `--no-ext-diff --no-textconv`. Die Pathspec lautet `:(exclude,top,literal)<pfad>` und gilt für jedes `diff` ausser `--no-index`, im Einklang mit §14.3. | §14.2 |
+| 2026-09-29 | 01 | Ajv mit `strict: true` lehnt Typ-Unionen wie `["string","null"]` ab. | Zusätzliche Ajv-Option `allowUnionTypes: true`. | §8.4 |
+| 2026-09-29 | 01 | §6.6 „ohne Details in `errors`“ ist mehrdeutig. | `lastRun.errors` enthält nur `{ code }`. Die Felder erscheinen in der Reihenfolge der Tabelle. Ungültige Zeilen in `runs.jsonl` ergeben eine Warnung auf stderr. | §6.6 |
+| 2026-09-29 | 01 | Nicht festgelegte Randfälle: leere Angaben der Datenwurzel; fehlendes `LOCALAPPDATA`; `--workspace` im tatsächlichen Git-Verzeichnis ausserhalb von `<repo>/.git`, auf einem Elternordner des Repositorys oder auf der Datenwurzel; registrierter, aber fehlender Arbeitsbereich bei `init`; Abbruch mitten in `init`. | Leeres `--data-dir` ergibt Exit-Code 2, leeres `IPA_ASSISTANT_HOME` gilt als nicht gesetzt, fehlendes `LOCALAPPDATA` ergibt Exit-Code 2. `--workspace` darf nicht im tatsächlichen oder gemeinsamen Git-Verzeichnis liegen, das Repository nicht enthalten und die Datenwurzel weder sein noch enthalten. Ein fehlender registrierter Arbeitsbereich ergibt auch bei `init` Exit-Code 2, ohne Neuanlage. Scheitert `init` vor dem Registry-Eintrag, entfernt es die in diesem Lauf angelegten Dateien. | §5.2, §5.3, §5.4 |
+| 2026-09-29 | 01 | Die Flag-Prüfung `claude -p <option> --zz-bogus-probe x` könnte einen Modellaufruf auslösen, falls eine Option unerwartet akzeptiert oder ein leeres Argument verworfen würde: `x` wäre dann der Prompt. | Die Vorabprüfung verwendet `--zz-ipa-probe` ohne Positionsargument. Paket 05 übernimmt das für `probeClaude`. | §13.2; Paket 05 |
+| 2026-09-29 | 01 | **Vorabprüfung live (AK-01-18)** mit Claude Code 2.1.114 (native `claude.exe`), Windows 11, Node.js 24.19.0. `claude auth status`: `loggedIn: true`, `authMethod: claude.ai`. Lauf 1 innerhalb der Claude-Desktop-Sitzung, 3 Aufrufe: alle nach 180 s im Timeout; `system/init` meldete `tools: ["StructuredOutput"]`, `mcp_servers: []`, Modell `claude-opus-4-7`. Lauf 2 mit `--isolate-env`, 1 Aufruf, danach Abbruch: gleiches Init-Ereignis, dann 10 × `system/api_retry` mit `authentication_failed` bis zum Timeout, kein Ergebnis. In beiden Läufen entstanden keine Dateien in den Temp-Ordnern, das Repository blieb unverändert. | A-01 **bestätigt**: keine eingebauten Werkzeuge und keine MCP-Server; einziges Werkzeug ist `StructuredOutput` von `--json-schema`. A-02 **unklar**, A-03 **unklar**, A-08 **unklar**: keine Antwort, weil die API die Anmeldung ablehnte. A-04 **bestätigt**: das leere Argument nach `--tools` kommt über `spawn` ohne Shell an (Flag-Prüfung und Init-Ereignis). A-05 **bestätigt**: `claude` startet ohne Shell über den Namen. A-01 und A-02 sind nicht widerlegt, O-02 wird nicht vorgezogen. Vor Paket 05: `claude` in einem normalen Terminal neu anmelden und `npm run probe:claude -- --live` dort wiederholen. | §3.3, §13.4; Paket 05 (AK-05-09) |
+| 2026-09-29 | 01 | Folgen der Vorabprüfung für Paket 05: (a) Mit `--json-schema` meldet das Init-Ereignis das Werkzeug `StructuredOutput`; die Regel „leere Werkzeugliste“ für `live.ok` und AK-05-09 wäre nie erfüllbar. (b) `claude auth status` meldet `loggedIn: true`, obwohl die API die Anmeldung ablehnt; `claude -p` wiederholt dann bis zum Timeout. Mit `--output-format json` erscheint dabei nichts auf stdout oder stderr, nur `stream-json` zeigt die Ereignisse `system/api_retry`. (c) Innerhalb einer Claude-Code-Sitzung erbt `claude` deren Variablen (`CLAUDECODE`, `CLAUDE_CODE_ENTRYPOINT`, `CLAUDE_CODE_SDK_HAS_HOST_AUTH_REFRESH`, Messaging-Socket u. a.). | (a) §13.4 angepasst: erlaubt ist genau `StructuredOutput`; Paket 05 wendet das auf `live.ok` und AK-05-09 an. (b) `ipa doctor --live` wertet `system/api_retry` aus und meldet `authentication_failed` als Befund. (c) Paket 05 entscheidet, ob `ClaudeRunner` diese Variablen wie `--isolate-env` der Vorabprüfung entfernt; bis dahin gilt §13.1. | §13.1, §13.4; Paket 05 |
+| 2026-09-29 | 01 | Testumgebung: Neben `IPA_ASSISTANT_HOME` könnten Standard-Datenorte und die Git-Konfiguration des Rechners Tests beeinflussen, und Tests des echten CLI-Einstiegs brauchen `dist/`. | Das globale Vitest-Setup setzt auch `LOCALAPPDATA` und `XDG_DATA_HOME` auf das Temp-Verzeichnis, blendet System- und Benutzerkonfiguration von Git aus, baut `dist/` und prüft am Ende die echte Datenwurzel. | §16.2 |
+| 2026-09-29 | 01 | Befehlsname `ipa` (Paketspezifikation 01 §9) | Auf dem Entwicklungsrechner gibt es keinen anderen Befehl und keinen Alias `ipa` (geprüft mit `Get-Command ipa`). Keine Umbenennung nötig. | – |
