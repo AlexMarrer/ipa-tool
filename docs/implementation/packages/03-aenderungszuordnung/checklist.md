@@ -2,7 +2,7 @@
 
 Erst abhaken, wenn die Arbeit umgesetzt und geprüft ist. Hinter jeden Punkt gehört der Nachweis (Test, Befehl oder Datum).
 
-Prüfumgebung aller Nachweise: 29.09.2026, Linux-Cloud-Umgebung, Node.js 22.22.2, Git 2.43.0. Windows 11 mit Node.js 24 ist für dieses Paket noch nicht geprüft (siehe unten).
+Prüfumgebung der Nachweise: 29.09.2026, Linux-Cloud-Umgebung (Node.js 22.22.2, Git 2.43.0) und Windows-Entwicklungsrechner (Node.js 24, Git 2.51).
 
 ## Voraussetzungen
 
@@ -32,7 +32,7 @@ Prüfumgebung aller Nachweise: 29.09.2026, Linux-Cloud-Umgebung, Node.js 22.22.2
 - [x] Byte-Vergleich bestehender Snapshots bei Halt und `baseline` (AK-03-07). Nachweis: `expectHalted` und „hebt den Halt auf …“ in `halt.test.ts` vergleichen `listTree` (Grösse, mtime, SHA-256 jeder Datei) vor und nach dem Lauf.
 - [x] Determinismus-Test (AK-03-13). Nachweis: „erzeugt in zwei Arbeitsbereichen dieselben Belege für dieselbe Folge von Zuständen“ in `attribution-scenarios.test.ts`.
 - [x] `npm run typecheck`, `npm test` und `npm run build` grün. Nachweis: 29.09.2026, alle drei ohne Fehler; `npm test`: 34 Testdateien, 287 bestanden, 4 übersprungen (nur unter Windows ausgeführte Tests aus Paket 01).
-- [ ] `npm test` auf dem Entwicklungsrechner (Windows 11, Node.js 24, Git 2.51) grün. Lauf vom 29.09.2026: 289 bestanden, 1 übersprungen (echter Symlink ohne Entwicklermodus), 1 fehlgeschlagen: AK-02-16 mit Junction. Ursache: Pfade hinter der Junction sind nicht ermittelt und machen die Aufnahme allein nicht relevant, der Test erwartete trotzdem `S000002`. Test um eine lesbare Änderung ergänzt. Offen: erneuter Lauf unter Windows.
+- [x] `npm test` auf dem Entwicklungsrechner (Windows 11, Node.js 24, Git 2.51) grün. Nachweis: 29.09.2026, voller Lauf 289 bestanden, 1 übersprungen (echter Symlink ohne Entwicklermodus), 1 fehlgeschlagen (AK-02-16 mit Junction: Testerwartung aus Paket 02, Pfade hinter der Junction sind nicht ermittelt und machen die Aufnahme allein nicht relevant). Test angepasst (Commit `0f2c9d8`), danach `npx vitest run test/collector/capture-paths.test.ts` unter Windows: 6 bestanden, 1 übersprungen.
 
 ## Dokumentation und Status
 

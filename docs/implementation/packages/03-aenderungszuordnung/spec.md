@@ -137,4 +137,4 @@ Folgen aus der Umsetzung (29.09.2026, Einzelheiten in spec.md §18):
 - Ein Zwischenstand, der vor der nächsten Aufnahme committet und wieder zurückgenommen wird, bleibt `unclear` und macht den Snapshot analysepflichtig, obwohl kein Delta entsteht.
 - Submodule ohne eigenes Repository (nicht ausgecheckt) gelten als nicht ermittelt und ergeben kein Delta.
 - Dasselbe gilt für Dateien hinter einer Ordner-Junction, die Git für Windows auflistet (spec.md §18, Paket 02). Eine neue Junction allein macht eine Aufnahme daher nicht relevant; die Pfade erscheinen erst mit der nächsten relevanten Aufnahme in `fileStates` und `filterDecisions`. Gefunden beim Testlauf unter Windows am 29.09.2026 (AK-02-16).
-- Die Tests liefen in einer Linux-Cloud-Umgebung (Node.js 22.22, Git 2.43); Windows 11 mit Node.js 24 ist für dieses Paket noch nicht geprüft. Dort sollte `npm test` vor Paket 04 einmal laufen.
+- Die Tests liefen in einer Linux-Cloud-Umgebung (Node.js 22.22, Git 2.43) und am 29.09.2026 auf dem Windows-Entwicklungsrechner (Node.js 24, Git 2.51); dort schlug nur der Junction-Test aus Paket 02 fehl, der danach angepasst und erneut grün geprüft wurde.
