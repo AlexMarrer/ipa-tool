@@ -115,6 +115,7 @@ Nicht im Umfang:
 | AK-03-12 | Ein `state_delta`, das eine Zeile mit künstlichem Secret entfernt, wird vollständig zurückgehalten, und der Marker steht nirgends im Arbeitsbereich. |
 | AK-03-13 | Dieselbe Folge von Repository-Zuständen erzeugt in zwei getrennten Arbeitsbereichen inhaltlich gleiche Belege: gleiche Arten, Pfade, Blobs und Patchtexte, ohne Zeitstempel und IDs. |
 | AK-03-14 | `ipa status --json` enthält `halt`. `ipa --help` listet `baseline`. Der Repository-Fingerprint bleibt in allen Tests dieses Pakets unverändert. |
+| AK-03-15 | Mit Arbeitsbereich `.ipa/` im Repository ergibt ein zweiter `capture` nach dem ersten `unchanged`, obwohl sich Dateien in `.ipa/` wie `runs.jsonl` und Snapshots geändert haben. Die eigenen Ausgaben werden nicht als Entwicklungsarbeit erfasst. |
 
 ## 8. Notwendige Tests und Validierung
 

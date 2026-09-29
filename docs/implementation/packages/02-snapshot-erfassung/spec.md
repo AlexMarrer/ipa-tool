@@ -20,6 +20,10 @@ Im Umfang:
   - Ablage in `snapshots/`
 - Belegarten `commit_message`, `commit_diff`, `staged_diff` und `unstaged_diff` sowie `fileStates` mit Kopien (spec.md §9.3, §9.4). Kopien werden in diesem Paket für jeden erlaubten nicht sauberen Pfad gespeichert, dessen wirksamer Stand vom HEAD-Blob abweicht.
 - `authoredByConfiguredUser` (D-19), Symlinks und Submodule (D-20), Binärdateien, Grössenlimits (§14.5)
+- Arbeitsbereich im Repository (D-21):
+  - Pfadfilter schliesst ihn immer aus
+  - Pathspec-Ausschluss in allen auflistenden Git-Aufrufen (spec.md §5.3, §14.2, §14.3)
+  - Dateien des Arbeitsbereichs aus Commits erscheinen nur in `filterDecisions`
 - Schema `manifest`
 - `ipa init` nimmt den Ausgangs-Snapshot auf und holt ihn bei abgebrochener Initialisierung nach (spec.md §6.3).
 - Neuer Befehl `ipa capture [--no-analysis]`: Er erzeugt bei jedem Aufruf einen Arbeits-Snapshot. `--no-analysis` wird schon jetzt akzeptiert und hat noch keine Wirkung.
@@ -98,6 +102,7 @@ Nicht im Umfang:
 - Datei verschwindet zwischen Status und Lesen: Die Konsistenzprüfung schlägt an und die Aufnahme wird wiederholt.
 - Leerer Arbeitsstand ohne Änderungen: Es entsteht trotzdem ein Arbeits-Snapshot. Erst Paket 03 unterdrückt ihn.
 - Fehlendes `user.email`: `authoredByConfiguredUser` ist dann `false` für alle Commits, und es wird eine Warnung ausgegeben.
+- Arbeitsbereich `.ipa/` ist nicht in `.gitignore` eingetragen: `git status` würde ihn als neue Dateien melden. Der Pathspec-Ausschluss verhindert das.
 
 ## 7. Akzeptanzkriterien
 
@@ -121,6 +126,7 @@ Nicht im Umfang:
 | AK-02-16 | Ein Symlink auf eine Datei ausserhalb des Repositorys wird nicht gelesen. Gespeichert ist nur das geprüfte Linkziel. Unter Windows wird der Test übersprungen, wenn Symlinks nicht angelegt werden können. Das wird in der Checkliste vermerkt. |
 | AK-02-17 | `PathFilter` erfüllt alle Standard-Ausschlüsse aus spec.md §7.1 in beliebiger Verzeichnistiefe und ohne Unterscheidung von Gross- und Kleinschreibung. `.git/**` ist nicht abwählbar. Jeder Detektor aus §14.4 hat mindestens einen Treffer- und einen Nichttreffer-Test. |
 | AK-02-18 | `ipa status --json` enthält `snapshots: { total, baseline, work }`. `ipa --help` listet zusätzlich `capture`. |
+| AK-02-19 | Mit `--workspace .ipa` im Repository erscheint keine Datei aus `.ipa/` in `fileStates`, Belegen oder Fingerprints, auch nicht, wenn `.ipa/` nicht ignoriert ist oder eine Datei daraus committet wurde. Die Konsistenzprüfung bleibt stabil, obwohl das Tool während der Aufnahme in `.ipa/tmp/` schreibt. |
 
 ## 8. Notwendige Tests und Validierung
 
@@ -128,7 +134,7 @@ Nicht im Umfang:
   - Parser mit festen `-z`-Beispielausgaben
   - `PathFilter` und `SecretScanner` gemäss AK-02-17
   - Binärerkennung und Limits
-- Integrationstests mit temporären Repositories für AK-02-01 bis AK-02-16
+- Integrationstests mit temporären Repositories für AK-02-01 bis AK-02-16 und AK-02-19
 - Jeder Integrationstest vergleicht den Repository-Fingerprint vorher und nachher.
 - Secret-Tests suchen den Marker rekursiv in allen Dateien der Datenwurzel und in stdout und stderr.
 

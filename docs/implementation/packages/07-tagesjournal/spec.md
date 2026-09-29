@@ -58,7 +58,7 @@ Nicht im Umfang:
    - Deterministisch abgeschlossene Snapshots (`not_required`) liefern ihre Statusänderungen und Commits, aber keine `derived`-Aussagen.
 4. **Belege:** `evidence` enthält nur Beschreibungen (Art, Pfad, Commit, Snapshot).
 5. **Commits:** Commits aus diesen Snapshots mit geprüfter Nachricht. Zurückgehaltene Nachrichten erscheinen nur als Referenz.
-6. **Notizen:** alle Notizen mit `activityDay` gleich dem Tag, ohne Notizen mit `secretSuspected` (diese werden gezählt). Notizen vom Typ `plan` erscheinen unverändert, ihr Typ zeigt die Planung an.
+6. **Notizen:** alle Notizen mit `activityDay` gleich dem Tag. Jede Notiz wird mit dem `SecretScanner` geprüft (D-23). Notizen mit Treffer werden zurückgehalten, gezählt und als offene Prüfung ausgewiesen. Notizen vom Typ `plan` erscheinen unverändert, ihr Typ zeigt die Planung an.
 7. **Kontext:** geprüft wie in Paket 06.
 8. **Zeitübersicht:** `timeSummary` gemäss §15.
 9. **Offene Punkte:** `openItems.gaps`:

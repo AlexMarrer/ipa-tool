@@ -37,6 +37,7 @@ Setze das in `docs/implementation/packages/02-snapshot-erfassung/spec.md` beschr
 - Git-Parser und Blob-IDs ohne Schreibzugriff (D-05)
 - Aufnahme, Konsistenzprüfung, atomare Ablage und Wiederanlauf (spec.md §11.1, §11.2, §11.6) mit Manifest-Schema (§9.3, §9.4)
 - `ipa init` mit Ausgangs-Snapshot, `ipa capture [--no-analysis]` ohne KI, `status`-Feld `snapshots`
+- Ausschluss eines Arbeitsbereichs im Repository über Pfadfilter und Pathspec (spec.md §5.3, §14.2, §14.3)
 
 Dazu gehören:
 

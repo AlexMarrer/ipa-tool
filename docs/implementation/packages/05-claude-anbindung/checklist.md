@@ -9,7 +9,8 @@ Einen Punkt erst abhaken, wenn die Arbeit umgesetzt und geprüft ist. Hinter den
 
 ## Implementierung
 
-- [ ] Argumentbildung gemäss spec.md §13.1, `cwd`-Prüfung und Start ohne Shell (AK-05-01)
+- [ ] Argumentbildung gemäss spec.md §13.1, temporäres Claude-Arbeitsverzeichnis gemäss D-22 und Start ohne Shell (AK-05-01)
+- [ ] Bedingte Übergabe von `--setting-sources project,local` (AK-05-11)
 - [ ] Auswertung des Umschlags und Fehlerklassen gemäss spec.md §13.3, mit Timeout (AK-05-02, AK-05-03)
 - [ ] Protokoll `ai-usage.jsonl` mit Schema (AK-05-04)
 - [ ] Hilfsfunktion zur Schemaprüfung (AK-05-08)
@@ -23,15 +24,16 @@ Einen Punkt erst abhaken, wenn die Arbeit umgesetzt und geprüft ist. Hinter den
 - [ ] `ipa doctor [--live]` angebunden (AK-05-05, AK-05-10)
 - [ ] `ipa init` führt `doctor` ohne `--live` aus, ein Fehler ergibt nur eine Warnung (AK-05-07)
 - [ ] `ipa status` zeigt das Feld `claude` (AK-05-10)
+- [ ] Vorabprüfungsskript aus Paket 01 entfernt, README verweist auf `ipa doctor --live` (AK-05-10)
 
 ## Tests
 
 - [ ] `test/helpers/fake-claude.mjs` mit allen Modi
-- [ ] Unit- und Integrationstests AK-05-01 bis AK-05-08 und AK-05-10 sind grün
+- [ ] Unit- und Integrationstests AK-05-01 bis AK-05-08, AK-05-10 und AK-05-11 sind grün
 - [ ] `npm run typecheck`, `npm test` und `npm run build` sind grün
 - [ ] Skript `npm run test:live` ist vorhanden und nicht Teil von `npm test`
 - [ ] Manuell nach Freigabe: `ipa doctor --live` mit installierter Version (Version, Datum, Ergebnis) (AK-05-09)
-- [ ] Annahmen A-01 bis A-05 und A-07 in spec.md §18 als bestätigt oder widerlegt eingetragen
+- [ ] Annahmen A-01 bis A-05, A-07 und A-08 in spec.md §18 als bestätigt oder widerlegt eingetragen
 
 ## Dokumentation und Status
 

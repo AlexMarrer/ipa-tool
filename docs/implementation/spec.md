@@ -52,7 +52,7 @@ Die Invarianten gelten paketübergreifend. Die Akzeptanzkriterien der Pakete ver
 
 | ID | Invariante |
 | --- | --- |
-| I-01 | Das Tool schreibt nie in das untersuchte Repository, auch nicht in `.git/`. Git wird nur über die Leseliste aus §14.2 aufgerufen. |
+| I-01 | Das Tool verändert nie Quellcode, Index, Branches, Commits oder `.git/` des untersuchten Repositorys. Git wird nur über die Leseliste aus §14.2 aufgerufen. Im Working Tree schreibt das Tool nur innerhalb eines ausdrücklich gewählten Arbeitsbereichs (§5.3). |
 | I-02 | Ein Snapshot ist vollständig und atomar gespeichert, bevor ein Analyseschritt ihn verwendet. |
 | I-03 | Der Analyse-Cursor wird erst nach gesetzter Abschlussmarkierung fortgeschrieben. Er springt nie über einen nicht abgeschlossenen Snapshot. |
 | I-04 | Wiederholte oder nach einem Abbruch neu gestartete Läufe erzeugen keine doppelten Snapshots, Analysen, Work-Logs oder Journal-Einträge. |
@@ -62,10 +62,10 @@ Die Invarianten gelten paketübergreifend. Die Akzeptanzkriterien der Pakete ver
 | I-08 | Ein bereits dokumentierter Dateistand wird beim späteren Stagen oder Committen nur als Statusänderung geführt. |
 | I-09 | Das Tool schreibt nie in `journal/final/` und überschreibt keine vorhandenen Journal-Entwürfe. |
 | I-10 | Frühere Journal-Entwürfe sind nie Eingabe einer neuen Generierung. |
-| I-11 | Claude läuft ohne eingebaute Werkzeuge und ohne MCP, mit Arbeitsverzeichnis ausserhalb des Repositorys, und erhält die Eingabe nur über stdin. Vom Modell vorgeschlagene Befehle werden nie ausgeführt. |
+| I-11 | Claude läuft ohne eingebaute Werkzeuge und ohne MCP, in einem leeren Arbeitsverzeichnis ausserhalb von Repository und Arbeitsbereich (I-14). Die Eingabe erhält Claude nur über stdin. Vom Modell vorgeschlagene Befehle werden nie ausgeführt. |
 | I-12 | Zugangsdaten und erkannte Secret-Werte erscheinen weder im Arbeitsbereich noch in Protokollen oder Ausgaben. |
 | I-13 | Leere Listen in Analysen und Journalen bedeuten „nicht erfasst“, nie „gab es nicht“. |
-| I-14 | Der Arbeitsbereich liegt ausserhalb des untersuchten Repositorys. |
+| I-14 | Das Claude-Arbeitsverzeichnis liegt immer ausserhalb des untersuchten Repositorys und ausserhalb des Arbeitsbereichs, unabhängig vom Speicherort der Daten. Liegt der Arbeitsbereich im Repository, ist er von jeder Erfassung ausgeschlossen, auch wenn seine Dateien versioniert werden. |
 | I-15 | Inhalte werden nie stillschweigend gekürzt. Jede Auslassung ist mit Grund im Manifest oder im Eingabepaket vermerkt. |
 
 ---
@@ -102,7 +102,7 @@ Zielplattform und einzige geplante Prüfplattform von V1 ist Windows 11 mit Node
 | ID | Befund | Auflösung |
 | --- | --- | --- |
 | W-01 | Der Beispielaufruf in Konzept §9 verwendet `--safe-mode`. Die installierte Version 2.1.114 kennt diese Option nicht. | Die Pflichtoptionen stehen in §13.1. `--safe-mode` wird nur verwendet, wenn die Fähigkeitsprüfung die Option findet. |
-| W-02 | Konzept §7 schlägt `.ipa/` im Projekt vor. Ein Claude-Arbeitsverzeichnis unterhalb des Repositorys lädt aber dessen `CLAUDE.md` und `.claude/settings.json` mit Hooks. Das widerspricht Konzept §9 („ohne Einbindung des Original-Repositorys“). | D-02: Die Ablage liegt ausserhalb des Repositorys. |
+| W-02 | Konzept §7 schlägt `.ipa/` im Projekt vor. Ein Claude-Arbeitsverzeichnis unterhalb des Repositorys lädt aber dessen `CLAUDE.md` und `.claude/settings.json` mit Hooks. Das widerspricht Konzept §9 („ohne Einbindung des Original-Repositorys“). | D-02, D-21 und D-22: Datenablage standardmässig ausserhalb, `.ipa/` im Repository nur auf ausdrücklichen Wunsch. Das Claude-Arbeitsverzeichnis liegt in jedem Fall getrennt ausserhalb. |
 | W-03 | Konzept §3 nennt „ein konfiguriertes Repository“. Die Umsetzungsvorgabe verlangt eine Installation für mehrere Repositories. | D-03: ein Arbeitsbereich pro Repository und ein Repository pro Aufruf. |
 | W-04 | Das Journal soll Work-Logs verwenden, frühere KI-Formulierungen aber nicht als Faktenquelle nutzen. | Analysen gehen nur als abgeleitete Zusammenfassungen mit ihren Original-Beleg-IDs ein. Journal-Aussagen zitieren nur Original-Belege. Frühere Journal-Entwürfe sind ausgeschlossen (I-10). |
 | W-05 | Das Konzept legt nicht fest, woher die „Tagesplanung“ stammt. | Aus Notizen vom Typ `plan` und optionalen Kontextdateien. |
@@ -115,7 +115,7 @@ Zielplattform und einzige geplante Prüfplattform von V1 ist Windows 11 mit Node
 | ID | Entscheidung | Begründung |
 | --- | --- | --- |
 | D-01 | Stack: TypeScript strikt, Node.js ≥ 24 als ESM, Commander, Ajv mit JSON Schema draft-07, Vitest. Git- und Claude-CLI laufen über `node:child_process` ohne Shell. | Vorgabe. draft-07 entspricht der Schemaprüfung von Claude Code. |
-| D-02 | Die Datenwurzel liegt ausserhalb jedes untersuchten Repositorys (§5.2). `ipa init` lehnt eine Datenwurzel innerhalb des Repositorys ab. | Kein Selbst-Logging, keine Projektkonfiguration im Claude-Lauf, keine Verschmutzung des Projekts (W-02). |
+| D-02 | Standard ist ein eigener Arbeitsbereich pro Repository in der Datenwurzel ausserhalb des Projekts (§5.2, §5.3). Die Datenwurzel selbst darf nicht in einem untersuchten Repository liegen. Vom Benutzer am 29.09.2026 bestätigt. | Kein Selbst-Logging, keine Verschmutzung des Projekts (W-02). |
 | D-03 | Pro Repository gibt es einen Arbeitsbereich. `registry.json` ordnet ihn über den kanonischen Repository-Pfad zu. Die Auswahl erfolgt mit `--repo`, sonst über das aktuelle Verzeichnis. | Mehrere Repositories mit einer Installation. |
 | D-04 | IDs folgen §8.2: Snapshots fortlaufend (`S000001`), Läufe und Notizen mit UTC-Zeit und Zufallsanteil. | Eindeutig, sortierbar und lesbar. |
 | D-05 | Dateistände werden über Git-Blob-IDs identifiziert. Sie werden mit `git hash-object --stdin --path=<pfad>` ohne `-w` berechnet. | Gleiche IDs wie in Index und Commits, auch bei `core.autocrlf`. Kein Schreibzugriff. |
@@ -134,6 +134,10 @@ Zielplattform und einzige geplante Prüfplattform von V1 ist Windows 11 mit Node
 | D-18 | Liest das Tool eine Datei mit unbekannter höherer `schemaVersion`, bricht es mit Exit-Code 2 ab. | V1 hat keine Migration. |
 | D-19 | Ob ein Commit vom konfigurierten Benutzer stammt, wird nur als Boolean `authoredByConfiguredUser` gespeichert. E-Mail-Adressen werden nicht gespeichert. | Fremde Commits sind keine eigene Leistung. Datensparsamkeit. |
 | D-20 | Symlinks werden nie verfolgt, gespeichert wird nur das Linkziel als Text. Submodule erscheinen nur als Commit-ID. | Kein Lesen ausserhalb des Repositorys. |
+| D-21 | `ipa init --workspace <pfad>` legt den Arbeitsbereich in einem ausdrücklich gewählten Ordner an, bei Bedarf `.ipa/` im Repository. Die Registry speichert den Pfad. Ist der Standardpfad nicht beschreibbar, endet der Befehl mit Exit-Code 2, nennt `--data-dir`, `IPA_ASSISTANT_HOME` und `--workspace` als Auswege und wechselt den Ort nie stillschweigend. | Benutzerentscheidung vom 29.09.2026. Nachvollziehbarer Speicherort. |
+| D-22 | Das Claude-Arbeitsverzeichnis ist ein neuer, leerer Ordner unter `<os.tmpdir()>/ipa-assistant/claude/<repositoryId>/<runId>-<n>/`. Es wird nach dem Aufruf gelöscht. Die Aufrufartefakte speichert das Tool im Arbeitsbereich. | Datenablage und Claude-Arbeitsverzeichnis sind getrennt (I-14). Das gilt auch, wenn der Arbeitsbereich im Repository liegt. |
+| D-23 | Notizen hängen nur von Paket 01 ab. Die Secret-Prüfung von Notizen erfolgt beim Bau eines Eingabepakets (Pakete 06 und 07). Paket 06 ergänzt `ipa note` um die Existenzprüfung von `--ref` und eine Secret-Warnung. | Notizen brauchen fachlich keinen Snapshot. Benutzerentscheidung vom 29.09.2026. |
+| D-24 | Paket 01 enthält eine praktische Claude-Vorabprüfung mit künstlichen Daten (`scripts/claude-probe.mjs`). Paket 05 ersetzt sie durch `ipa doctor --live`. | Anmeldung, Optionen, Werkzeugbeschränkung und strukturierte Ausgabe werden früh geprüft. Benutzerentscheidung vom 29.09.2026. |
 
 ### 3.3 Ungeprüfte Annahmen
 
@@ -141,21 +145,22 @@ Die Annahmen werden im genannten Paket geprüft. Das Ergebnis wird in §18 einge
 
 | ID | Annahme | Prüfung in |
 | --- | --- | --- |
-| A-01 | Unter 2.1.114 entfernt `--tools ""` alle eingebauten Werkzeuge. Zusammen mit `--disallowedTools "mcp__*"` und `--strict-mcp-config` ohne `--mcp-config` ist kein MCP-Werkzeug verfügbar. | Paket 05: `ipa doctor --live` wertet das Init-Ereignis von `stream-json` aus. |
-| A-02 | Unter 2.1.114 liefert `--output-format json` zusammen mit `--json-schema` das Feld `structured_output`. Laut Doku wird vor 2.1.205 ein ungültiges Schema still ignoriert, und ein Schema mit `format` gilt als ungültig. | Paket 05, Live-Prüfung |
-| A-03 | Mit `-p` und `--output-format json` gibt die CLI genau ein JSON-Objekt auf stdout aus. | Paket 05 |
-| A-04 | Unter Windows wird ein leeres Argument (`""`) über `spawn` ohne Shell korrekt übergeben. | Paket 05 |
-| A-05 | Die native `claude.exe` startet ohne Shell über den Namen `claude`. Bei einer npm-Installation mit `claude.cmd` ist ein absoluter Befehl in `claude.command` nötig. | Paket 05 |
+| A-01 | Unter 2.1.114 entfernt `--tools ""` alle eingebauten Werkzeuge. Zusammen mit `--disallowedTools "mcp__*"` und `--strict-mcp-config` ohne `--mcp-config` ist kein MCP-Werkzeug verfügbar. | Vorabprüfung in Paket 01 (Init-Ereignis von `stream-json`), erneut mit Produktcode in Paket 05 (`ipa doctor --live`) |
+| A-02 | Unter 2.1.114 liefert `--output-format json` zusammen mit `--json-schema` das Feld `structured_output`. Laut Doku wird vor 2.1.205 ein ungültiges Schema still ignoriert, und ein Schema mit `format` gilt als ungültig. | Vorabprüfung in Paket 01, erneut in Paket 05 |
+| A-03 | Mit `-p` und `--output-format json` gibt die CLI genau ein JSON-Objekt auf stdout aus. | Vorabprüfung in Paket 01, erneut in Paket 05 |
+| A-04 | Unter Windows wird ein leeres Argument (`""`) über `spawn` ohne Shell korrekt übergeben. | Vorabprüfung in Paket 01, erneut in Paket 05 |
+| A-05 | Die native `claude.exe` startet ohne Shell über den Namen `claude`. Bei einer npm-Installation mit `claude.cmd` ist ein absoluter Befehl in `claude.command` nötig. | Vorabprüfung in Paket 01, erneut in Paket 05 |
 | A-06 | In einem Repository ohne Commits funktioniert `git diff --cached` gegen den leeren Baum. | Paket 02 |
-| A-07 | Benutzerweite Claude-Einstellungen wie `~/.claude/CLAUDE.md` und Benutzer-Hooks können trotz der Flags wirken. Verwaltete Firmenrichtlinien wirken immer. | Paket 05 dokumentiert das Restrisiko. |
+| A-07 | Benutzerweite Claude-Einstellungen wie `~/.claude/CLAUDE.md` und Benutzer-Hooks können trotz der Flags und trotz eines externen Arbeitsverzeichnisses wirken. Verwaltete Firmenrichtlinien wirken immer. | Paket 05 dokumentiert das Restrisiko. |
+| A-08 | `--setting-sources project,local` in einem leeren Arbeitsverzeichnis lädt keine Benutzereinstellungen und damit keine Benutzer-Hooks aus `~/.claude/settings.json`. Die Anmeldung bleibt dabei erhalten. Die Doku beschreibt die Quellenauswahl (`user`, `project`, `local`), die Wirkung auf die Anmeldung ist ungeprüft. | Vorabprüfung in Paket 01: Die Option wird akzeptiert, und die Anmeldung funktioniert. Die Wirkung auf Hooks lässt sich ohne Änderung der Benutzereinstellungen nicht nachweisen und bleibt Restrisiko. |
 
 ### 3.4 Offene Entscheidungen des Benutzers
 
-Keine dieser Entscheidungen blockiert die Pakete 01 bis 07. Die gewählten Standardwerte sind konfigurierbar.
+Keine dieser Entscheidungen blockiert die Pakete 01 bis 07. Die gewählten Standardwerte sind konfigurierbar. Widerlegt die Vorabprüfung in Paket 01 die Annahme A-01 oder A-02, wird O-02 vor Paket 05 entscheidungsrelevant.
 
 | ID | Frage | Standard bis zur Klärung |
 | --- | --- | --- |
-| O-01 | Wird die Ablage ausserhalb des Repositorys bestätigt (D-02)? | Datenwurzel gemäss §5.2 |
+| O-01 | Speicherort der Daten | **Entschieden am 29.09.2026:** Standard ausserhalb des Repositorys, alternativ ein ausdrücklich gewählter Ordner (D-02, D-21) |
 | O-02 | Welche Claude-Code-Version wird auf dem Firmenrechner eingesetzt? Ist die aktive Anmeldung der zugelassene geschäftliche Zugang, und welche Nutzungsgrenzen gelten? | Weiterarbeit mit 2.1.114. Ein Update auf mindestens 2.1.205 wird empfohlen. |
 | O-03 | Die Fragen aus Konzept §14: Ist KI-Unterstützung erlaubt und deklarationspflichtig? Darf Firmencode verarbeitet werden? Welche Pfade sind verboten? | Vor dem Einsatz in der echten IPA klären. Technisch nicht blockierend. |
 | O-04 | Welches Journalformat verlangen Schule oder Betrieb? | Neutrales Format gemäss §9.10 |
@@ -185,7 +190,8 @@ Keine dieser Entscheidungen blockiert die Pakete 01 bis 07. Die gewählten Stand
 | Git | `src/git/` | Git-Aufrufe nur über die Leseliste, Parser für `-z`-Ausgaben | 01 (Runner), 02 (Parser) |
 | Filter | `src/filter/` | `PathFilter`, `SecretScanner` | 02 |
 | Collector | `src/collector/` | Aufnahme, Konsistenzprüfung, Belegbildung, Snapshot-Ablage, Zustandsdelta, Zuordnung, Relevanz, Halt, neuer Ausgangspunkt, Testberichte | 02, 03 |
-| Notes | `src/notes/` | Notizen erfassen, speichern und lesen | 04 |
+| Notes | `src/notes/` | Notizen erfassen, speichern und lesen | 04, erweitert von 06 |
+| Vorabprüfung | `scripts/claude-probe.mjs` | Praktische Claude-Prüfung mit künstlichen Daten, ohne Build ausführbar (D-24) | 01, ersetzt in 05 |
 | Claude | `src/claude/` | Prozessstart, Fähigkeitsprüfung, Auswertung der Antwort, KI-Nutzungsprotokoll | 05 |
 | Analysis | `src/analysis/` | Eingabepaket, Validierung, Ablage, Work-Log, Warteschlange, Cursor, Überspringen | 06 |
 | Journal | `src/journal/` | Tageseingabe, Validierung, Entwurfsdarstellung | 07 |
@@ -197,7 +203,7 @@ Keine dieser Entscheidungen blockiert die Pakete 01 bis 07. Die gewählten Stand
 
 - `cli` darf alle Komponenten verwenden. Keine andere Komponente importiert `cli`.
 - `core` importiert keine andere Komponente des Tools.
-- `collector`, `notes` und `claude` hängen nur von `core`, `git` und `filter` ab.
+- `collector` und `claude` hängen nur von `core`, `git` und `filter` ab. `notes` hängt nur von `core` ab (D-23).
 - `analysis` darf Lesefunktionen von `collector` sowie `notes` und `claude` verwenden. `journal` darf zusätzlich Lesefunktionen von `analysis` verwenden.
 - Schreibzugriffe auf den Arbeitsbereich laufen über die Schreibfunktionen aus §8.5. Das Repository wird nur gelesen.
 - Die Uhr wird als `Clock` injiziert. Für fachliche Zeitstempel ruft kein Modul direkt `new Date()` auf.
@@ -241,13 +247,35 @@ Die Datenwurzel wird in dieser Reihenfolge bestimmt:
    - macOS: `~/Library/Application Support/ipa-assistant` (nicht geprüft)
    - Linux: `$XDG_DATA_HOME/ipa-assistant`, sonst `~/.local/share/ipa-assistant` (nicht geprüft)
 
-Liegt die Datenwurzel im Repository oder das Repository in der Datenwurzel, bricht der Befehl mit Exit-Code 2 ab (I-14).
+Regeln für die Datenwurzel:
+
+- Liegt die Datenwurzel im Repository oder das Repository in der Datenwurzel, bricht der Befehl mit Exit-Code 2 ab.
+- Lässt sich die Datenwurzel nicht anlegen oder nicht beschreiben, bricht der Befehl mit Exit-Code 2 ab. Die Meldung nennt den geprüften Pfad und die Auswege `--data-dir`, `IPA_ASSISTANT_HOME` und `ipa init --workspace`.
+- Das Tool wechselt nie stillschweigend auf einen anderen Speicherort (D-21).
 
 ### 5.3 Arbeitsbereich und Registry
 
-- Der Arbeitsbereich liegt unter `<Datenwurzel>/workspaces/<repositoryId>/`. Sein Aufbau steht in §8.1.
-- `<Datenwurzel>/registry.json` (§9.2) ordnet jedem kanonischen Repository-Pfad eine `repositoryId` zu.
+Speicherort des Arbeitsbereichs:
+
+- **Standard:** `<Datenwurzel>/workspaces/<repositoryId>/`, ausserhalb des Projekts (D-02)
+- **Alternative:** ein bei `ipa init --workspace <pfad>` ausdrücklich gewählter Ordner (D-21)
+  - Relative Pfade gelten relativ zur Repository-Wurzel. `--workspace .ipa` ergibt also `<repo>/.ipa/`.
+  - Der Ordner muss leer sein oder darf noch nicht existieren.
+  - Er darf nicht die Repository-Wurzel selbst sein und nicht in `.git/` liegen. Andernfalls endet `init` mit Exit-Code 2.
+  - Liegt der Ordner im Repository und ist er laut `git check-ignore` nicht ignoriert, gibt `init` einen Hinweis aus: Eintrag in `.gitignore` oder `.git/info/exclude` empfohlen. Das Tool ändert diese Dateien nicht.
+
+Der Aufbau des Arbeitsbereichs steht in §8.1 und ist unabhängig vom Speicherort.
+
+Registry und Trennung:
+
+- `<Datenwurzel>/registry.json` (§9.2) ordnet jedem kanonischen Repository-Pfad eine `repositoryId` und den Arbeitsbereichspfad zu. Die Registry liegt immer in der Datenwurzel, auch wenn der Arbeitsbereich im Repository liegt.
 - Jeder Arbeitsbereich hat eigene Konfiguration, Snapshots, Notizen, Analysen, Journale und Protokolle.
+
+Liegt der Arbeitsbereich im Repository:
+
+- Der Pfadfilter schliesst ihn immer aus (§14.3).
+- Alle Git-Aufrufe, die Pfade des Working Trees auflisten, erhalten die Pathspec `:(exclude,top)<arbeitsbereich-relativ>` (§14.2). Damit bleiben die Fingerprints der Konsistenzprüfung stabil, während das Tool in den Arbeitsbereich schreibt.
+- Das Claude-Arbeitsverzeichnis liegt trotzdem ausserhalb (D-22, I-14).
 
 ### 5.4 Repository-Auflösung
 
@@ -275,7 +303,7 @@ Ein verschobenes Repository muss in V1 neu initialisiert werden. Das README doku
 
 | Befehl | Zweck | Lock | Claude | Paket |
 | --- | --- | --- | --- | --- |
-| `ipa init [--timezone <iana>]` | Arbeitsbereich anlegen, Ausgangs-Snapshot aufnehmen, Claude ohne Modellaufruf prüfen | ja | nein | 01, 02, 05 |
+| `ipa init [--timezone <iana>] [--workspace <pfad>]` | Arbeitsbereich anlegen, Ausgangs-Snapshot aufnehmen, Claude ohne Modellaufruf prüfen | ja | nein | 01, 02, 05 |
 | `ipa status [--json]` | Zustand anzeigen, nur lesend | nein | nein | 01, später erweitert |
 | `ipa doctor [--live]` | Git- und Claude-Voraussetzungen prüfen. `--live` macht einen kleinen echten Modellaufruf. | nein | nur mit `--live` | 05 |
 | `ipa capture [--no-analysis] [--retry <snapshotId>] [--scheduled]` | Snapshot aufnehmen und offene Analysen verarbeiten | ja | ja | 02, 03, 06, 08 |
@@ -297,6 +325,7 @@ Ein Befehl erscheint in `ipa --help` erst, wenn sein Paket ihn umsetzt.
 - Existiert bereits ein Arbeitsbereich mit Ausgangs-Snapshot, endet der Befehl mit Exit-Code 2 und ändert nichts.
 - Hat eine frühere Initialisierung vor dem Ausgangs-Snapshot abgebrochen, holt `init` ihn nach.
 - `--timezone` erwartet einen IANA-Namen. Standard ist `Europe/Zurich`.
+- `--workspace <pfad>` wählt den Speicherort des Arbeitsbereichs gemäss §5.3. Ohne die Option gilt der Standard.
 
 **`ipa capture`**
 
@@ -353,6 +382,7 @@ Ein Feld erscheint erst, wenn das genannte Paket es liefert.
 | Feld | Typ | Paket |
 | --- | --- | --- |
 | `repositoryId`, `repoPath`, `workspacePath`, `dataRoot`, `timezone` | string | 01 |
+| `workspaceMode` | `"default"` \| `"explicit"` | 01 |
 | `baselineSnapshotId`, `lastSnapshotId`, `lastAnalysedSnapshotId`, `lastSuccessfulRun` | string \| null | 01 |
 | `lastRun` | letzter Eintrag aus `runs.jsonl` ohne Details in `errors`, oder null | 01 |
 | `snapshots` | `{ total, baseline, work }` | 02 |
@@ -434,10 +464,12 @@ Ein Feld erscheint erst, wenn das genannte Paket es liefert.
 
 ### 8.1 Aufbau des Arbeitsbereichs
 
+Der Arbeitsbereich liegt standardmässig unter `<Datenwurzel>/workspaces/<repositoryId>/`, alternativ an dem mit `--workspace` gewählten Ort (§5.3). Sein innerer Aufbau ist in beiden Fällen gleich.
+
 ```text
 <Datenwurzel>/
   registry.json
-  workspaces/<repositoryId>/
+  workspaces/<repositoryId>/             Standardort; alternativ z. B. <repo>/.ipa/
     config.json                          Konfiguration (§7)
     state.json                           Fortschritt und Cursor (§9.1)
     lock                                 nur während eines schreibenden Laufs (§8.5)
@@ -448,6 +480,7 @@ Ein Feld erscheint erst, wenn das genannte Paket es liefert.
     snapshots/<snapshotId>/content/      E001.patch, E002.txt, state/0001.dat …
     snapshots/.tmp-<snapshotId>-<hex>/   nur während einer Aufnahme
     analyses/<snapshotId>/attempt-<n>/   input.json, prompt.md, schema.json, response.json, stderr.txt, outcome.json
+                                         (Ablage der Artefakte; Claude läuft in einem separaten temporären Ordner, D-22)
     analyses/<snapshotId>/retry-<n>.json Freigabe weiterer Versuche
     analyses/<snapshotId>/analysis.json  validierter Analyse-Datensatz
     analyses/<snapshotId>/complete.json  Abschlussmarkierung
@@ -537,7 +570,7 @@ Die Felder sind hier verbindlich festgelegt. Das jeweilige Paket setzt sie 1:1 i
 
 ### 9.2 `registry.json`
 
-`{ schemaVersion: 1, repositories: [{ repositoryId, repoPath, createdAt }] }`. `repoPath` ist der kanonische Pfad aus §5.4.
+`{ schemaVersion: 1, repositories: [{ repositoryId, repoPath, workspacePath, workspaceMode: "default"|"explicit", createdAt }] }`. `repoPath` ist der kanonische Pfad aus §5.4, `workspacePath` der absolute Pfad des Arbeitsbereichs.
 
 ### 9.3 Snapshot-Manifest `manifest.json`
 
@@ -610,7 +643,8 @@ Ein Beleg mit `omitted` hat keine Datei. Er darf zitiert werden, trägt aber kei
 | `alternatives` | string[], nur bei `decision`, sonst leer |
 | `cause`, `solution` | string \| null, nur bei `problem` |
 | `refs` | qualifizierte Belege[] |
-| `secretSuspected` | boolean |
+
+Die Notiz enthält kein Secret-Kennzeichen. Die Secret-Prüfung erfolgt bei jedem Bau eines Eingabepakets (§12.2, D-23).
 
 ### 9.6 Analyse-Eingabepaket `attempt-<n>/input.json`
 
@@ -621,7 +655,7 @@ Ein Beleg mit `omitted` hat keine Datei. Er darf zitiert werden, trägt aber kei
 | `commits[]` | wie im Manifest, ohne `blob`, mit `messageEvidence` |
 | `statusChanges[]` | wie im Manifest |
 | `evidence[]` | Nur Arten mit „An Claude: ja“. Statt `file` enthält jeder Beleg `content: string \| null` als UTF-8-Text. |
-| `notes[]` | Notizen gemäss §12.2 ohne Notizen mit `secretSuspected`. Die Notiz-ID dient als Beleg-ID. |
+| `notes[]` | Notizen gemäss §12.2, ohne Notizen, bei denen die Secret-Prüfung anschlägt. Die Notiz-ID dient als Beleg-ID. |
 | `context[]` | `{ id, path, sha256, content }` |
 | `filterSummary` | `{ excluded, withheld, omitted, byReason: { <reason>: count } }`. Nur Zähler, keine Pfade ausgeschlossener Dateien. |
 | `allowedEvidenceIds` | alle zitierbaren IDs: `evidence[].id`, `notes[].id` und `context[].id` |
@@ -686,7 +720,7 @@ Ein Versuchsordner ohne `outcome.json` zählt als `interrupted`.
                derived: <§9.7 mit qualifizierten Beleg-IDs> }],
   evidence: [{ ref, kind, path, commit, snapshotId, omitted: boolean, binary: boolean, fresh: boolean|null }],
   commits: [{ sha, snapshotId, committerDate, authoredByConfiguredUser, messageRef, message }],
-  notes: [<§9.5 ohne Notizen mit secretSuspected>],
+  notes: [<§9.5, ohne Notizen mit Secret-Verdacht>],
   context: [{ id, path, sha256, content }],
   timeSummary: <deterministisch, §15>,
   openItems: { analyses: [{ snapshotId, status }], gaps: [{ snapshotId|null, type, detail }] },
@@ -749,7 +783,8 @@ Prompt, Eingabe und Antwort stehen nicht in dieser Datei.
 
 ```text
 { schemaVersion, checkedAt, git: { found, version },
-  claude: { found, version, loggedIn, authMethod, flags: { <flag>: supported } },
+  claude: { found, version, loggedIn, authMethod, flags: { <flag>: supported },
+            settingSourcesAuthOk: boolean | null },   // A-08, nur mit --live ermittelt
   live: null | { checkedAt, ok, toolsReported: string[], mcpServersReported: string[] }, ok }
 ```
 
@@ -806,9 +841,11 @@ readNotes(ctx: WorkspaceContext, q: { day?: string; recordedFrom?: string; recor
 
 // claude
 interface ClaudeRequest {
-  purpose: 'analysis' | 'journal' | 'doctor'; subjectId: string | null; cwd: string; promptFile: string;
+  purpose: 'analysis' | 'journal' | 'doctor'; subjectId: string | null; promptFile: string;
   outputSchema: object; stdin: string; promptVersion: string | null; inputIds: string[];
 }
+// Der Runner legt das Claude-Arbeitsverzeichnis selbst an und löscht es danach (D-22).
+// Rohausgaben stehen in ClaudeMeta.rawStdout und rawStderr. Der Aufrufer speichert sie im Arbeitsbereich.
 type ClaudeResult =
   | { ok: true; structuredOutput: unknown; meta: ClaudeMeta }
   | { ok: false; errorCode: ClaudeErrorCode; message: string; meta: ClaudeMeta };
@@ -993,7 +1030,10 @@ Grenzen pro Lauf:
 
 Inhalt des Eingabepakets:
 
-- Notizen, deren `recordedAt` im Intervall `(observedPeriod.from, observedPeriod.to]` liegt oder deren `refs` auf diesen Snapshot zeigen. Notizen mit `secretSuspected` werden ausgeschlossen und in `filterSummary` gezählt.
+- Notizen, deren `recordedAt` im Intervall `(observedPeriod.from, observedPeriod.to]` liegt oder deren `refs` auf diesen Snapshot zeigen.
+  - Jede Notiz wird beim Paketbau mit dem `SecretScanner` geprüft. Das betrifft Text, Grund, Alternativen, Ursache und Lösung.
+  - Notizen mit Treffer werden zurückgehalten und in `filterSummary` gezählt. `ipa status` und das Journal weisen sie als offene Prüfung aus.
+  - Referenzen auf nicht existierende Belege werden ignoriert und als Warnung gemeldet.
 - Alle Dateien aus `config.context.files`, geprüft und begrenzt. Eine Datei über `maxContextFileBytes` wird mit Grund ausgelassen.
 
 ### 12.3 Abschluss und Cursor
@@ -1038,8 +1078,10 @@ Cursor-Regel: `lastAnalysedSnapshotId` ist der letzte Snapshot des längsten lü
 ### 13.1 Prozessaufruf
 
 - Programm und Vorargumente stammen aus `claude.command`. Der Prozess wird mit `spawn` ohne Shell gestartet.
-- Arbeitsverzeichnis ist der Versuchsordner im Arbeitsbereich, also ausserhalb des Repositorys. Vor dem Start wird geprüft, dass `cwd` nicht innerhalb von `repoRoot` liegt.
-- Die Eingabe (`input.json`) wird ausschliesslich über stdin übergeben (I-11).
+- Das Arbeitsverzeichnis ist ein neuer, leerer Ordner gemäss D-22. Er enthält nur eine Kopie von `prompt.md`.
+  - Vor dem Start prüft der Runner, dass der Ordner weder im Repository noch im Arbeitsbereich liegt. Andernfalls endet der Lauf mit Exit-Code 2, zum Beispiel wenn `TMP` auf das Repository zeigt.
+  - Nach dem Aufruf wird der Ordner gelöscht. Verwaiste Ordner älter als 24 Stunden unter `<os.tmpdir()>/ipa-assistant/claude/<repositoryId>/` entfernt der nächste Lauf.
+- Die Eingabe (`input.json`) wird ausschliesslich über stdin übergeben (I-11). Die Artefakte (Eingabe, Prompt, Schema, Antwort) speichert der Aufrufer im Arbeitsbereich.
 
 Argumente in dieser Reihenfolge:
 
@@ -1054,7 +1096,8 @@ Argumente in dieser Reihenfolge:
 --disable-slash-commands
 --no-session-persistence
 --max-turns <claude.maxTurns>
---append-system-prompt-file <absoluter Pfad zu prompt.md im Versuchsordner>
+--append-system-prompt-file <absoluter Pfad zu prompt.md im Claude-Arbeitsverzeichnis>
+[--setting-sources project,local] nur wenn doctor.json A-08 als bestätigt meldet
 [--model <claude.model>]          wenn gesetzt
 [--safe-mode]                     nur wenn doctor.json die Option als unterstützt meldet
 ```
@@ -1089,6 +1132,7 @@ Die lokale Prüfung von 2.1.114 erfolgte ohne Modellaufruf. Die Kombination `cla
 | `--no-session-persistence` | nur mit `-p` | erkannt | Pflicht |
 | `--max-turns` | nur mit `-p` | erkannt | Pflicht |
 | `--append-system-prompt-file` | vorhanden | erkannt | Pflicht |
+| `--setting-sources project,local` | wählt die geladenen Einstellungsquellen (`user`, `project`, `local`). Verwaltete Einstellungen gelten immer. | erkannt, Wirkung auf die Anmeldung ungeprüft (A-08) | bedingt, nach Vorabprüfung |
 | `--safe-mode` | deaktiviert Anpassungen, Anmeldung bleibt erhalten | **nicht vorhanden** | optional nach Fähigkeitsprüfung |
 | `--bare` | kein OAuth, API-Schlüssel nötig | erkannt | nicht verwenden (D-11) |
 | `--permission-prompts none` | ab 2.1.259 | nicht vorhanden | nicht verwenden |
@@ -1118,13 +1162,14 @@ Die Optionen schränken die Möglichkeiten des Modells ein. Sie sind **keine Bet
 In V1 beruht der Schutz des Originalprojekts auf diesen Massnahmen zusammen:
 
 1. keine eingebauten und keine MCP-Werkzeuge, zusätzlich `dontAsk`
-2. Arbeitsverzeichnis ausserhalb des Repositorys, keine Freigabe über `--add-dir`
+2. leeres Arbeitsverzeichnis ausserhalb von Repository und Arbeitsbereich, keine Freigabe über `--add-dir`
 3. Eingabe nur über stdin
 4. das Tool führt keine Modellvorschläge aus
 
 Restrisiken:
 
-- Verwaltete Firmenrichtlinien, Richtlinien-Hooks und benutzerweite Einstellungen wie Hooks oder `~/.claude/CLAUDE.md` können weiterhin wirken (A-07).
+- Verwaltete Firmenrichtlinien und Richtlinien-Hooks wirken immer.
+- Benutzerweite Einstellungen wie Hooks oder `~/.claude/CLAUDE.md` wirken unabhängig vom Arbeitsverzeichnis (A-07). Ein externer Ordner allein verhindert das nicht. `--setting-sources project,local` klammert die Benutzereinstellungen aus, sofern A-08 bestätigt ist. `~/.claude/CLAUDE.md` betrifft das nach heutigem Kenntnisstand nicht.
 - Das Betriebssystem verhindert keine Schreibzugriffe. Eine Isolation über einen eigenen Benutzer oder einen Container ist nicht Teil von V1.
 
 `ipa doctor --live` weist nach, dass das Init-Ereignis von `stream-json` keine Werkzeuge und keine MCP-Server meldet. README und Ausgaben DÜRFEN keinen weitergehenden Schutz behaupten. Ein Prompt allein gilt nie als Schutzmassnahme.
@@ -1143,10 +1188,12 @@ Restrisiken:
 
 Das Tool schreibt nur an diese Orte:
 
-- in die Datenwurzel, also `registry.json` und den Arbeitsbereich des aktuellen Repositorys
+- in die Datenwurzel, also `registry.json` und Standard-Arbeitsbereiche
+- in den Arbeitsbereich des aktuellen Repositorys, auch wenn er ausdrücklich im Repository gewählt wurde (D-21)
+- in das temporäre Claude-Arbeitsverzeichnis (D-22)
 - in eine neue Datei, die der Benutzer mit `ipa schedule --output` ausdrücklich angibt
 
-Es schreibt nie in das Repository, in `.git/` oder in `journal/final/` (I-01, I-09).
+Es schreibt nie ausserhalb eines Arbeitsbereichs in das Repository, nie in `.git/` und nie in `journal/final/` (I-01, I-09).
 
 ### 14.2 Git-Lesezugriff
 
@@ -1161,7 +1208,9 @@ Alle Git-Aufrufe laufen über `GitRunner`:
   - `hash-object`, nur ohne `-w` und `--write`
   - `config`, nur mit `--get`
   - `--version` ohne Unterbefehl, nur für `ipa doctor`
+  - `check-ignore`, nur mit `-q`, für den Hinweis bei `init --workspace`
 - `diff` und `show` erhalten immer `--no-ext-diff --no-textconv`.
+- Liegt der Arbeitsbereich im Repository, erhalten `status`, `ls-files` und `diff` gegen den Working Tree oder Index zusätzlich die Pathspec `:(exclude,top)<arbeitsbereich-relativ>`.
 - Jeder andere Aufruf löst einen Programmierfehler aus, bevor ein Prozess startet.
 
 `hash-object --path` wendet konfigurierte Clean-Filter an, wie es auch `git status` tut. Das ist dokumentiert und akzeptiert.
@@ -1171,6 +1220,7 @@ Alle Git-Aufrufe laufen über `GitRunner`:
 - Der Pfadfilter gilt für jeden Repository-Pfad, bevor ein Inhalt gelesen wird: für alte und neue Pfade bei Umbenennungen, für Commit-Dateien, Index, Working Tree und neue Dateien.
 - Eine Umbenennung von einem ausgeschlossenen zu einem erlaubten Pfad wird als neue Datei am erlaubten Pfad behandelt. Der alte Pfad liefert keinen Inhalt.
 - Ausgeschlossene Pfade erscheinen nur in `filterDecisions` des Manifests und als Zähler im Eingabepaket.
+- Liegt der Arbeitsbereich im Repository, ist sein Pfad immer ausgeschlossen, zusätzlich zu `.git/**` und nicht konfigurierbar. Das gilt auch für Commit-Dateien, falls der Benutzer den Arbeitsbereich versioniert (I-14).
 
 ### 14.4 Inhaltsprüfung (`SecretScanner`)
 
@@ -1179,7 +1229,7 @@ Jede Texteinheit wird vor der Speicherung und vor der Übermittlung geprüft:
 - Dateiinhalte und Kopien
 - Patches, einschliesslich entfernter Zeilen und Kontextzeilen
 - Commit-Nachrichten
-- Notizen
+- Notizen, geprüft beim Bau jedes Eingabepakets (D-23)
 - Kontextdateien
 - Testberichte
 
@@ -1277,7 +1327,7 @@ Leere Listen werden als „nicht erfasst“ dargestellt (I-13). Jeder Work-Log u
 - Unit-Tests decken Parser, Filter, Validatoren, Renderer sowie Zeit- und ID-Funktionen ab.
 - Integrationstests verwenden echte temporäre Git-Repositories unter `os.tmpdir()` über `test/helpers/git-repo.ts` (Paket 01). Diese Repositories setzen lokal `user.name`, `user.email` und `core.autocrlf=false`. Tests zu `autocrlf` setzen die Option ausdrücklich.
 - Jeder Test verwendet eine eigene temporäre Datenwurzel über `--data-dir` oder die Kontextoption. Ein globales Vitest-Setup setzt `IPA_ASSISTANT_HOME` auf ein Temp-Verzeichnis, damit die echte Datenwurzel nie berührt wird.
-- `test/helpers/repo-fingerprint.ts` (Paket 01) prüft die Unversehrtheit des Repositorys. Der Helfer bildet SHA-256-Werte über `.git/index`, `HEAD`, alle Refs und alle Dateien des Working Trees ausser `.git/` und vergleicht sie vor und nach dem Lauf.
+- `test/helpers/repo-fingerprint.ts` (Paket 01) prüft die Unversehrtheit des Repositorys. Der Helfer bildet SHA-256-Werte über `.git/index`, `HEAD`, alle Refs und alle Dateien des Working Trees ausser `.git/` und vergleicht sie vor und nach dem Lauf. Liegt der Arbeitsbereich im Repository, wird sein Pfad ausgenommen und separat geprüft: Nur dort dürfen sich Dateien ändern.
 - Automatische Tests rufen Claude nie echt auf. Die Fake-CLI `test/helpers/fake-claude.mjs` (Paket 05) wird über `claude.command = [process.execPath, <pfad>]` eingebunden und über Umgebungsvariablen gesteuert. Sie protokolliert Argumente und stdin in eine Datei.
 - Live-Prüfungen mit echtem Claude laufen nur über `npm run test:live` mit `IPA_LIVE_CLAUDE=1` und nur nach ausdrücklicher Freigabe durch den Benutzer. Sie gehören nicht zu `npm test`.
 - Künstliche Secrets in Tests haben die Form `IPA_TEST_SECRET_<zufall>` und stehen in einem Muster, das ein Detektor erkennt, zum Beispiel `api_key = "IPA_TEST_SECRET_…"`. Echte Zugangsdaten sind verboten.
@@ -1307,3 +1357,6 @@ Die Einträge entstehen während der Umsetzung. Jeder Eintrag nennt Datum, Paket
 | Datum | Paket | Befund | Entscheidung | Betroffene Abschnitte |
 | --- | --- | --- | --- | --- |
 | 2026-09-29 | Planung | Ausgangsfassung | – | – |
+| 2026-09-29 | Planung | Benutzerentscheidung zum Speicherort: Standard ausserhalb, alternativ ein ausdrücklich gewählter Ordner, bei Bedarf `.ipa/` im Repository. Datenablage und Claude-Arbeitsverzeichnis werden getrennt. | D-02, D-21, D-22 übernommen, I-01 und I-14 angepasst, O-01 entschieden | §1.4, §3, §5.2, §5.3, §6, §8.1, §9.2, §10, §13, §14, §16.2; Pakete 01, 02, 03, 05, 06 |
+| 2026-09-29 | Planung | Benutzerwunsch: Claude-Verbindung früh praktisch prüfen | D-24: Vorabprüfung in Paket 01, Ersatz durch `ipa doctor --live` in Paket 05. A-08 ergänzt. | §3.2, §3.3, §4.2, §13; Pakete 01, 05 |
+| 2026-09-29 | Planung | Benutzerwunsch: `ipa note` schon nach Paket 01 | D-23: Paket 04 hängt nur von 01 ab. Die Secret-Prüfung von Notizen erfolgt beim Paketbau. Existenzprüfung von `--ref` und Warnung ergänzt Paket 06. `secretSuspected` entfällt im Notizmodell. | §4.3, §9.5, §9.6, §9.10, §12.2, §14.4; Pakete 04, 06, 07 |

@@ -1,6 +1,6 @@
 # Checkliste Paket 01 – CLI-Grundlage
 
-Ein Punkt wird erst abgehakt, wenn die Arbeit umgesetzt und geprüft ist. Hinter den Punkt kommt der Nachweis, zum Beispiel Testname, Befehl oder Datum.
+Einen Punkt erst abhaken, wenn er umgesetzt und geprüft ist. Hinter den Punkt kommt der Nachweis, zum Beispiel Testname, Befehl oder Datum.
 
 ## Voraussetzungen
 
@@ -8,30 +8,38 @@ Ein Punkt wird erst abgehakt, wenn die Arbeit umgesetzt und geprüft ist. Hinter
 
 ## Implementierung
 
-- [ ] Projektgerüst: `package.json` (bin `ipa`, engines, Skripte `build`, `typecheck`, `test`), `tsconfig.json` gemäss spec.md §4.1, `.gitignore`, Vitest-Konfiguration mit globalem Setup (AK-01-01, AK-01-14)
-- [ ] `src/core/`: Datenwurzel, Repository-Auflösung, Registry, Arbeitsbereich, Konfiguration mit Standardwerten, Zustand (AK-01-03, AK-01-06, AK-01-07)
-- [ ] Schemaregister mit Schemas `config`, `state`, `registry` und `run-record` (AK-01-12)
+- [ ] Projektgerüst gemäss spec.md §4.1 (AK-01-01, AK-01-14):
+  - `package.json` mit bin `ipa`, engines und den Skripten `build`, `typecheck`, `test` und `probe:claude`
+  - `tsconfig.json`
+  - `.gitignore`
+  - Vitest-Konfiguration mit globalem Setup
+- [ ] `src/core/`: Datenwurzel, Repository-Auflösung, Registry mit `workspacePath`, Konfiguration mit Standardwerten, Zustand (AK-01-03, AK-01-06, AK-01-07)
+- [ ] Arbeitsbereich mit Standardort und `--workspace`, einschliesslich Regeln und `check-ignore`-Hinweis (AK-01-15)
+- [ ] Verständliche Fehlermeldung bei nicht beschreibbarer Datenwurzel, ohne stillen Ortswechsel (AK-01-16)
+- [ ] Schemaregister und Schemas `config`, `state`, `registry` und `run-record` (AK-01-12)
 - [ ] Schreibfunktionen, JSONL und Lock (AK-01-08, AK-01-09)
 - [ ] IDs, Zeitfunktionen und `Clock` (AK-01-11)
-- [ ] `GitRunner` mit Leseliste und Umgebung gemäss spec.md §14.2 (AK-01-10)
+- [ ] `GitRunner` mit Leseliste, Umgebung und Arbeitsbereichs-Pathspec gemäss spec.md §14.2 (AK-01-10)
 - [ ] `IpaError` und Abbildung auf Exit-Codes (AK-01-02, AK-01-04)
+- [ ] `scripts/claude-probe.mjs` mit Modus ohne Modellaufruf und Modus `--live` (AK-01-17, AK-01-18)
 
 ## Integration
 
-- [ ] `ipa init` angebunden, schreibt `runs.jsonl` (AK-01-03, AK-01-04, AK-01-05, AK-01-06)
-- [ ] `ipa status [--json]` angebunden, nur lesend (AK-01-13)
-- [ ] Globale Optionen `--repo` und `--data-dir` wirken in allen Befehlen (AK-01-07)
+- [ ] `ipa init [--timezone] [--workspace]` ist angebunden und schreibt `runs.jsonl` (AK-01-03 bis AK-01-06, AK-01-15, AK-01-16)
+- [ ] `ipa status [--json]` ist angebunden und nur lesend (AK-01-13)
+- [ ] Die globalen Optionen `--repo` und `--data-dir` wirken in allen Befehlen (AK-01-07)
 
 ## Tests
 
-- [ ] Test-Helfer `git-repo.ts`, `repo-fingerprint.ts` und `workspace.ts` vorhanden und verwendet
-- [ ] Unit-Tests für IDs, Zeit, Schemas, Pfadnormalisierung und Exit-Codes
-- [ ] Integrationstests AK-01-02 bis AK-01-14 grün
-- [ ] `npm run typecheck`, `npm test` und `npm run build` grün
-- [ ] Manuell: `npm install --global .` und `ipa init` in einer Windows-Konsole geprüft (Datum und Ergebnis)
+- [ ] Test-Helfer `git-repo.ts`, `repo-fingerprint.ts` (mit Ausnahme für den Arbeitsbereich) und `workspace.ts` sind vorhanden und werden verwendet
+- [ ] Unit-Tests für IDs, Zeit, Schemas, Pfadnormalisierung, Arbeitsbereichsregeln, Exit-Codes und die Auswertung der Vorabprüfung
+- [ ] Integrationstests AK-01-02 bis AK-01-17 sind grün
+- [ ] `npm run typecheck`, `npm test` und `npm run build` sind grün
+- [ ] Manuell: `npm install --global .` und `ipa init` in einer Windows-Konsole geprüft (Datum und Ergebnis notieren)
+- [ ] Manuell nach Freigabe: `npm run probe:claude -- --live` ausgeführt, Ergebnis für A-01 bis A-05 und A-08 in spec.md §18 eingetragen (AK-01-18)
 
 ## Dokumentation und Status
 
-- [ ] `README.md`: Installation, Datenwurzel, `init`, `status`, Grenze „Repository verschoben“
+- [ ] `README.md`: Installation, Speicherort mit Standard und `--workspace`, Fehlermeldung bei nicht beschreibbarem Pfad, `init`, `status`, Vorabprüfung, Grenze „Repository verschoben“
 - [ ] Abweichungen in spec.md §18 eingetragen oder „keine“ bestätigt
 - [ ] Zentrale `docs/implementation/checklist.md` aktualisiert

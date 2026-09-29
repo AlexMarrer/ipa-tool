@@ -41,6 +41,7 @@ Setze das in `docs/implementation/packages/06-analyse-pipeline/spec.md` beschrie
 - Statusableitung, Eingabepaket, Validator (R-01 bis R-05, R-07), Ablage, Work-Log, Warteschlange, Cursor und Wiederanlauf (spec.md §9.6–§9.9, §12, §15)
 - Prompt `prompts/analyze-work.md` und die Schemas aus der Paketspezifikation
 - Anbindung an `ipa capture` (inklusive `--retry`), Befehl `ipa skip`, `status`-Feld `analyses`
+- Erweiterung von `ipa note` im CLI-Befehl: Existenzprüfung von `--ref` und Secret-Warnung. Secret-Prüfung der Notizen beim Paketbau (D-23, spec.md §12.2).
 
 Dazu gehören:
 

@@ -19,6 +19,7 @@ Einen Punkt erst abhaken, wenn die Arbeit umgesetzt und geprüft ist. Den Nachwe
 - [ ] Atomare Ablage, Wiederanlauf und Hook `beforeStateUpdate` (AK-02-10)
 - [ ] `authoredByConfiguredUser` ohne Speicherung von E-Mail-Adressen (AK-02-14)
 - [ ] Schema `manifest` gemäss spec.md §9.3 und §9.4
+- [ ] Ausschluss eines Arbeitsbereichs im Repository über Pfadfilter und Pathspec (AK-02-19)
 
 ## Integration
 
@@ -29,7 +30,7 @@ Einen Punkt erst abhaken, wenn die Arbeit umgesetzt und geprüft ist. Den Nachwe
 ## Tests
 
 - [ ] Unit-Tests für Parser, Filter, Detektoren und Limits
-- [ ] Integrationstests AK-02-01 bis AK-02-18 grün, jeweils mit Prüfung des Repository-Fingerprints (AK-02-11)
+- [ ] Integrationstests AK-02-01 bis AK-02-19 grün, jeweils mit Prüfung des Repository-Fingerprints (AK-02-11)
 - [ ] Secret-Marker-Suche über die gesamte Datenwurzel und über stdout und stderr (AK-02-05, AK-02-06)
 - [ ] `npm run typecheck`, `npm test` und `npm run build` grün
 - [ ] Annahme A-06 geprüft und das Ergebnis in spec.md §18 eingetragen

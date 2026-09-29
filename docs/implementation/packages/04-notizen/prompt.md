@@ -14,7 +14,6 @@ Lies diese Dateien vollständig, bevor du etwas änderst:
 6. `docs/implementation/packages/04-notizen/checklist.md`
 7. Spezifikationen der vorausgesetzten Pakete. Lies dort die Abschnitte 4, 5 und 7:
    - `docs/implementation/packages/01-cli-grundlage/spec.md`
-   - `docs/implementation/packages/02-snapshot-erfassung/spec.md`
 
 `IPA_ASSISTANT_KONZEPT.md` dient nur als Hintergrund. Bei Abweichungen gilt `docs/implementation/spec.md`. Verändere das Konzept nicht.
 
@@ -23,11 +22,11 @@ Die gemeinsamen Verträge (Datenmodelle, Befehle, Exit-Codes, Schnittstellen, In
 ## 2. Ausgangslage prüfen, bevor du implementierst
 
 1. Führe `git status` und `git log --oneline -10` aus. Notiere vorhandene uncommittete Änderungen. Sie gehören nicht dir und bleiben erhalten.
-2. Vorausgesetzte Pakete: Paket 01 – CLI-Grundlage, Paket 02 – Snapshot-Erfassung. Prüfe in `docs/implementation/packages/01-cli-grundlage/checklist.md`, `docs/implementation/packages/02-snapshot-erfassung/checklist.md` und in `docs/implementation/checklist.md`, ob sie als `abgeschlossen` oder `technisch abgeschlossen` markiert sind. `technisch abgeschlossen` bedeutet: Nur manuelle Prüfungen oder Live-Prüfungen sind offen. Das genügt als Voraussetzung. Offene Live-Prüfungen nennst du aber als Risiko.
+2. Vorausgesetzte Pakete: Paket 01 – CLI-Grundlage. Prüfe in `docs/implementation/packages/01-cli-grundlage/checklist.md` und in `docs/implementation/checklist.md`, ob sie als `abgeschlossen` oder `technisch abgeschlossen` markiert sind. `technisch abgeschlossen` bedeutet: Nur manuelle Prüfungen oder Live-Prüfungen sind offen. Das genügt als Voraussetzung. Offene Live-Prüfungen nennst du aber als Risiko.
 3. Prüfe den tatsächlichen Codezustand. Eine abgehakte Checkliste allein genügt nicht:
-   - `SecretScanner` aus Paket 02 und `readManifest` sind vorhanden.
+   - `ipa init` und `ipa status` funktionieren. Core-Bausteine aus Paket 01 sind vorhanden.
    - `npm run typecheck` und `npm test` sind vor deinen Änderungen grün.
-   - Paket 03 ist für dieses Paket nicht nötig. Prüfe trotzdem den tatsächlichen Stand, damit du keine Änderungen aus Paket 03 überschreibst.
+   - Weitere Pakete sind nicht nötig. Prüfe trotzdem den tatsächlichen Stand, damit du keine Änderungen aus bereits umgesetzten Paketen überschreibst.
 4. Fehlen Voraussetzungen oder schlagen bestehende Tests fehl, beginne nicht mit der Umsetzung. Berichte den Befund mit Befehlsausgabe und beende die Sitzung.
 5. Setze in `docs/implementation/checklist.md` den Status von Paket 04 auf `in Arbeit`.
 
@@ -35,10 +34,9 @@ Die gemeinsamen Verträge (Datenmodelle, Befehle, Exit-Codes, Schnittstellen, In
 
 Setze das in `docs/implementation/packages/04-notizen/spec.md` beschriebene Verhalten vollständig um. Schwerpunkte:
 
-- Notizmodell und Schema (spec.md §9.5)
+- Notizmodell und Schema (spec.md §9.5), `src/notes/` nur mit Abhängigkeit zu `core` (§4.3, D-23)
 - `addNote` und `readNotes` (§10)
-- Befehl `ipa note` direkt und interaktiv mit allen Optionen aus §6.3
-- Secret-Prüfung mit `secretSuspected`, `status`-Feld `notesToday`
+- Befehl `ipa note` direkt und interaktiv mit allen Optionen aus §6.3, `--ref` nur syntaktisch geprüft, `status`-Feld `notesToday`
 
 Dazu gehören:
 
@@ -48,7 +46,7 @@ Dazu gehören:
 
 ## 4. Grenzen
 
-- Bearbeite nur dieses Paket. Nicht jetzt umsetzen: Einbindung der Notizen in Analyse (Paket 06) und Journal (Paket 07). Ebenso Bearbeiten oder Löschen von Notizen und der Befehl `ipa decision`.
+- Bearbeite nur dieses Paket. Nicht jetzt umsetzen: Existenzprüfung von `--ref` und Secret-Warnung (Paket 06), Einbindung der Notizen in Analyse (Paket 06) und Journal (Paket 07), Bearbeiten oder Löschen von Notizen und der Befehl `ipa decision`.
 - Setze nichts um, was spec.md §1.3 ausschliesst.
 - Schütze vorhandene Änderungen:
   - Verwende kein `git reset`, `git checkout -- …`, `git restore`, `git stash`, `git clean` und keine Force-Operationen.

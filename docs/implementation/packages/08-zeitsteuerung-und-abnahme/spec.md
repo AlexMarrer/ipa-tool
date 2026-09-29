@@ -23,7 +23,7 @@ Im Umfang:
 - Befehl `ipa schedule --os <windows|cron> [--output <datei>]`
 - Abnahmeprotokoll `docs/abnahme/v1-abnahmeprotokoll.md` mit allen Fällen aus Konzept §17, Durchführung, Ergebnis und Nachweis
 - Abschliessendes README:
-  - Installation und Verwendung mit mehreren Repositories
+  - Installation und Verwendung mit mehreren Repositories, Speicherort mit Standard und `--workspace`, Trennung vom Claude-Arbeitsverzeichnis
   - alle Befehle und Exit-Codes
   - Scheduler-Einrichtung unter Windows
   - Grenzen: Schutzwirkung, Secret-Erkennung, Plattformen, Erfassungslücken

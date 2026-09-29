@@ -33,9 +33,10 @@ Setze das in `docs/implementation/packages/01-cli-grundlage/spec.md` beschrieben
 
 - Projektgerüst mit TypeScript strikt, ESM, Commander, Ajv und Vitest gemäss spec.md §4.1
 - Core-Bausteine aus spec.md §10, Abschnitt „core“, sowie `createGitRunner` mit Leseliste (§14.2)
-- Befehle `ipa init` (ohne Snapshot) und `ipa status [--json]`
+- Befehle `ipa init [--timezone] [--workspace]` (ohne Snapshot) und `ipa status [--json]`: Arbeitsbereich standardmässig ausserhalb des Repositorys, alternativ ausdrücklich gewählt, z. B. `.ipa/` (spec.md §5.2, §5.3, D-21). Nicht beschreibbarer Pfad führt zu einer verständlichen Fehlermeldung ohne stillen Ortswechsel.
 - Test-Helfer `test/helpers/git-repo.ts`, `repo-fingerprint.ts` und `workspace.ts` sowie ein globales Vitest-Setup
-- `README.md` im Repository-Root mit Installation, Datenwurzel, `init` und `status`
+- Claude-Vorabprüfung `scripts/claude-probe.mjs` mit künstlichen Daten (D-24): ohne `--live` ohne Modellaufruf, mit `--live` höchstens drei kleine Aufrufe. Trage das Ergebnis in spec.md §18 ein.
+- `README.md` im Repository-Root mit Installation, Speicherort, `init`, `status` und Vorabprüfung
 
 Dazu gehören:
 
@@ -45,7 +46,7 @@ Dazu gehören:
 
 ## 4. Grenzen
 
-- Bearbeite nur dieses Paket. Nicht jetzt umsetzen: Snapshots, Filter, Notizen, Claude-Aufrufe, Analyse, Journal und Zeitsteuerung. Registriere keine Befehle späterer Pakete, auch nicht als Platzhalter.
+- Bearbeite nur dieses Paket. Nicht jetzt umsetzen: Snapshots, Filter, Notizen, der `ClaudeRunner` und `ipa doctor` im Produktcode, Analyse, Journal und Zeitsteuerung. Registriere keine Befehle späterer Pakete, auch nicht als Platzhalter.
 - Setze nichts um, was spec.md §1.3 ausschliesst.
 - Schütze vorhandene Änderungen:
   - Verwende kein `git reset`, `git checkout -- …`, `git restore`, `git stash`, `git clean` und keine Force-Operationen.
@@ -53,7 +54,7 @@ Dazu gehören:
   - Erstelle keinen Commit, ausser der Benutzer verlangt es.
 - Füge keine Abhängigkeiten ausser den in spec.md §4.1 genannten hinzu. Ist eine weitere Abhängigkeit unvermeidbar, gilt Abschnitt 5.
 - Tests dürfen nie in die echte Datenwurzel schreiben und das untersuchte Repository nie verändern.
-- Dieses Paket ruft Claude nie echt auf.
+- Echte Claude-Aufrufe (`ipa doctor --live`, `npm run test:live`, manuelle Live-Prüfungen) führst du nur aus, wenn der Benutzer sie in dieser Sitzung ausdrücklich freigegeben hat. Frage vorher einmal nach und nenne dabei Zweck und ungefähre Anzahl der Aufrufe. Ohne Freigabe bleiben die betroffenen Checklistenpunkte offen. Nenne sie in der Zusammenfassung.
 
 ## 5. Widersprüche und Unklarheiten
 

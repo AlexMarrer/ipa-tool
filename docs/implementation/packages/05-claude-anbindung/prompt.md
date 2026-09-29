@@ -28,6 +28,7 @@ Die gemeinsamen Verträge (Datenmodelle, Befehle, Exit-Codes, Schnittstellen, In
    - `ipa init` nimmt einen Ausgangs-Snapshot auf (Paket 02).
    - `npm run typecheck` und `npm test` sind vor deinen Änderungen grün.
    - Prüfe die installierte Claude-Code-Version mit `claude --version`. Vergleiche sie mit spec.md §2.2 und §13.2, und trage Abweichungen in spec.md §18 ein.
+   - Lies das Ergebnis der Claude-Vorabprüfung aus Paket 01 in spec.md §18. Ist A-01 oder A-02 widerlegt und O-02 noch nicht entschieden, halte an und frage den Benutzer.
 4. Fehlen Voraussetzungen oder schlagen bestehende Tests fehl, beginne nicht mit der Umsetzung. Berichte den Befund mit Befehlsausgabe und beende die Sitzung.
 5. Setze in `docs/implementation/checklist.md` den Status von Paket 05 auf `in Arbeit`.
 
@@ -35,7 +36,9 @@ Die gemeinsamen Verträge (Datenmodelle, Befehle, Exit-Codes, Schnittstellen, In
 
 Setze das in `docs/implementation/packages/05-claude-anbindung/spec.md` beschriebene Verhalten vollständig um. Schwerpunkte:
 
-- `ClaudeRunner` gemäss spec.md §13.1 und §13.3 mit Timeout und `ai-usage.jsonl` (§9.12)
+- `ClaudeRunner` gemäss spec.md §13.1 und §13.3 mit temporärem Claude-Arbeitsverzeichnis (D-22), Timeout und `ai-usage.jsonl` (§9.12)
+- Bedingte Übergabe von `--setting-sources project,local` (A-08)
+- Ersatz von `scripts/claude-probe.mjs` durch `ipa doctor --live` (D-24): Skript und npm-Skript entfernen, README anpassen
 - `probeClaude`, `ensureClaudeReady` und `doctor.json` (§9.13), Befehl `ipa doctor [--live]`, Aufruf aus `ipa init`
 - Hilfsfunktion für Ausgabeschemas (§8.4)
 - Fake-CLI `test/helpers/fake-claude.mjs` und Skript `npm run test:live`, `status`-Feld `claude`

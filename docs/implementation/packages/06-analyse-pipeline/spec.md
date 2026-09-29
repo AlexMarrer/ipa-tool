@@ -35,6 +35,10 @@ Im Umfang:
   - `--retry <id>` legt `retry-<n>.json` an.
   - Exit-Codes nach §6.4
 - Neuer Befehl `ipa skip <snapshotId> --reason <text>`
+- Erweiterung von `ipa note` (D-23):
+  - Existenzprüfung von `--ref` gegen die Manifeste. Ist der Snapshot oder der Beleg unbekannt: Exit-Code 2.
+  - Secret-Warnung auf stderr mit Detektorname, ohne Wert, falls der `SecretScanner` beim Text, beim Grund, bei den Alternativen, bei der Ursache oder bei der Lösung anschlägt. Die Notiz wird trotzdem lokal gespeichert.
+- Secret-Prüfung der Notizen beim Paketbau (spec.md §12.2)
 - `ipa status` erhält das Feld `analyses`.
 - README: Analyseablauf, Work-Log-Format, `skip`, `--retry`, Umgang mit `blocked` und `exhausted`
 
@@ -65,10 +69,10 @@ Nicht im Umfang:
 
 **Versuch**
 
-1. `attempt-<n>/` exklusiv anlegen.
+1. `attempt-<n>/` im Arbeitsbereich exklusiv anlegen. Das ist der Ablageort der Artefakte, nicht das Claude-Arbeitsverzeichnis.
 2. `input.json`, `prompt.md` und `schema.json` hineinschreiben.
-3. `ClaudeRunner.run` mit `cwd = attempt-<n>/` aufrufen.
-4. `response.json` (rohes stdout) und `stderr.txt` immer speichern.
+3. `ClaudeRunner.run` aufrufen. Der Runner startet Claude in einem eigenen temporären Ordner (D-22).
+4. `response.json` (rohes stdout) und `stderr.txt` aus `meta` immer speichern.
 5. Validierung: Ajv gegen `analysis-output`, danach R-01 bis R-05 und R-07.
 6. `outcome.json` schreiben.
 
@@ -142,7 +146,7 @@ Weitere Regeln:
   - `src/analysis/`
   - `prompts/analyze-work.md`
   - `schemas/analysis-input.schema.json`, `analysis-output.schema.json`, `analysis-record.schema.json`, `complete.schema.json`, `skip.schema.json`, `retry.schema.json`
-- Erweitert: `src/cli/` (`capture`, `skip`, `status`)
+- Erweitert: `src/cli/` (`capture`, `skip`, `status`, `note`). Existenzprüfung und Secret-Warnung liegen im CLI-Befehl `note`, der `readManifest` und den `SecretScanner` nutzt. `src/notes/` bleibt nur von `core` abhängig (spec.md §4.3).
 - Schnittstellen:
   - `analysisStatus`, `processQueue`, `buildAnalysisInput`, `validateAnalysisOutput`, `renderWorkLog` (spec.md §10)
   - Datenmodelle §9.6 bis §9.9
@@ -159,7 +163,8 @@ Weitere Regeln:
 - `skip` auf einen bereits abgeschlossenen Snapshot: Exit-Code 2.
 - Das Schreiben von `analysis.json` scheitert, zum Beispiel weil die Platte voll ist (simuliert): Der Snapshot bleibt offen, der Cursor bleibt unverändert, und das Versuchsergebnis wird protokolliert.
 - Paralleler `capture`: Exit-Code 3 ohne Seiteneffekte im Arbeitsbereich ausser dem `runs.jsonl`-Eintrag.
-- Eine Notiz mit `secretSuspected` verweist auf den Snapshot: Sie wird nicht übermittelt und nur gezählt.
+- Eine Notiz mit künstlichem Secret verweist auf den Snapshot: Sie wird beim Paketbau erkannt, nicht übermittelt und nur gezählt.
+- Eine Notiz verweist mit `--ref` auf einen Beleg, der erst nach der Notiz gelöscht oder nie gespeichert wurde, zum Beispiel vor Paket 06 erfasst: Die Referenz wird beim Paketbau ignoriert, und es erscheint eine Warnung.
 - Die Kontextdatei fehlt: Sie wird mit Grund `unreadable` gezählt, ein Abbruch erfolgt nicht.
 
 ## 7. Akzeptanzkriterien
@@ -176,7 +181,7 @@ Weitere Regeln:
 | AK-06-08 | Zwei offene Snapshots werden in aufsteigender Reihenfolge verarbeitet. Scheitert der erste, wird der zweite nicht aufgerufen. |
 | AK-06-09 | Ein Eingabepaket über dem Limit führt zu `blocked` ohne Claude-Aufruf und ohne Kürzung, mit Exit-Code 6 und einer Meldung, die das Limit nennt. Nach Erhöhung des Limits wird der Snapshot verarbeitet. |
 | AK-06-10 | `input.json` enthält weder Inhalte noch Pfade ausgeschlossener Dateien noch zurückgehaltene Inhalte. Die Suche nach dem Secret-Marker und dem ausgeschlossenen Pfad in allen `attempt-*`-Dateien bleibt ohne Treffer. `filterSummary` zählt die Fälle. |
-| AK-06-11 | Das Eingabepaket enthält genau die Notizen aus dem Beobachtungszeitraum und solche mit Referenz auf den Snapshot, ohne Notizen mit `secretSuspected`. `provenance.notesUsed` enthält deren SHA-256. |
+| AK-06-11 | Das Eingabepaket enthält genau die Notizen aus dem Beobachtungszeitraum und solche mit Referenz auf den Snapshot. Notizen mit künstlichem Secret fehlen, sie werden in `filterSummary` gezählt. Der Marker kommt in keiner `attempt-*`-Datei vor. `provenance.notesUsed` enthält die SHA-256 der verwendeten Notizen. |
 | AK-06-12 | Ausgangs-Snapshot und Snapshot mit reinen Statusänderungen werden ohne Claude-Aufruf mit deterministischem Log abgeschlossen. Der Ausgangs-Log ist als Ausgangslage gekennzeichnet. |
 | AK-06-13 | `ipa skip <id> --reason …` setzt den Status `skipped` und führt den Cursor weiter. `ipa status` zeigt den Snapshot als übersprungen. Für abgeschlossene Snapshots gilt Exit-Code 2. |
 | AK-06-14 | Ein paralleler zweiter `capture` endet mit Exit-Code 3 und verändert weder Snapshots noch Analysen noch `state.json`. |
@@ -184,6 +189,9 @@ Weitere Regeln:
 | AK-06-16 | Bei aktivem Halt verarbeitet `capture` offene Snapshots und endet danach mit Exit-Code 4. |
 | AK-06-17 | `prompts/analyze-work.md` enthält die Regeln aus Konzept §10 und §15. Ein Test prüft die Kernaussagen per Schlüsselsatz. `promptVersion` steht in `analysis.json` und in `ai-usage.jsonl`. |
 | AK-06-18 | Der Repository-Fingerprint bleibt unverändert. `ipa status --json` enthält `analyses`, und `ipa --help` listet `skip`. |
+| AK-06-19 | `ipa note --ref S000002:E001` gelingt, wenn der Beleg existiert. Ein unbekannter Snapshot oder Beleg führt zu Exit-Code 2. |
+| AK-06-20 | `ipa note` mit künstlichem Secret speichert die Notiz und gibt eine Warnung mit Detektorname aus. stdout und stderr enthalten den Marker nicht. |
+| AK-06-21 | Ein vollständiger Lauf mit Arbeitsbereich `.ipa/` im Repository und Fake-CLI erzeugt Analyse und Log in `.ipa/`. Die Fake-CLI protokolliert ein Arbeitsverzeichnis ausserhalb von Repository und `.ipa/`. Ausserhalb von `.ipa/` bleibt das Repository unverändert. |
 
 ## 8. Notwendige Tests und Validierung
 
@@ -193,7 +201,7 @@ Weitere Regeln:
   - Cursor-Regel
   - Renderer als Snapshot-Test
   - Eingabepaket aus einem festen Manifest
-- Integrationstests mit Test-Repository und Fake-CLI für AK-06-01 bis AK-06-18
+- Integrationstests mit Test-Repository und Fake-CLI für AK-06-01 bis AK-06-21
 - Die Abbruchtests nutzen die Hooks aus spec.md §10, nicht Umgebungsvariablen.
 - Live-Test (`npm run test:live`, nach Freigabe): eine echte Analyse eines kleinen künstlichen Repositorys. Das Ergebnis ist schemagültig und besteht die Regelprüfung. Die Ausgabe wird stichprobenweise inhaltlich geprüft und das Ergebnis in der Checkliste vermerkt.
 

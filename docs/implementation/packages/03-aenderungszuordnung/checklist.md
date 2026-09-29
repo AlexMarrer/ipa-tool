@@ -21,10 +21,11 @@ Erst abhaken, wenn die Arbeit umgesetzt und geprüft ist. Hinter jeden Punkt geh
 - [ ] `ipa capture` nutzt Relevanz und Halt, `unchanged` wird protokolliert (AK-03-01, AK-03-07)
 - [ ] `ipa baseline --reason [--force]` angebunden (AK-03-10)
 - [ ] `ipa status` zeigt `halt` (AK-03-14)
+- [ ] Eigene Ausgaben in einem Arbeitsbereich im Repository ergeben `unchanged` (AK-03-15)
 
 ## Tests
 
-- [ ] Szenariotests AK-03-01 bis AK-03-14 grün, jeweils mit Prüfung des Repository-Fingerprints
+- [ ] Szenariotests AK-03-01 bis AK-03-15 grün, jeweils mit Prüfung des Repository-Fingerprints
 - [ ] Unit-Tests der Zuordnung mit allen Randfällen aus der Paketspezifikation, Abschnitt 6
 - [ ] Byte-Vergleich bestehender Snapshots bei Halt und `baseline` (AK-03-07)
 - [ ] Determinismus-Test (AK-03-13)

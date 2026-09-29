@@ -11,7 +11,7 @@ Einen Punkt erst abhaken, wenn er umgesetzt und geprüft ist. Den Nachweis (Test
 ## Implementierung
 
 - [ ] Statusableitung gemäss spec.md §12.1 (AK-06-04, AK-06-09, AK-06-13)
-- [ ] Eingabepaket gemäss spec.md §9.6 und §12.2 mit Grössenprüfung (AK-06-09, AK-06-10, AK-06-11)
+- [ ] Eingabepaket gemäss spec.md §9.6 und §12.2 mit Grössenprüfung und Secret-Prüfung der Notizen (AK-06-09, AK-06-10, AK-06-11)
 - [ ] Prompt `prompts/analyze-work.md` (AK-06-17)
 - [ ] Schemas `analysis-input`, `analysis-output`, `analysis-record`, `complete`, `skip` und `retry`
 - [ ] Validator mit Ajv und den Regeln R-01 bis R-05 sowie R-07 (AK-06-05)
@@ -25,12 +25,14 @@ Einen Punkt erst abhaken, wenn er umgesetzt und geprüft ist. Den Nachweis (Test
 
 - [ ] `ipa capture` führt die Warteschlange aus. `--no-analysis` und `--retry` funktionieren, die Exit-Codes sind korrekt (AK-06-01, AK-06-04, AK-06-16)
 - [ ] `ipa skip` angebunden (AK-06-13)
+- [ ] `ipa note` um die Existenzprüfung von `--ref` und die Secret-Warnung erweitert (AK-06-19, AK-06-20)
+- [ ] Lauf mit Arbeitsbereich im Repository, Claude-Arbeitsverzeichnis getrennt (AK-06-21)
 - [ ] `ipa status` zeigt `analyses` (AK-06-18)
 
 ## Tests
 
 - [ ] Unit-Tests: Validatorregeln positiv und negativ, Status, Cursor, Renderer als Snapshot-Test
-- [ ] Integrationstests AK-06-01 bis AK-06-18 mit Fake-CLI grün
+- [ ] Integrationstests AK-06-01 bis AK-06-21 mit Fake-CLI grün
 - [ ] Suche nach Secret-Marker und ausgeschlossenem Pfad in allen `attempt-*`-Dateien (AK-06-10)
 - [ ] `npm run typecheck`, `npm test` und `npm run build` grün
 - [ ] Manuell nach Freigabe: Live-Analyse eines künstlichen Repositorys, Stichprobe der Belege (Ergebnis notieren)
