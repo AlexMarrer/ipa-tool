@@ -42,7 +42,7 @@ async function lastRun(workspace: string): Promise<RunRecord> {
 /** Captures after a halt: exit code 4, no snapshot, stored snapshots byte for byte unchanged. */
 async function expectHalted(env: Setup, reason: string): Promise<State> {
   const before = await listTree(`${env.workspace}/snapshots`);
-  const result = await ipa(env, ['capture']);
+  const result = await ipa(env, ['capture', '--no-analysis']);
   expect(result.exitCode, result.stderr).toBe(4);
   expect(result.stderr).toContain(reason);
   expect(result.stderr).toContain('ipa baseline --reason');
@@ -108,7 +108,7 @@ describe('Halt-Erkennung (spec.md §11.5)', () => {
     const dataDir = await createTempDataRoot();
     const workspace = await initRepo(repo, dataDir);
     await repo.commit('Erster Commit');
-    const result = await unchanged(repo, () => runCli(['capture'], { dataDir, repo: repo.root }));
+    const result = await unchanged(repo, () => runCli(['capture', '--no-analysis'], { dataDir, repo: repo.root }));
     expect(result.exitCode, result.stderr).toBe(0);
     expect((await state(workspace)).halt).toBeNull();
     // The captured untracked file is now committed unchanged.
@@ -151,7 +151,7 @@ describe('ipa baseline (spec.md §6.3, §11.5)', () => {
 
     // The state from before the new baseline counts as baseline, not as new work.
     await env.repo.commit('Auf anderem Branch');
-    const capture = await ipa(env, ['capture']);
+    const capture = await ipa(env, ['capture', '--no-analysis']);
     expect(capture.exitCode, capture.stderr).toBe(0);
     const next = await readManifestFile(env.workspace, 'S000004');
     expect(next.previousSnapshotId).toBe('S000003');

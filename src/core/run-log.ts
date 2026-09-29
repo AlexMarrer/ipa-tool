@@ -107,12 +107,15 @@ export function createRunRecord(input: RunRecordInput): RunRecord {
 
 const MAX_ERROR_MESSAGE = 300;
 
-/** Run log entry for a failure; the message is shortened to its first line (I-12). */
-export function runErrorOf(error: unknown): RunError {
-  const code = error instanceof IpaError ? error.code : 'internal';
-  const text = error instanceof Error ? error.message : String(error);
+/** Run log entry with the message shortened to its first line (I-12). */
+export function shortRunError(code: string, text: string): RunError {
   const line = text.split(/\r?\n/)[0] ?? '';
   return { code, message: line.length > MAX_ERROR_MESSAGE ? `${line.slice(0, MAX_ERROR_MESSAGE)} …` : line };
+}
+
+/** Run log entry for a failure. */
+export function runErrorOf(error: unknown): RunError {
+  return shortRunError(error instanceof IpaError ? error.code : 'internal', error instanceof Error ? error.message : String(error));
 }
 
 export async function appendRunRecord(workspaceDir: string, record: RunRecord): Promise<void> {

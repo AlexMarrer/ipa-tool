@@ -17,7 +17,7 @@ async function lastRun(workspace: string): Promise<RunRecord> {
 
 /** `ipa capture` with a repository fingerprint check around it. */
 async function capture(repo: TempRepo, dataDir: string, workspace?: string): Promise<CliResult> {
-  return unchanged(repo, () => runCli(['capture'], { dataDir, repo: repo.root }), workspace);
+  return unchanged(repo, () => runCli(['capture', '--no-analysis'], { dataDir, repo: repo.root }), workspace);
 }
 
 async function blobAt(repo: TempRepo, spec: string): Promise<string> {

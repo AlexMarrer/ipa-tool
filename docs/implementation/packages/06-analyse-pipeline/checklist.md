@@ -2,43 +2,45 @@
 
 Einen Punkt erst abhaken, wenn er umgesetzt und geprüft ist. Den Nachweis (Test, Befehl oder Datum) hinter den Punkt schreiben.
 
+Prüfumgebung der Nachweise: 29.09.2026, Linux-Container mit Node.js 22.22.2 und zusätzlich Node.js 24.21.0, Git 2.43.0, npm 10.9.7. Alle Tests mit Fake-CLI; Claude wurde nicht echt aufgerufen.
+
 ## Voraussetzungen
 
-- [ ] Pakete 02, 03, 04 und 05 sind im Code vorhanden, und ihre Tests sind grün.
-- [ ] Ergebnis von AK-05-09 geprüft. Ist A-01 widerlegt: anhalten und den Benutzer informieren.
-- [ ] Git-Status geprüft, keine fremden Änderungen überschrieben.
+- [x] Pakete 02, 03, 04 und 05 sind im Code vorhanden, und ihre Tests sind grün. Nachweis: 29.09.2026 vor den Änderungen: 02, 03 und 05 `abgeschlossen`, 04 `technisch abgeschlossen` (offen nur die manuelle Prüfung in der Windows-Konsole); im Code `state_delta`, `statusChanges`, `analysisRequired` und `test_report` im Manifest (`src/collector/`), `readNotes` (`src/notes/store.ts`), `ClaudeRunner`, `ensureClaudeReady` (`src/claude/`) und die Fake-CLI (`test/helpers/fake-claude.mjs`); `npm run typecheck` fehlerfrei, `npm test` 46 Testdateien, 421 bestanden, 4 übersprungen.
+- [x] Ergebnis von AK-05-09 geprüft. Ist A-01 widerlegt: anhalten und den Benutzer informieren. Nachweis: spec.md §18, Einträge vom 29.09.2026 zu Paket 05: Live-Prüfung unter Linux (2.1.284) und Windows (2.1.201) bestanden, nur `StructuredOutput`, keine MCP-Server; A-01 bestätigt, kein Halt.
+- [x] Git-Status geprüft, keine fremden Änderungen überschrieben. Nachweis: `git status` vor Beginn sauber auf `claude/zealous-lamport-30wmlx` (letzter Commit `e156676`). Bestehende Dateien wurden nur für die Anbindung erweitert; Tests früherer Pakete an die neuen Verträge angepasst (siehe „Integration“ und spec.md §18).
 
 ## Implementierung
 
-- [ ] Statusableitung gemäss spec.md §12.1 (AK-06-04, AK-06-09, AK-06-13)
-- [ ] Eingabepaket gemäss spec.md §9.6 und §12.2 mit Grössenprüfung und Secret-Prüfung der Notizen (AK-06-09, AK-06-10, AK-06-11)
-- [ ] Prompt `prompts/analyze-work.md` (AK-06-17)
-- [ ] Schemas `analysis-input`, `analysis-output`, `analysis-record`, `complete`, `skip` und `retry`
-- [ ] Validator mit Ajv und den Regeln R-01 bis R-05 sowie R-07 (AK-06-05)
-- [ ] Versuchsablage und Ergebnisablage in der Reihenfolge von spec.md §12.3, mit Hooks (AK-06-01, AK-06-06, AK-06-07)
-- [ ] Work-Log-Renderer (AK-06-15)
-- [ ] Deterministische Verarbeitung von `not_required` (AK-06-12)
-- [ ] Warteschlange mit Reihenfolge, Limits, `exhausted` und `blocked` (AK-06-02, AK-06-03, AK-06-04, AK-06-08)
-- [ ] Cursor-Regel und Wiederanlauf (AK-06-06, AK-06-07)
+- [x] Statusableitung gemäss spec.md §12.1 (AK-06-04, AK-06-09, AK-06-13). Nachweis: `src/analysis/status.ts`, `files.ts`; `test/analysis/status.test.ts` › „prüft die Bedingungen in der Reihenfolge der Tabelle“, „zählt input_too_large nicht als Fehlversuch …“, „setzt den Zähler mit retry-<n>.json zurück …“, „leitet den Status aus konstruierten Ordnern im Arbeitsbereich ab“ (einschliesslich ungültiger Markierung mit Exit-Code 2).
+- [x] Eingabepaket gemäss spec.md §9.6 und §12.2 mit Grössenprüfung und Secret-Prüfung der Notizen (AK-06-09, AK-06-10, AK-06-11). Nachweis: `src/analysis/input.ts`, `note-secrets.ts`; `test/analysis/input.test.ts` › „übernimmt nur Belege für Claude mit Inhalt, Notizen des Zeitraums oder mit Verweis und geprüften Kontext“ (festes Manifest: Belegarten, erneute Secret-Prüfung mit neuem Muster, Grenzen `(von, bis]`, ignorierter Verweis mit Warnung, zurückgehaltene Notiz, Kontextdateien fehlend, zu gross, binär und mit Secret, `filterSummary`, `allowedEvidenceIds`); Grössenprüfung in `failures.test.ts` › AK-06-09.
+- [x] Prompt `prompts/analyze-work.md` (AK-06-17). Nachweis: `test/analysis/prompt.test.ts` › „enthält die Regeln aus Konzept §10 und spec.md §15“ (25 Schlüsselsätze) und „verwendet ein Ausgabeschema, das die Prüfung aus spec.md §8.4 besteht“; `package.json` liefert `prompts/` mit aus.
+- [x] Schemas `analysis-input`, `analysis-output`, `analysis-record`, `complete`, `skip` und `retry`. Nachweis: `schemas/*.schema.json`, registriert in `src/core/schemas.ts`; `test/core/schemas.test.ts` › „kompiliert alle Schemas im strikten draft-07-Modus“; `analysis-output` kompakt 3135 Zeichen, ohne `$schema`, `$id`, `format` und `$ref`; jedes Eingabepaket, jeder Datensatz und jede Markierung wird in den Tests gegen ihr Schema geprüft.
+- [x] Validator mit Ajv und den Regeln R-01 bis R-05 sowie R-07 (AK-06-05). Nachweis: `src/analysis/validate.ts`; `test/analysis/validate.test.ts` (9 Tests: gültige Antwort, Schemafehler, je Regel positive und negative Beispiele, R-07 auch verschachtelt, mehrere Verstösse).
+- [x] Versuchsablage und Ergebnisablage in der Reihenfolge von spec.md §12.3, mit Hooks (AK-06-01, AK-06-06, AK-06-07). Nachweis: `src/analysis/queue.ts`, `store.ts`, `record.ts`; `pipeline.test.ts` › AK-06-01 (Dateien von `attempt-1`, SHA-256 in `complete.json`); `restart.test.ts` › AK-06-06, AK-06-07 über `QueueHooks`; `failures.test.ts` › „lässt den Snapshot offen, wenn das Schreiben von analysis.json scheitert (spec.md §12.5)“.
+- [x] Work-Log-Renderer (AK-06-15). Nachweis: `src/analysis/render.ts`; `test/analysis/render.test.ts` › „entspricht dem festen Beispiel-Log (Snapshot-Test)“ mit `test/analysis/__snapshots__/work-log-ai.md`, dazu Reihenfolge der Abschnitte, „nicht erfasst“, Ausgangslage, Commit-Liste mit fremdem Commit und zurückgehaltener Nachricht.
+- [x] Deterministische Verarbeitung von `not_required` (AK-06-12). Nachweis: `pipeline.test.ts` › „schliesst Ausgangs-Snapshot und reine Statusänderungen ohne Claude mit deterministischem Log ab (AK-06-12)“ (kein Prozessstart der Fake-CLI); `render.test.ts` › „kennzeichnet einen Ausgangs-Snapshot als Ausgangslage ohne KI (AK-06-12)“.
+- [x] Warteschlange mit Reihenfolge, Limits, `exhausted` und `blocked` (AK-06-02, AK-06-03, AK-06-04, AK-06-08). Nachweis: `pipeline.test.ts` › AK-06-02, AK-06-03; `failures.test.ts` › AK-06-04, AK-06-08, AK-06-09, „hält eine Analyse über claude.maxAnalysesPerRun für den nächsten Lauf zurück, ohne Fehler“, „endet ohne einsatzbereites Claude mit Exit-Code 6, ohne Versuch …“. `processQueue` nimmt `deadline` entgegen; das CLI übergibt bis Paket 08 „kein Limit“ (`NO_DEADLINE`).
+- [x] Cursor-Regel und Wiederanlauf (AK-06-06, AK-06-07). Nachweis: `src/analysis/cursor.ts`; `status.test.ts` › „ist der letzte Snapshot des längsten lückenlosen Präfixes aus complete und skipped“; `restart.test.ts` › AK-06-06, AK-06-07.
 
 ## Integration
 
-- [ ] `ipa capture` führt die Warteschlange aus. `--no-analysis` und `--retry` funktionieren, die Exit-Codes sind korrekt (AK-06-01, AK-06-04, AK-06-16)
-- [ ] `ipa skip` angebunden (AK-06-13)
-- [ ] `ipa note` um die Existenzprüfung von `--ref` und die Secret-Warnung erweitert (AK-06-19, AK-06-20)
-- [ ] Lauf mit Arbeitsbereich im Repository, Claude-Arbeitsverzeichnis getrennt (AK-06-21)
-- [ ] `ipa status` zeigt `analyses` (AK-06-18)
+- [x] `ipa capture` führt die Warteschlange aus. `--no-analysis` und `--retry` funktionieren, die Exit-Codes sind korrekt (AK-06-01, AK-06-04, AK-06-16). Nachweis: `src/cli/commands/capture.ts`; `pipeline.test.ts` › AK-06-01, AK-06-16 (Exit-Code 4 auch bei gescheiterter Analyse, spec.md §18); `failures.test.ts` › AK-06-04 (Exit-Code 6, `--retry` mit `retry-7.json`, erneutes `--retry` und unbekannter Snapshot mit Exit-Code 2); `restart.test.ts` › „verarbeitet offene Snapshots auch nach einer instabilen Aufnahme und endet mit Exit-Code 5 (spec.md §4.4)“; `test/cli/capture.test.ts` (`--no-analysis`). Tests der Pakete 02 bis 04, die nur die Aufnahme prüfen, verwenden jetzt `capture --no-analysis` (spec.md §18).
+- [x] `ipa skip` angebunden (AK-06-13). Nachweis: `src/cli/commands/skip.ts`, `src/analysis/skip.ts`, registriert in `src/cli/main.ts`; `test/cli/skip.test.ts` › „setzt den Status skipped, führt den Cursor weiter und protokolliert den Lauf“ und „lehnt abgeschlossene, unbekannte und nicht offene Snapshots sowie leere oder geheime Gründe mit Exit-Code 2 ab“.
+- [x] `ipa note` um die Existenzprüfung von `--ref` und die Secret-Warnung erweitert (AK-06-19, AK-06-20). Nachweis: `src/cli/commands/note.ts` (`src/notes/` bleibt nur von `core` abhängig, `test/notes/imports.test.ts`); `test/cli/note-refs.test.ts` (2 Tests); `test/cli/note.test.ts` › AK-04-07 und AK-04-08 an die Existenzprüfung angepasst.
+- [x] Lauf mit Arbeitsbereich im Repository, Claude-Arbeitsverzeichnis getrennt (AK-06-21). Nachweis: `pipeline.test.ts` › „läuft mit Arbeitsbereich .ipa im Repository; Claude arbeitet ausserhalb, das Repository bleibt ausserhalb von .ipa unverändert (AK-06-21)“.
+- [x] `ipa status` zeigt `analyses` (AK-06-18). Nachweis: `src/cli/commands/status.ts`, `src/analysis/summary.ts`; `test/cli/status.test.ts` › „liefert mit --json genau die Felder der Pakete 01 bis 06 …“; `pipeline.test.ts` › AK-06-03; zusätzlich `withheld` (spec.md §18) in `secrets.test.ts`.
 
 ## Tests
 
-- [ ] Unit-Tests: Validatorregeln positiv und negativ, Status, Cursor, Renderer als Snapshot-Test
-- [ ] Integrationstests AK-06-01 bis AK-06-21 mit Fake-CLI grün
-- [ ] Suche nach Secret-Marker und ausgeschlossenem Pfad in allen `attempt-*`-Dateien (AK-06-10)
-- [ ] `npm run typecheck`, `npm test` und `npm run build` grün
-- [ ] Manuell nach Freigabe: Live-Analyse eines künstlichen Repositorys, Stichprobe der Belege (Ergebnis notieren)
+- [x] Unit-Tests: Validatorregeln positiv und negativ, Status, Cursor, Renderer als Snapshot-Test. Nachweis: `test/analysis/validate.test.ts`, `status.test.ts`, `render.test.ts`, `input.test.ts`, `prompt.test.ts`.
+- [x] Integrationstests AK-06-01 bis AK-06-21 mit Fake-CLI grün. Nachweis: AK-06-01, -02, -03, -12, -16, -17, -21 `test/analysis/pipeline.test.ts`; AK-06-04, -05, -08, -09 `test/analysis/failures.test.ts`; AK-06-06, -07, -14 `test/analysis/restart.test.ts`; AK-06-10, -11 `test/analysis/secrets.test.ts`; AK-06-13 `test/cli/skip.test.ts`; AK-06-15 `test/analysis/render.test.ts`; AK-06-17 zusätzlich `test/analysis/prompt.test.ts`; AK-06-18 über den Helfer `ipa()` in `test/helpers/analysis.ts`, der jeden CLI-Aufruf mit `unchanged()` auf den Repository-Fingerprint prüft, dazu `test/cli/status.test.ts` und `test/cli/main.test.ts` (Hilfe listet `skip`); AK-06-19, -20 `test/cli/note-refs.test.ts`. Die Fake-CLI hat dafür den Modus `analysis`.
+- [x] Suche nach Secret-Marker und ausgeschlossenem Pfad in allen `attempt-*`-Dateien (AK-06-10). Nachweis: `secrets.test.ts` › AK-06-10 (`attemptFiles`, `filesWith` für Marker, ausgeschlossenen Dateinamen und `.env`, zusätzlich stdin der Fake-CLI und die ganze Datenwurzel) und AK-06-11 (Marker aus Notizen).
+- [x] `npm run typecheck`, `npm test` und `npm run build` grün. Nachweis: 29.09.2026 Schlusslauf mit Node.js 22.22.2 und mit Node.js 24.21.0 (npm-Paket `node@24` ausserhalb des Projekts): Typecheck und Build je Exit-Code 0; `npm test` je 57 Testdateien, 467 bestanden, 4 übersprungen (bestehende Tests nur für Windows). Ein Zwischenlauf mit Node.js 24 deckte eine Zeitabhängigkeit im Test von AK-06-11 auf (Aufnahmen in derselben Sekunde, Notizen über Mitternacht); der Test wurde korrigiert (Paket 06 §9).
+- [ ] Manuell nach Freigabe: Live-Analyse eines künstlichen Repositorys, Stichprobe der Belege (Ergebnis notieren). Offen: in dieser Sitzung nicht vom Benutzer freigegeben. Der Test liegt in `test/live/analysis.live.ts` (ein Modellaufruf, dazu die Prüfung der Optionen ohne Modellaufruf) und läuft mit `IPA_LIVE_CLAUDE=1 npm run test:live -- test/live/analysis.live.ts`; ohne die Variable wird er übersprungen (29.09.2026 geprüft). Danach Ausgabe und `logs/S000002.md` stichprobenweise prüfen und prüfen, ob `claude.maxTurns` 5 genügt (Paket 06 §9).
 
 ## Dokumentation und Status
 
-- [ ] README: Analyseablauf, Work-Log, `skip`, `--retry`, `blocked` und `exhausted`
-- [ ] Abweichungen in spec.md §18 eingetragen oder „keine“ bestätigt
-- [ ] Zentrale `docs/implementation/checklist.md` aktualisiert
+- [x] README: Analyseablauf, Work-Log, `skip`, `--retry`, `blocked` und `exhausted`. Nachweis: `README.md`, Abschnitte „`ipa capture [--no-analysis] [--retry <snapshotId>]`“, „`ipa skip <snapshotId> --reason <text>`“, „Analyse und Work-Logs“ (Ablauf, Eingabepaket, Prüfung der Antwort, Status einer Analyse, Work-Log, Abbruch und Wiederanlauf), Felder `analyses` und `withheld` von `ipa status`, Exit-Codes, `--ref` und Secret-Warnung unter „Notizen“, Aufbau des Arbeitsbereichs und des Quellcodes. Stand 29.09.2026.
+- [x] Abweichungen in spec.md §18 eingetragen oder „keine“ bestätigt. Nachweis: 11 Einträge vom 29.09.2026 für Paket 06; Definitionen in §6.3, §6.4, §6.6, §9.1, §9.6, §9.8, §9.9, §9.11, §10, §12.1, §12.2 und §15 angepasst; Folgen in Paketspezifikation §9.
+- [x] Zentrale `docs/implementation/checklist.md` aktualisiert. Nachweis: Paketstatus „technisch abgeschlossen“, offen nur die Live-Analyse nach Freigabe.

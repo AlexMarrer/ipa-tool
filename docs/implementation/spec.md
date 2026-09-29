@@ -341,9 +341,9 @@ Ein Befehl erscheint in `ipa --help` erst, wenn sein Paket ihn umsetzt.
 **`ipa capture`**
 
 - `--no-analysis`: Es wird nur aufgenommen, die Warteschlange wird nicht verarbeitet.
-- `--retry <id>`: Setzt den Versuchszähler eines Snapshots im Status `exhausted` zurück, indem `retry-<n>.json` angelegt wird (§12.1).
+- `--retry <id>`: Setzt den Versuchszähler eines Snapshots im Status `exhausted` zurück, indem `retry-<n>.json` angelegt wird (§12.1). Für einen Snapshot in einem anderen Status oder einen unbekannten Snapshot endet der Lauf vor der Aufnahme mit Exit-Code 2 (§18).
 - `--scheduled`: Ausserhalb des konfigurierten Zeitfensters endet der Lauf mit Exit-Code 0 ohne Aufnahme (§11.1, Paket 08).
-- Solange Paket 06 fehlt, verhält sich `capture` immer wie mit `--no-analysis`.
+- Die Warteschlange läuft nach jedem Ergebnis der Aufnahme: neu, unverändert, Halt und instabil (§4.4). Nach einem Bedienungs- oder internen Fehler der Aufnahme läuft sie nicht (§18).
 - Ohne Ausgangs-Snapshot endet `capture` mit Exit-Code 2 und verweist auf `ipa init` (§18).
 
 **`ipa baseline`**
@@ -351,6 +351,12 @@ Ein Befehl erscheint in `ipa --help` erst, wenn sein Paket ihn umsetzt.
 - Nur bei aktivem Halt erlaubt, sonst Exit-Code 2. Mit `--force` auch ohne Halt, zum Beispiel nach einer langen Pause.
 - `--reason` ist Pflicht. Ein leerer Grund oder einer mit Secret-Treffer ergibt Exit-Code 2, weil der Grund im Manifest steht (§18).
 - Ohne Ausgangs-Snapshot aus `init` endet `baseline` mit Exit-Code 2.
+
+**`ipa skip <snapshotId> --reason <text>`** (Paket 06)
+
+- Nimmt den Lock, führt den Wiederanlauf aus (§11.6) und protokolliert den Lauf in `runs.jsonl`.
+- Nur für offene Snapshots (`pending`, `failed`, `blocked`, `exhausted`). Ein anderer Status, ein unbekannter Snapshot, ein leerer Grund oder einer mit Secret-Treffer ergeben Exit-Code 2, weil der Grund in `skip.json` steht (§18).
+- Schreibt `skip.json` exklusiv und führt den Cursor nach (§12.3). Claude wird nicht aufgerufen.
 
 **`ipa note`** (Details in Paket 04)
 
@@ -382,7 +388,7 @@ Ein Befehl erscheint in `ipa --help` erst, wenn sein Paket ihn umsetzt.
 | 6 | Der KI-Schritt ist nicht abgeschlossen: Claude-Fehler, ungültige Antwort, zu grosse Eingabe oder erschöpfte Versuche. Gesicherte Daten bleiben offen. |
 | 7 | Voraussetzungsprüfung fehlgeschlagen (nur `doctor`) |
 
-Treffen mehrere Fälle zu, gilt der höchste Code. Ausnahme: Code 1 hat immer Vorrang.
+Treffen mehrere Fälle zu, gilt der höchste Code. Ausnahmen: Code 1 hat immer Vorrang, und bei `capture` hat ein Halt (4) Vorrang vor einer nicht abgeschlossenen Analyse (6), weil nur `ipa baseline` die Aufnahme fortsetzt (Paket 06 §4, §18).
 
 ### 6.5 Ausgabe-Konventionen
 
@@ -406,6 +412,7 @@ Ein Feld erscheint erst, wenn das genannte Paket es liefert.
 | `notesToday` | number | 04 |
 | `claude` | `{ checkedAt, ok, cliVersion }` aus `doctor.json`, oder null | 05 |
 | `analyses` | `{ pending, failed, blocked, exhausted, complete, skipped, notRequired, openIds: string[] }` | 06 |
+| `withheld` | `{ units, notes }`: Anzahl der Einheiten mit `decision: withheld` in allen Manifesten und der gültigen Notizen mit Secret-Treffer, jeweils als offene Prüfung (§12.2, §14.4, §18) | 06 |
 
 Die Felder erscheinen in der Reihenfolge der Tabelle. Ungültige Zeilen in `runs.jsonl` meldet `status` als Warnung auf stderr.
 
@@ -587,7 +594,7 @@ Die Felder sind hier verbindlich festgelegt. Das jeweilige Paket setzt sie 1:1 i
 | `lastSnapshotId` | string \| null | Zuletzt gespeicherter Snapshot und damit Vorgänger der nächsten Aufnahme |
 | `lastAnalysedSnapshotId` | string \| null | Analyse-Cursor (§12.3) |
 | `lastCommit` | string \| null | HEAD des Snapshots am Cursor |
-| `lastSuccessfulRun` | string \| null | Ende des letzten `capture` mit Exit-Code 0, auch bei `unchanged`. Es ist das einzige Feld, das eine Aufnahme ohne Snapshot ändert (§18). |
+| `lastSuccessfulRun` | string \| null | Ende des letzten `capture` mit Exit-Code 0, auch bei `unchanged`. Der Exit-Code umfasst die Warteschlange. Es ist das einzige Feld, das die Aufnahme ohne Snapshot ändert; Cursor und `lastCommit` schreibt die Warteschlange (§12.3, §18). |
 | `nextSnapshotSeq` | integer ≥ 1 | Nächste Snapshot-Nummer |
 | `halt` | null \| `{ reason, detectedAt, expected: { branch, head }, observed: { branch, head } }` | `reason` ist `branch_changed`, `history_rewritten` oder `head_missing`. |
 
@@ -685,7 +692,13 @@ Das Schema `note` prüft die Einschränkungen „nur bei `decision`“ und „nu
 | `filterSummary` | `{ excluded, withheld, omitted, byReason: { <reason>: count } }`. Nur Zähler, keine Pfade ausgeschlossener Dateien. |
 | `allowedEvidenceIds` | alle zitierbaren IDs: `evidence[].id`, `notes[].id` und `context[].id` |
 
-Die Grösse des Pakets ist die UTF-8-Byte-Länge der serialisierten Datei.
+Die Grösse des Pakets ist die UTF-8-Byte-Länge der serialisierten Datei. `input.json` und stdin sind derselbe Text: JSON mit zwei Leerzeichen Einzug und abschliessendem Zeilenumbruch (§18).
+
+Weitere Regeln (§18):
+
+- Der Inhalt jedes übernommenen Belegs wird vor der Übermittlung erneut mit dem `SecretScanner` geprüft (I-05). Bei einem Treffer ist `content` `null`, `omitted` `{ reason: "secret_suspected", detector }`, und `filterSummary` zählt die Einheit als `withheld`.
+- Eine Notiz verweist nur dann auf den Snapshot, wenn der Beleg ihrer Referenz existiert. Notizen werden unverändert nach §9.5 übernommen.
+- Kontextdateien umgehen wie Testberichte den Pfadfilter (D-17), werden aber bei jedem Paketbau neu gelesen und geprüft. Ihre IDs folgen der Position in `context.files`, auch wenn eine Datei ausgelassen wird. Ausgelassene (`unreadable`, `binary`, `file_too_large`) und zurückgehaltene Dateien fehlen in `context[]` und werden nur gezählt. `path` ist der konfigurierte Pfad mit `/`.
 
 ### 9.7 Analyse-Ausgabe von Claude (`structured_output`)
 
@@ -718,11 +731,13 @@ Alle Felder sind Pflicht, Arrays dürfen leer sein. `id` folgt dem Muster einer 
 
 Snapshots ohne Analysepflicht (D-08) haben `analysis: null` und `provenance: { deterministic: true, generatedAt }`.
 
+`evidenceIndex` enthält alle Belege des Manifests, bei einer Analyse durch Claude zusätzlich die verwendeten Notizen (`kind: note`, `path: null`) und Kontextdateien (`kind: context`). `snapshotFile` ist relativ zum Arbeitsbereich, zum Beispiel `snapshots/S000002/content/E001.patch`, und `null` ohne gespeicherte Datei. `notesUsed[].sha256` ist der SHA-256 des kompakten JSON der Notiz, also ihrer vom Tool geschriebenen JSONL-Zeile ohne Zeilenumbruch (§18).
+
 Weitere Markierungen:
 
 - `complete.json`: `{ schemaVersion, snapshotId, completedAt, analysisSha256, logSha256 }`
 - `skip.json`: `{ schemaVersion, snapshotId, skippedAt, reason }`
-- `retry-<n>.json`: `{ schemaVersion, snapshotId, requestedAt }`
+- `retry-<n>.json`: `{ schemaVersion, snapshotId, requestedAt }`. `<n>` ist die Nummer des letzten Versuchs zum Zeitpunkt der Freigabe; „seit der letzten Freigabe“ heisst Versuchsnummer grösser als das grösste `<n>` (§12.1, §18).
 
 ### 9.9 Versuchsergebnis `attempt-<n>/outcome.json`
 
@@ -734,6 +749,8 @@ Weitere Markierungen:
 - `errorCode` enthält die Fehlerklassen aus §13.3: `not_found`, `not_executable`, `timeout`, `nonzero_exit`, `invalid_envelope`, `error_result`, `missing_structured_output`, `schema_invalid`, `evidence_invalid`, `rule_violation`.
 
 Ein Versuchsordner ohne `outcome.json` zählt als `interrupted`.
+
+`outcome.json` ist der letzte Schritt eines Versuchs. Bei Erfolg entsteht es erst nach `complete.json` (§12.3), `success` hat also immer eine Abschlussmarkierung. Scheitert die Ablage mit einem Ein- oder Ausgabefehler, etwa bei voller Platte, ist `outcome` `interrupted` mit dem Fehlercode in `message`. Ein Versuch mit `input_too_large` enthält nur `input.json` und `outcome.json` (§18).
 
 ### 9.10 Journal
 
@@ -788,7 +805,8 @@ Den Aufbau des Markdown-Entwurfs legt Paket 07 fest.
   errors: [{ code, message }], recovered?: id[] }
 ```
 
-- `outcome` ist `ok`, `unchanged`, `halted`, `unstable`, `lock_held`, `analysis_failed`, `outside_window`, `usage_error` oder `error`.
+- `outcome` ist `ok`, `unchanged`, `halted`, `unstable`, `lock_held`, `analysis_failed`, `outside_window`, `usage_error` oder `error`. `unchanged` gilt nur bei Exit-Code 0; sonst folgt `outcome` dem Exit-Code (§18).
+- `analysesCompleted` nennt die Snapshots, die in diesem Lauf `complete.json` erhielten, auch ohne Claude. `analysesFailed` nennt die Snapshots mit einem gescheiterten Versuch in diesem Lauf oder die blockiert, erschöpft oder mangels Claude offen blieben. `errors` hat dann pro Snapshot einen Eintrag mit der Fehlerklasse oder `input_too_large`, `analysis_exhausted`, `claude_not_ready` oder `analysis_store_failed` als `code` (§18).
 - `message` enthält keine Inhalte aus dem Repository (I-12).
 - `recovered` nennt Snapshots, die der Lauf gemäss §11.6 aus einem abgebrochenen Lauf übernommen hat. Das Feld fehlt, wenn es leer wäre (§18).
 - Jeder Lauf eines schreibenden Befehls wird protokolliert, auch einer, der den Lock nicht erhält. `status` protokolliert nicht. `note` protokolliert ebenfalls nicht, die Notiz selbst mit `id` und `recordedAt` ist der Nachweis (§18). `doctor` protokolliert nicht; Nachweis sind `doctor.json` mit `checkedAt` und die Zeilen in `ai-usage.jsonl` (§18).
@@ -909,11 +927,13 @@ ensureClaudeReady(ctx: WorkspaceContext, opts?: { env?: NodeJS.ProcessEnv }): Pr
 
 // analysis
 analysisStatus(ctx: WorkspaceContext, snapshotId: string): Promise<AnalysisStatus>
-processQueue(ctx: WorkspaceContext, runner: ClaudeRunner, opts: { deadline: Date; hooks?: QueueHooks }): Promise<QueueResult>
-buildAnalysisInput(ctx: WorkspaceContext, snapshotId: string): Promise<AnalysisInput>
+processQueue(ctx: WorkspaceContext, runner: ClaudeRunner, opts: { deadline: Date; hooks?: QueueHooks; env?: NodeJS.ProcessEnv }): Promise<QueueResult>
+  // env geht an ensureClaudeReady. QueueResult = { completed, failed, caughtUp, claudeCalls, stoppedBy, cursor, open, exitCode: 0|6, warnings } (§18)
+buildAnalysisInput(ctx: WorkspaceContext, snapshotId: string, opts?: { onWarning?: (message: string) => void }): Promise<AnalysisInput>
 validateAnalysisOutput(input: AnalysisInput, output: unknown):
   { ok: true; value: AnalysisOutput } | { ok: false; errorCode: 'schema_invalid' | 'evidence_invalid' | 'rule_violation'; errors: string[] }
-renderWorkLog(record: AnalysisRecord, manifest: Manifest): string
+renderWorkLog(record: AnalysisRecord, manifest: Manifest, texts?: { commitMessages?: Record<string, string> }): string
+  // texts: geprüfte Commit-Nachrichten nach Beleg-ID für die Commit-Liste im Kopf (§18)
 
 // journal
 generateJournal(ctx: WorkspaceContext, runner: ClaudeRunner | null, opts: { day: string; noAi: boolean }):
@@ -1073,6 +1093,8 @@ Der Status wird aus vorhandenen Dateien abgeleitet. Es gibt keine eigene Statusd
 
 Als „offen“ gelten die Status `pending`, `failed`, `blocked` und `exhausted`.
 
+`failed` zählt alle fehlgeschlagenen Versuche, auch solche vor einer Freigabe mit `retry-<n>.json`; nach `--retry` ist ein Snapshot also `failed`, nicht `pending`. Eine ungültige Markierung (`complete.json`, `skip.json`, `retry-<n>.json`, `outcome.json`) ergibt Exit-Code 2 gemäss §8.4 (§18).
+
 ### 12.2 Warteschlange
 
 Reihenfolge und Behandlung:
@@ -1081,7 +1103,8 @@ Reihenfolge und Behandlung:
 - `not_required`: deterministische Ausgabe ohne Claude.
 - `pending` und `failed`: Das Eingabepaket wird gebaut.
   - Überschreitet es `limits.maxAnalysisInputBytes`, wird ein Versuch mit `input_too_large` protokolliert. Der Status wird `blocked`. Es gibt keine Kürzung (I-15) und keinen Claude-Aufruf.
-  - `blocked` wird bei jedem Lauf neu bewertet. Wurde die Grenze erhöht, geht die Verarbeitung normal weiter.
+  - `blocked` wird bei jedem Lauf neu bewertet. Wurde die Grenze erhöht, geht die Verarbeitung normal weiter. Ist das Paket weiter zu gross, entsteht kein weiterer Versuchsordner (§18).
+- Vor dem ersten Claude-Aufruf eines Laufs läuft `ensureClaudeReady`. Scheitert es, entsteht kein Versuch, der Snapshot bleibt offen, und die Warteschlange endet mit Exit-Code 6. Snapshots ohne Analysepflicht davor werden trotzdem abgeschlossen (§18).
 - `exhausted`: kein Aufruf, bis `--retry` oder `ipa skip` verwendet wird.
 - Die Verarbeitung stoppt beim ersten Snapshot, der danach nicht `complete`, `skipped` oder `not_required` ist, weil der Cursor nicht springen darf.
 
@@ -1343,7 +1366,7 @@ Kein Detektor gilt als vollständig. README und Ausgaben DÜRFEN keine Fehlerfre
 
 ## 15. Regeln für Aussagen, Zeiten und Journale
 
-Der Validator prüft diese Regeln maschinell (I-06). Ein Verstoss führt zu `rule_violation`.
+Der Validator prüft diese Regeln maschinell (I-06). Ein Verstoss führt zu `rule_violation`. Reihenfolge: R-07 über die Namen der Felder, dann das Schema (`schema_invalid`), dann R-01 (`evidence_invalid`), dann R-02 bis R-05. „Mit Inhalt“ heisst ohne `omitted`, nicht binär und mit `content`; das gilt auch für die Commit-Nachricht in R-04 (§18).
 
 | ID | Regel |
 | --- | --- |
@@ -1478,3 +1501,14 @@ Die Einträge entstehen während der Umsetzung. Jeder Eintrag nennt Datum, Paket
 | 2026-09-29 | 05 | Seit Paket 05 prüft `ipa init` Claude Code. Liegt `claude` im PATH des Rechners, würden alle Tests mit `init` die echte CLI starten, entgegen §16.2, und ihre Claude-Arbeitsordner lägen im Temp-Verzeichnis des Rechners. | Das globale Vitest-Setup ersetzt jeden PATH-Ordner mit `claude`, `claude.exe`, `claude.cmd`, `claude.bat`, `claude.com` oder `claude.ps1` für die Testprozesse durch einen Ordner mit Links auf dessen übrige Einträge, damit etwa Git erreichbar bleibt, und prüft danach, dass kein `claude` erreichbar ist. `TMPDIR`, `TMP` und `TEMP` zeigen in den Test-Ordner. Tests mit `init` sehen daher die Warnung „nicht gefunden“. Der Live-Test (`npm run test:live` mit `vitest.live.config.ts`, Dateien `test/live/*.live.ts`) verwendet dasselbe Setup ohne PATH-Filter und läuft nur mit `IPA_LIVE_CLAUDE=1`. | §16.2 |
 | 2026-09-29 | 05 | **Live-Prüfung AK-05-09 mit Produktcode**, vom Benutzer freigegeben: `npm run test:live` (`ipa doctor --live`) im Linux-Container mit Claude Code 2.1.284, Anmeldeart `oauth_token`, innerhalb einer Claude-Code-Sitzung, deren Variablen das Tool nicht weitergab. Zwei Läufe mit je zwei Modellaufrufen; der erste zeigte keine Einzelheiten, weil Vitest in einer KI-Agenten-Sitzung die Ausgabe bestandener Tests unterdrückt, und wurde mit `--reporter=default` wiederholt. Beide Läufe: bestanden, Exit-Code 0. Zweiter Lauf: `system/init` meldet `tools: ["StructuredOutput"]` und `mcp_servers: []`, `structured_output` entspricht dem Prüfschema; Aufruf 2 mit `--output-format json` und `--setting-sources project,local` liefert genau ein JSON-Objekt mit gültigem `structured_output`; beide Aufrufe mit `--safe-mode`; Modell `claude-opus-5-5`, Kosten 0.0106 und 0.0070 USD, Dauer 3.4 s und 2.1 s; keine Befunde; Repository unverändert. Ohne Modellaufruf: `--tools` mit leerem Wert wird erkannt, `claude` startet ohne Shell über den Namen. | Für 2.1.284: A-01 **bestätigt** (nur `StructuredOutput`, §13.4), A-02 sinngemäss **bestätigt** (`structured_output` mit `--json-schema` in beiden Ausgabeformaten), A-03 **bestätigt**, A-08 **bestätigt**, soweit prüfbar: Die Anmeldung bleibt mit `--setting-sources project,local` erhalten, die Wirkung auf Benutzer-Hooks ist nicht nachweisbar. A-04 und A-05 gelten auch unter Linux, für Windows sind sie aus Paket 01 bestätigt. A-07 bleibt ein dokumentiertes Restrisiko (README, §13.4), das `--setting-sources` und `--safe-mode` mildern. Für 2.1.114 auf dem Entwicklungsrechner, der Zielplattform, bleiben A-02, A-03 und A-08 **unklar**; `ipa doctor --live` soll dort vor Paket 06 laufen. Keine Annahme ist widerlegt, O-02 wird nicht vorgezogen. | §3.3, §13.4; Paket 05 AK-05-09 |
 | 2026-09-29 | 05 | **Live-Prüfung AK-05-09 auf dem Entwicklungsrechner**, vom Benutzer ausgeführt: Windows 11, Claude Code 2.1.201 (Update seit der Vorabprüfung mit 2.1.114), Git 2.52.0.windows.1, Anmeldeart `claude.ai`. `npm test`: 46 Testdateien, 423 bestanden, 2 übersprungen (Tests für andere Plattformen). `ipa doctor`: alle 11 Pflichtoptionen erkannt, `--safe-mode`, `--setting-sources`, `--model` und `--verbose` erkannt. `ipa doctor --live`: bestanden am 2026-09-29T23:08:17+02:00; gemeldete Werkzeuge nur `StructuredOutput`, keine MCP-Server, `structured_output` gültig, Aufruf 2 mit `--setting-sources project,local` erfolgreich. | Für 2.1.201 unter Windows: A-01, A-02, A-03 und A-08 **bestätigt** (A-08, soweit prüfbar: Anmeldung bleibt erhalten, die Wirkung auf Benutzer-Hooks ist nicht nachweisbar); A-04 und A-05 bleiben bestätigt. A-07 bleibt dokumentiertes Restrisiko, gemildert durch `--setting-sources` und `--safe-mode`, die der Runner jetzt verwendet. Keine Annahme ist widerlegt. 2.1.201 liegt unter 2.1.205: Ein ungültiges Ausgabeschema würde still ignoriert; die Schema-Hilfsfunktion (§8.4) verhindert das vor jedem Start. Ein Update auf mindestens 2.1.205 bleibt empfohlen (O-02). Paket 05 ist abgeschlossen. | §2.2, §3.3; Paket 05 AK-05-09 |
+| 2026-09-29 | 06 | **Umgebung der Umsetzungssitzung:** Linux-Container mit Node.js 22.22.2, npm 10.9.7, Git 2.43.0 und Claude Code 2.1.285 (vom Benutzer nicht für Live-Aufrufe freigegeben). Vor Beginn: `npm run typecheck` fehlerfrei, `npm test` 46 Testdateien, 421 bestanden, 4 übersprungen. AK-05-09 ist unter Linux (2.1.284) und Windows (2.1.201) bestanden, A-01 ist bestätigt. | Kein Halt wegen A-01. Die Live-Analyse aus Paket 06 §8 bleibt offen, bis der Benutzer sie freigibt. Typecheck, Tests und Build laufen zusätzlich mit Node.js 24 (Empfehlung aus Paket 04). | §2.2; Paket 06 §8 |
+| 2026-09-29 | 06 | Paket 06 §4 legt fest, dass bei `capture` ein Halt (4) Vorrang vor einer nicht abgeschlossenen Analyse (6) hat, und beruft sich dabei auf §6.4. §6.4 sagt aber „der höchste Code gilt“, danach wäre es 6. | Ein Halt hat bei `capture` Vorrang vor 6: Ohne `ipa baseline` nimmt keine weitere Aufnahme Arbeit auf, eine gescheiterte Analyse holt dagegen der nächste Lauf nach. Die gescheiterte Analyse bleibt in `runs.jsonl` (`analysesFailed`, `errors`) und in `ipa status` sichtbar. §6.4 nennt die Ausnahme. Für 5 und 6 gilt weiter der höhere Code. | §6.4; Paket 06 §4 |
+| 2026-09-29 | 06 | §4.4 zeigt die Warteschlange nach allen vier Ergebnissen der Aufnahme, Paket 06 §4 nennt nur den Halt. Offen waren auch der Exit-Code nach einer instabilen Aufnahme, die Bedeutung von `lastSuccessfulRun` mit Warteschlange und die Belegung von `analysesCompleted`, `analysesFailed`, `errors` und `outcome` in `runs.jsonl`. | Die Warteschlange läuft nach `created`, `unchanged`, `halted` und nach einer instabilen Aufnahme, nicht nach einem Bedienungs- oder internen Fehler der Aufnahme. `--retry` wird vor der Aufnahme geprüft. `lastSuccessfulRun` setzt nur ein Lauf mit Exit-Code 0 einschliesslich der Warteschlange. `runs.jsonl`: `unchanged` nur bei Exit-Code 0; `analysesCompleted` alle in diesem Lauf abgeschlossenen Snapshots, auch ohne Claude; `analysesFailed` und `errors` je Snapshot mit gescheitertem Versuch oder blockiertem, erschöpftem oder mangels Claude offenem Stand, `code` ist die Fehlerklasse oder `input_too_large`, `analysis_exhausted`, `claude_not_ready`, `analysis_store_failed`. Der Abgleich des Cursors (§12.4) erscheint nur als Hinweis auf stderr. | §4.4, §6.3, §9.1, §9.11 |
+| 2026-09-29 | 06 | Paket 06 §4 schreibt `outcome.json` vor der Ablage. Scheitert die Ablage oder bricht der Lauf danach ab, gäbe es ein `success` ohne Abschlussmarkierung, das §12.1 keinem Status zuordnet. §12.5 verlangt für eine gescheiterte Ablage ein protokolliertes Versuchsergebnis, §9.9 kennt dafür kein eigenes `outcome`. Offen waren auch der Inhalt eines Versuchs mit `input_too_large`, der wiederholte Versuch bei weiter zu grossem Paket und ein Scheitern von `ensureClaudeReady`. | `outcome.json` ist der letzte Schritt eines Versuchs, bei Erfolg nach `complete.json`; `success` hat damit immer eine Abschlussmarkierung. Ein Abbruch vor `complete.json` hinterlässt einen Versuch ohne `outcome.json` (`interrupted`), der nächste Lauf versucht es erneut (AK-06-07). Eine Ablage mit Ein- oder Ausgabefehler ergibt `interrupted` mit dem Fehlercode in `message`; Programmierfehler bleiben Exit-Code 1. Ein Versuch mit `input_too_large` enthält nur `input.json` (ungekürzt) und `outcome.json`. Ist ein `blocked`-Snapshot weiter zu gross, entsteht kein neuer Versuchsordner. Scheitert `ensureClaudeReady`, entsteht kein Versuch, der Snapshot bleibt `pending`, der Lauf endet mit Exit-Code 6; Snapshots ohne Analysepflicht davor werden abgeschlossen. | §9.9, §12.2, §12.3, §12.5 |
+| 2026-09-29 | 06 | §9.8 und §12.1 legen nicht fest, was `<n>` in `retry-<n>.json` ist und wie „seit der letzten `retry-<n>.json`“ ohne Zeitangaben in abgebrochenen Versuchen bestimmt wird. Offen war auch, welcher Status nach `--retry` gilt und was eine ungültige Markierung bedeutet. | `<n>` ist die Nummer des letzten Versuchs bei der Freigabe; es zählen die Fehlversuche mit grösserer Nummer. `--retry` ist nur im Status `exhausted` erlaubt, sonst Exit-Code 2, damit ist `retry-<n>.json` eindeutig. `failed` zählt alle Fehlversuche, nach `--retry` ist der Snapshot also `failed`. Ungültige Markierungen und `outcome.json` ergeben Exit-Code 2 (§8.4). | §6.3, §9.8, §12.1 |
+| 2026-09-29 | 06 | §9.6 und §12.2 lassen offen: die Serialisierung des Pakets, ob übernommene Belege vor der Übermittlung erneut geprüft werden (I-05 verlangt eine Prüfung „vor jeder Übermittlung“), ob eine Referenz auf einen fehlenden Beleg eine Notiz einschliesst, wie `notesUsed[].sha256` gebildet wird, und für Kontextdateien Pfadfilter, IDs ausgelassener Dateien und Darstellung in `context[]`. | `input.json` und stdin sind derselbe Text (JSON, zwei Leerzeichen Einzug, Zeilenumbruch am Ende); seine UTF-8-Länge ist die Grösse. Jeder Inhalt wird vor der Übermittlung erneut geprüft, ein Treffer hält den Beleg mit `secret_suspected` zurück und zählt ihn. Nur existierende Referenzen schliessen eine Notiz ein, fehlende ergeben eine Warnung. `notesUsed[].sha256` ist der SHA-256 des kompakten JSON der Notiz. Kontextdateien sind ausdrücklich konfiguriert und umgehen wie Testberichte den Pfadfilter (D-17), auch damit Dateien in `context/` des Arbeitsbereichs nutzbar sind; Grösse, Binärinhalt und Secret-Prüfung gelten. Ihre ID folgt der Position in `context.files`; ausgelassene und zurückgehaltene Dateien fehlen in `context[]`, werden gezählt und als Hinweis gemeldet. | §9.6, §9.8, §12.2, D-17 |
+| 2026-09-29 | 06 | §9.8 lässt `evidenceIndex` und `snapshotFile` offen. `renderWorkLog(record, manifest)` soll nach Paket 06 §4 die Commit-Liste mit geprüften Nachrichten zeigen, deren Texte weder im Datensatz noch im Manifest stehen. `buildAnalysisInput` braucht einen Weg für Warnungen, `processQueue` die Umgebung für `ensureClaudeReady`, `QueueResult` ist nicht definiert. Offen war auch, wie ein Log ohne Claude aufgebaut ist. | `evidenceIndex`: alle Belege des Manifests, bei Claude zusätzlich die verwendeten Notizen und Kontextdateien; `snapshotFile` relativ zum Arbeitsbereich. `renderWorkLog` erhält optional `texts.commitMessages` (die ablegende Funktion liest und prüft die Nachrichten erneut), `buildAnalysisInput` optional `onWarning`, `processQueue` optional `env`; `QueueResult` wie in §10. Logs ohne Claude haben dieselben zehn Abschnitte, der Hinweis lautet „Automatisch erzeugter Entwurf ohne KI – vor Verwendung persönlich prüfen.“, die Abschnitte der KI-Analyse lauten „nicht erfasst (ohne KI-Analyse)“. | §9.8, §10, §15 |
+| 2026-09-29 | 06 | §15 bestimmt die Reihenfolge der Prüfungen nicht. R-07 wäre bei strengem Schema (`additionalProperties: false`) immer ein Schemafehler, §15 verlangt für jeden Regelverstoss aber `rule_violation`. R-04 lässt offen, ob eine zurückgehaltene Commit-Nachricht eine Begründung trägt. | Reihenfolge: R-07 über die Namen aller Felder (Wörter wie `time`, `minutes`, `duration`, `zeit`, `stunden`), dann Schema, dann R-01, dann R-02 bis R-05; gemeldet wird die erste scheiternde Stufe mit allen ihren Fehlern. „Mit Inhalt“ heisst ohne `omitted`, nicht binär und mit `content`, auch für die Commit-Nachricht in R-04. Die Meldungen nennen nur Positionen und IDs. | §15 |
+| 2026-09-29 | 06 | Offener Punkt aus Paket 02: §12.2 und §14.4 verlangen, dass `ipa status` zurückgehaltene Einheiten und Notizen als offene Prüfung ausweist; §6.6 hat dafür kein Feld. | `ipa status --json` erhält nach `analyses` das Feld `withheld: { units, notes }`: Einheiten mit `decision: withheld` aller Manifeste und gültige Notizen mit Secret-Treffer bei der aktuellen Konfiguration. Die Textausgabe zeigt beides unter „Zurückgehalten“. | §6.6; Pakete 02, 07 |
+| 2026-09-29 | 06 | §6.3 regelt für `ipa skip` nur „offene Snapshots“. Offen waren Snapshots ohne Analysepflicht, unbekannte Snapshots und der Grund, der in `skip.json` gespeichert wird. | Nur `pending`, `failed`, `blocked` und `exhausted`; `not_required` schliesst der nächste `capture` ohne Claude ab und ergibt Exit-Code 2, ebenso ein unbekannter Snapshot, ein leerer Grund oder einer mit Secret-Treffer (wie bei `ipa baseline`). `skip` führt den Wiederanlauf aus (§11.6), schreibt `skip.json`, führt den Cursor nach und protokolliert den Lauf. | §6.3 |
+| 2026-09-29 | 06 | Seit Paket 06 verarbeitet `capture` ohne `--no-analysis` die Warteschlange. In den Tests fehlt `claude` im PATH (§16.2), Arbeits-Snapshots mit Analysepflicht ergäben dort Exit-Code 6. Viele Tests der Pakete 02 bis 04 riefen `capture` ohne Option auf, das bis Paket 06 wie `--no-analysis` wirkte (§6.3). Die Tests von AK-04-07 und AK-04-08 speicherten Verweise auf nicht vorhandene Belege, was D-23 ab Paket 06 ablehnt. | Die betroffenen Tests der Aufnahme verwenden `capture --no-analysis` und prüfen damit weiter dasselbe. AK-04-07 verweist jetzt auf vorhandene Belege, AK-04-08 prüft zusätzlich die Ablehnung eines fehlenden Belegs. Die Tests der Befehlsliste und der Felder von `status` enthalten `skip`, `analyses` und `withheld`. `prompts/` gehört in `files` von `package.json` (D-12). | §16.2; Pakete 02 bis 05 |

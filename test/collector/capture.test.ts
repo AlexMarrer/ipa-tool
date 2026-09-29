@@ -214,7 +214,7 @@ describe('Filter und Inhaltsprüfung (AK-02-05, AK-02-06)', () => {
     await repo.commit(`Konfiguration bereinigt\n\n${secretAssignment(marker)}`);
     await repo.write('src/neu.ts', `export const x = 1;\n${secretAssignment(marker)}\n`);
 
-    const result = await unchanged(repo, () => runCli(['capture'], { dataDir, repo: repo.root }));
+    const result = await unchanged(repo, () => runCli(['capture', '--no-analysis'], { dataDir, repo: repo.root }));
     expect(result.exitCode).toBe(0);
     for (const output of [initResult.stdout, initResult.stderr, result.stdout, result.stderr]) expect(output).not.toContain(marker);
     expect(result.stderr).toContain('Secret-Verdacht');

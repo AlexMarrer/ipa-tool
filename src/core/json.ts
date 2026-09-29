@@ -3,7 +3,7 @@
  */
 import { readFile } from 'node:fs/promises';
 import { errnoCode, EXIT, IpaError } from './errors.js';
-import { writeFileAtomic } from './fs-write.js';
+import { createFileExclusive, writeFileAtomic } from './fs-write.js';
 import { formatIssues, type SchemaId, unsupportedSchemaVersion, validate } from './schemas.js';
 
 export function stripBom(text: string): string {
@@ -60,10 +60,7 @@ export async function readJsonValidated<T>(filePath: string, schemaId: SchemaId)
   return value as T;
 }
 
-/**
- * An invalid value is a programming error (exit code 1); the file then stays unchanged.
- */
-export async function writeJsonAtomic(filePath: string, value: unknown, schemaId: SchemaId): Promise<void> {
+function assertRecordValid(value: unknown, schemaId: SchemaId): void {
   const result = validate(schemaId, value);
   if (!result.ok) {
     throw new IpaError(
@@ -72,5 +69,18 @@ export async function writeJsonAtomic(filePath: string, value: unknown, schemaId
       `Interner Fehler: Der Datensatz für ${schemaId} ist ungültig: ${formatIssues(result.issues)}`,
     );
   }
+}
+
+/**
+ * An invalid value is a programming error (exit code 1); the file then stays unchanged.
+ */
+export async function writeJsonAtomic(filePath: string, value: unknown, schemaId: SchemaId): Promise<void> {
+  assertRecordValid(value, schemaId);
   await writeFileAtomic(filePath, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+/** Like `writeJsonAtomic`, but with `createFileExclusive`: an existing file raises `FileExistsError`. */
+export async function createJsonExclusive(filePath: string, value: unknown, schemaId: SchemaId): Promise<void> {
+  assertRecordValid(value, schemaId);
+  await createFileExclusive(filePath, `${JSON.stringify(value, null, 2)}\n`);
 }

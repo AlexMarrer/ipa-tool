@@ -99,7 +99,7 @@ describe('Wiederanlauf der Aufnahme (spec.md §11.6, AK-02-10)', () => {
     await repo.write('datei.txt', 'eins\nzwei\ndrei\n');
 
     const before = await fingerprintRepo(repo.root);
-    const result = await runCli(['capture'], { dataDir, repo: repo.root });
+    const result = await runCli(['capture', '--no-analysis'], { dataDir, repo: repo.root });
     expectRepoUnchanged(before, await fingerprintRepo(repo.root));
     expect(result.exitCode, result.stderr).toBe(0);
     expect(result.stderr).toContain('S000002 aus einem abgebrochenen Lauf übernommen');

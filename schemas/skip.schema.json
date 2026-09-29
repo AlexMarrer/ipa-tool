@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "IPA Assistant – bewusst ausgelassene Analyse analyses/<snapshotId>/skip.json (spec.md §9.8)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "snapshotId", "skippedAt", "reason"],
+  "properties": {
+    "schemaVersion": { "type": "integer", "const": 1 },
+    "snapshotId": { "type": "string", "pattern": "^S[0-9]{6}$" },
+    "skippedAt": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(Z|[+-][0-9]{2}:[0-9]{2})$"
+    },
+    "reason": { "type": "string", "minLength": 1 }
+  }
+}

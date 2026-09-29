@@ -6,6 +6,7 @@ import { registerCaptureCommand } from './commands/capture.js';
 import { registerDoctorCommand } from './commands/doctor.js';
 import { registerInitCommand } from './commands/init.js';
 import { registerNoteCommand } from './commands/note.js';
+import { registerSkipCommand } from './commands/skip.js';
 import { registerStatusCommand } from './commands/status.js';
 import { type CliIo, type CliState, processIo } from './io.js';
 import { translateCommanderMessage, translateHelpTitle } from './messages.js';
@@ -49,6 +50,7 @@ export function createProgram(io: CliIo, state: CliState): Command {
   registerDoctorCommand(program, io, state);
   registerCaptureCommand(program, io, state);
   registerBaselineCommand(program, io, state);
+  registerSkipCommand(program, io, state);
   registerNoteCommand(program, io, state);
   return program;
 }

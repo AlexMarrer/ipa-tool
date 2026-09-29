@@ -1,11 +1,15 @@
 /**
  * `ipa note [text] [optionen]` (spec.md §6.3, package 04): appends a note without taking the lock
- * (D-16) and without a run log entry (spec.md §9.11). The output never repeats the text.
+ * (D-16) and without a run log entry (spec.md §9.11). The output never repeats the text. Package 06
+ * adds the existence check of `--ref` and a secret warning (D-23); `src/notes/` stays independent of both.
  */
 import type { Command } from 'commander';
-import { resolveContext } from '../../core/context.js';
+import { noteSecretHits } from '../../analysis/note-secrets.js';
+import { listSnapshots, readManifest } from '../../collector/snapshots.js';
+import { resolveContext, type WorkspaceContext } from '../../core/context.js';
 import { EXIT, IpaError } from '../../core/errors.js';
 import { dayOf } from '../../core/time.js';
+import { createSecretScanner } from '../../filter/secret-scanner.js';
 import { parseNoteOptions, precheckNoteOptions, type RawNoteOptions, toNoteInput } from '../../notes/input.js';
 import { addNote } from '../../notes/store.js';
 import { NOTE_TYPES, type Note, type TimeBasis } from '../../notes/types.js';
@@ -39,6 +43,33 @@ export function formatSavedNote(note: Note): string {
   return `Notiz gespeichert.\n${formatFields(rows)}`;
 }
 
+/** Every `--ref` must name evidence of a stored snapshot (D-23), otherwise exit code 2 without a note. */
+export async function checkRefsExist(ctx: WorkspaceContext, refs: readonly string[]): Promise<void> {
+  const snapshots = new Set(await listSnapshots(ctx));
+  for (const ref of refs) {
+    const [snapshotId = '', evidenceId] = ref.split(':');
+    if (!snapshots.has(snapshotId)) {
+      throw new IpaError('ref_unknown', EXIT.usage, `--ref ${ref}: Den Snapshot ${snapshotId} gibt es nicht. Die Notiz wurde nicht gespeichert.`);
+    }
+    const manifest = await readManifest(ctx, snapshotId);
+    if (!manifest.evidence.some((entry) => entry.id === evidenceId)) {
+      throw new IpaError('ref_unknown', EXIT.usage, `--ref ${ref}: Snapshot ${snapshotId} hat keinen Beleg ${evidenceId}. Die Notiz wurde nicht gespeichert.`);
+    }
+  }
+}
+
+/** Warning without the value (I-12); the note stays local and never reaches Claude (spec.md §12.2). */
+export function secretWarning(ctx: WorkspaceContext, note: Note): string | null {
+  const hits = noteSecretHits(createSecretScanner(ctx.config.secrets), note);
+  if (hits.length === 0) return null;
+  const found = hits.map((hit) => `${hit.detector} in ${hit.field}`).join(', ');
+  return (
+    `Warnung: Die Notiz ${note.id} enthält möglicherweise ein Zugangsdatum (Detektor ${found}). ` +
+    `Sie ist lokal gespeichert, wird aber nie an Claude übermittelt und bleibt eine offene Prüfung. ` +
+    `Bei Bedarf in notes/${note.activityDay}.jsonl anpassen.`
+  );
+}
+
 export function registerNoteCommand(program: Command, io: CliIo, state: CliState): void {
   program
     .command('note')
@@ -62,6 +93,7 @@ export function registerNoteCommand(program: Command, io: CliIo, state: CliState
       const options = command.optsWithGlobals<NoteCommandOptions>();
       const ctx = await resolveContext({ repo: options.repo, dataDir: options.dataDir, requireInit: true });
       let parsed = parseNoteOptions(options);
+      await checkRefsExist(ctx, parsed.refs);
       let noteText = text;
       if (noteText === undefined) {
         const terminal = io.terminal?.();
@@ -79,6 +111,8 @@ export function registerNoteCommand(program: Command, io: CliIo, state: CliState
       }
       const note = await addNote(ctx, toNoteInput(parsed, noteText));
       io.stdout(formatSavedNote(note));
+      const warning = secretWarning(ctx, note);
+      if (warning !== null) io.stderr(`${warning}\n`);
       state.exitCode = EXIT.ok;
     });
 }

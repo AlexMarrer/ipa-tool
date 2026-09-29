@@ -14,7 +14,7 @@ function reports(manifest: Manifest): TestReportEvidence[] {
 }
 
 async function capture(repo: TempRepo, dataDir: string): Promise<CliResult> {
-  const result = await unchanged(repo, () => runCli(['capture'], { dataDir, repo: repo.root }));
+  const result = await unchanged(repo, () => runCli(['capture', '--no-analysis'], { dataDir, repo: repo.root }));
   expect(result.exitCode, result.stderr).toBe(0);
   return result;
 }

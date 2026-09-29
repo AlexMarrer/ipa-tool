@@ -21,14 +21,16 @@ describe('ipa capture (Paket 02)', () => {
     const repo = await createTempRepo();
     const dataDir = await createTempDataRoot();
     const workspace = await initRepo(repo, dataDir);
-    for (const [content, args] of [['neu\n', ['capture']], ['neu\nzwei\n', ['capture', '--no-analysis']]] as const) {
+    // Since package 06 the queue would call Claude; this test covers the capture step only.
+    for (const content of ['neu\n', 'neu\nzwei\n']) {
       // Each capture needs a change; otherwise it is `unchanged` (package 03).
       await repo.write('neu.txt', content);
       const before = await fingerprintRepo(repo.root);
-      const result = await runCli(args, { dataDir, repo: repo.root });
+      const result = await runCli(['capture', '--no-analysis'], { dataDir, repo: repo.root });
       expectRepoUnchanged(before, await fingerprintRepo(repo.root));
       expect(result.exitCode, result.stderr).toBe(0);
-      expect(result.stdout).toMatch(/Snapshot S00000[23] gespeichert \(Arbeits-Snapshot, ohne Analyse\)/);
+      expect(result.stdout).toMatch(/Snapshot S00000[23] gespeichert \(Arbeits-Snapshot\)/);
+      expect(result.stdout).toContain('Analyse übersprungen (--no-analysis)');
       expect(result.stdout).toContain('Dateizustände:');
     }
 
