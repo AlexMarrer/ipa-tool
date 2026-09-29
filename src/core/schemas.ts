@@ -6,7 +6,7 @@ import path from 'node:path';
 import { Ajv, type ErrorObject, type ValidateFunction } from 'ajv';
 import { TOOL_ROOT } from './tool.js';
 
-export const SCHEMA_IDS = ['config', 'state', 'registry', 'run-record', 'manifest'] as const;
+export const SCHEMA_IDS = ['config', 'state', 'registry', 'run-record', 'manifest', 'note'] as const;
 export type SchemaId = (typeof SCHEMA_IDS)[number];
 
 /** V1 has no migration (D-18). */
@@ -101,6 +101,8 @@ function toIssue(error: ErrorObject): SchemaIssue {
       return { path: at, message: `darf höchstens ${String(params['limit'])} Einträge enthalten` };
     case 'uniqueItems':
       return { path: at, message: 'darf keine doppelten Einträge enthalten' };
+    case 'if':
+      return { path: at, message: 'verletzt eine bedingte Regel' };
     default:
       return { path: at, message: error.message ?? `verletzt die Regel ${error.keyword}` };
   }

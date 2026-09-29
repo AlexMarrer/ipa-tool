@@ -112,3 +112,14 @@ Nicht im Umfang:
 ## 9. Offene Annahmen
 
 - Eine Notiz mit Secret-Inhalt wird lokal gespeichert, wie vom Benutzer eingegeben. Sie wird nie übermittelt, weil die Prüfung beim Paketbau anschlägt (spec.md §12.2). Die Warnung bei der Eingabe folgt erst mit Paket 06.
+
+Folgen aus der Umsetzung (29.09.2026, Einzelheiten in spec.md §18):
+
+- `ipa note` schreibt keinen Eintrag in `runs.jsonl` (spec.md §9.11). Die Notiz selbst ist der Nachweis.
+- Interaktive Eingabe: Optionen der Befehlszeile gelten als beantwortete Fragen, zum Beispiel `--day` für einen früheren Tag. Der Typ lässt sich auch als Nummer 1 bis 6 angeben. Ungültige Antworten werden erneut erfragt, auch ein Typ, der nicht zu den Optionen passt. Die Frage nach der Basis erscheint auch für eine `--delay` der Befehlszeile. Strg+C oder Strg+D bricht mit Exit-Code 2 ohne Notiz ab. Die Fragen erscheinen auf stdout, weil die interaktive Eingabe ein Terminal für Ein- und Ausgabe voraussetzt.
+- `--measured` oder `--estimated` ohne Zeitangabe und leere Werte von Textoptionen ergeben Exit-Code 2. Texte werden ohne Leerzeichen am Rand gespeichert, eine doppelte `--ref` einmal.
+- Die Minuten aus `--start` und `--end` sind die Differenz der Uhrzeiten am selben Tag. Eine Sommerzeitumstellung dazwischen zählt nicht. Eine Tätigkeit über Mitternacht wird als zwei Notizen erfasst.
+- `readNotes` verknüpft die Kriterien mit „und“; das Intervall ist `(recordedFrom, recordedTo]` wie `observedPeriod`. Für das „oder“ aus spec.md §12.2 fragt Paket 06 Zeitraum und Referenzen getrennt ab. Ungültig sind auch Zeilen in der falschen Tagesdatei, mit ungültigem `recordedAt` oder mit doppelter `id`.
+- `notesToday` zählt die gültigen Notizen, deren `activityDay` heute ist.
+- Zwei Notizen derselben Sekunde erhalten mit einer Wahrscheinlichkeit von 1 zu 65 536 dieselbe `id`, wie Lauf-IDs (spec.md §8.2). `readNotes` meldet die zweite dann als doppelt; sie bleibt in der Datei erhalten und lässt sich von Hand korrigieren.
+- Die interaktive Eingabe wurde am 29.09.2026 unter Linux in einem echten Pseudo-Terminal geprüft (Python-Modul `pty`), mit Node.js 22 und 24. Ab Node.js 24 wirft readline nach dem Ende der Eingabe bei `prompt()`; der Dialog fragt dann ohne `prompt()` weiter (spec.md §18). Die manuelle Prüfung in der Windows-Konsole mit Zeitmessung steht aus.

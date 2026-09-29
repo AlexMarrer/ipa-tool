@@ -94,6 +94,19 @@ export function dayOf(date: Date, timeZone: string): string {
   return `${pad(p.year, 4)}-${pad(p.month)}-${pad(p.day)}`;
 }
 
+const DAY_PATTERN = /^([0-9]{4})-([0-9]{2})-([0-9]{2})$/;
+
+/** `YYYY-MM-DD` that names an existing calendar day, for example not `2026-02-30`. */
+export function isValidDay(value: string): boolean {
+  const match = DAY_PATTERN.exec(value);
+  if (match === null) return false;
+  const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
+  const date = new Date(0);
+  // setUTCFullYear keeps years below 100 as they are, unlike Date.UTC.
+  date.setUTCFullYear(year, month - 1, day);
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+}
+
 /** `YYYYMMDDTHHMMSSZ` in UTC for run and note IDs (spec.md §8.2). */
 export function formatUtcCompact(date: Date): string {
   assertValidDate(date);

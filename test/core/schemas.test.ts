@@ -40,7 +40,7 @@ const registry = () => ({
 
 describe('Schemaregister (spec.md §8.4)', () => {
   it('kompiliert alle Schemas im strikten draft-07-Modus', () => {
-    expect(SCHEMA_IDS).toEqual(['config', 'state', 'registry', 'run-record', 'manifest']);
+    expect(SCHEMA_IDS).toEqual(['config', 'state', 'registry', 'run-record', 'manifest', 'note']);
     for (const id of SCHEMA_IDS) {
       expect(() => validate(id, {})).not.toThrow();
     }
@@ -129,6 +129,79 @@ describe('Schemaregister (spec.md §8.4)', () => {
         validate('run-record', { ...runRecord(), outcome: 'super', exitCode: 9, runId: 'R1', errors: [{ code: 'x' }] }),
       ).map((issue) => issue.path);
       expect(paths).toEqual(expect.arrayContaining(['/outcome', '/exitCode', '/runId', '/errors/0/message']));
+    });
+  });
+
+  describe('note (spec.md §9.5)', () => {
+    const note = (patch: Record<string, unknown> = {}) => ({
+      schemaVersion: 1,
+      id: 'N20261014T081500Z-0c1d',
+      type: 'general',
+      text: 'Recherche zur Testkonfiguration',
+      activityDay: '2026-10-14',
+      recordedAt: '2026-10-14T10:15:00+02:00',
+      time: null,
+      delay: null,
+      reason: null,
+      alternatives: [],
+      cause: null,
+      solution: null,
+      refs: [],
+      ...patch,
+    });
+
+    it('akzeptiert Notizen aller Typen mit Zeit, Verzögerung und Verweisen', () => {
+      expect(validate('note', note())).toEqual({ ok: true });
+      expect(
+        validate('note', note({ type: 'decision', reason: 'Wiederverwendung', alternatives: ['A', 'B'], refs: ['S000001:E001', 'S000002:E0123'] })),
+      ).toEqual({ ok: true });
+      expect(validate('note', note({ type: 'decision' }))).toEqual({ ok: true });
+      expect(validate('note', note({ type: 'problem', cause: 'Falscher Typ', solution: 'Testdaten angepasst' }))).toEqual({ ok: true });
+      expect(
+        validate(
+          'note',
+          note({
+            type: 'activity',
+            time: { minutes: 45, basis: 'estimated', start: '09:10', end: '09:55' },
+            delay: { minutes: 20, basis: 'measured' },
+          }),
+        ),
+      ).toEqual({ ok: true });
+      expect(validate('note', note({ type: 'plan', time: { minutes: 45, basis: 'measured', start: null, end: null } }))).toEqual({ ok: true });
+    });
+
+    it('lehnt ungültige IDs, Typen, Tage, Zeitstempel, Minuten, Basen und Verweise ab', () => {
+      const paths = (patch: Record<string, unknown>) => issues(validate('note', note(patch))).map((issue) => issue.path);
+      expect(paths({ id: 'R20261014T081500Z-0c1d' })).toEqual(['/id']);
+      expect(paths({ type: 'notiz' })).toContain('/type');
+      expect(paths({ text: '' })).toEqual(['/text']);
+      expect(paths({ activityDay: '2026-13-01' })).toEqual(['/activityDay']);
+      expect(paths({ recordedAt: '14.10.2026 10:15' })).toEqual(['/recordedAt']);
+      expect(paths({ time: { minutes: 0, basis: 'measured', start: null, end: null } })).toEqual(['/time/minutes']);
+      expect(paths({ time: { minutes: 45, basis: 'gefühlt', start: null, end: null } })).toEqual(['/time/basis']);
+      expect(paths({ time: { minutes: 45, start: null, end: null } })).toEqual(['/time/basis']);
+      expect(paths({ delay: { minutes: 1.5, basis: 'measured' } })).toEqual(['/delay/minutes']);
+      expect(paths({ refs: ['S1:E1'] })).toEqual(['/refs/0']);
+      expect(paths({ secretSuspected: true })).toEqual(['/secretSuspected']);
+    });
+
+    it('verlangt Beginn und Ende gemeinsam', () => {
+      expect(issues(validate('note', note({ time: { minutes: 45, basis: 'measured', start: '09:10', end: null } })))).toEqual([
+        { path: '/time/end', message: 'muss vom Typ string sein' },
+        { path: '/time', message: 'verletzt eine bedingte Regel' },
+      ]);
+      const onlyEnd = issues(validate('note', note({ time: { minutes: 45, basis: 'measured', start: null, end: '09:55' } })));
+      expect(onlyEnd.map((issue) => issue.path)).toEqual(['/time/end', '/time']);
+      expect(issues(validate('note', note({ time: { minutes: 45, basis: 'measured', start: '9:10', end: '09:55' } })))[0]?.path).toBe('/time/start');
+    });
+
+    it('erlaubt Grund und Alternativen nur bei decision, Ursache und Lösung nur bei problem', () => {
+      const paths = (patch: Record<string, unknown>) => issues(validate('note', note(patch))).map((issue) => issue.path);
+      expect(paths({ reason: 'weil' })).toEqual(['/reason', '/']);
+      expect(paths({ type: 'activity', alternatives: ['A'] })).toEqual(['/alternatives', '/']);
+      expect(paths({ type: 'decision', cause: 'x', solution: 'y' })).toEqual(['/cause', '/solution', '/']);
+      expect(paths({ type: 'decision', reason: '' })).toEqual(['/reason']);
+      expect(paths({ type: 'decision', alternatives: [''] })).toEqual(['/alternatives/0']);
     });
   });
 });

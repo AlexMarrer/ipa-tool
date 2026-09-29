@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canonicalTimeZone, dayOf, formatUtcCompact, formatZoned, isValidTimeZone } from '../../src/core/time.js';
+import { canonicalTimeZone, dayOf, formatUtcCompact, formatZoned, isValidDay, isValidTimeZone } from '../../src/core/time.js';
 
 const ZURICH = 'Europe/Zurich';
 const at = (iso: string): Date => new Date(iso);
@@ -52,5 +52,14 @@ describe('Zeitfunktionen (AK-01-11)', () => {
 
   it('formatiert die UTC-Zeit für IDs', () => {
     expect(formatUtcCompact(at('2026-10-14T08:03:12.500Z'))).toBe('20261014T080312Z');
+  });
+
+  it('erkennt Kalendertage im Format YYYY-MM-DD', () => {
+    for (const day of ['2026-10-14', '2028-02-29', '2026-12-31', '0099-01-01']) {
+      expect(isValidDay(day), day).toBe(true);
+    }
+    for (const day of ['2026-02-29', '2026-02-30', '2026-13-01', '2026-00-10', '2026-10-00', '2026-10-1', '14.10.2026', '2026-10-14T00:00', '']) {
+      expect(isValidDay(day), day).toBe(false);
+    }
   });
 });

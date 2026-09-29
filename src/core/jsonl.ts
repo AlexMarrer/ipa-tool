@@ -17,6 +17,17 @@ export interface JsonlReadResult<T> {
   invalid: InvalidLine[];
 }
 
+export interface JsonlEntry<T> {
+  /** 1-based. */
+  line: number;
+  record: T;
+}
+
+export interface JsonlEntriesResult<T> {
+  entries: JsonlEntry<T>[];
+  invalid: InvalidLine[];
+}
+
 /**
  * Appends with a single `appendFile` call. If an aborted write left the file without a final line
  * break, that line is closed first so the new record gets a valid line of its own.
@@ -58,16 +69,22 @@ async function endsWithoutNewline(filePath: string): Promise<boolean> {
  * A missing file yields no records, an incomplete last line counts as invalid, empty lines are skipped.
  */
 export async function readJsonl<T>(filePath: string, schemaId: SchemaId): Promise<JsonlReadResult<T>> {
+  const { entries, invalid } = await readJsonlEntries<T>(filePath, schemaId);
+  return { records: entries.map((entry) => entry.record), invalid };
+}
+
+/** Like `readJsonl`, with the line number of every valid record for follow-up checks of the caller. */
+export async function readJsonlEntries<T>(filePath: string, schemaId: SchemaId): Promise<JsonlEntriesResult<T>> {
   let text: string;
   try {
     text = stripBom(await readFile(filePath, 'utf8'));
   } catch (error) {
-    if (errnoCode(error) === 'ENOENT') return { records: [], invalid: [] };
+    if (errnoCode(error) === 'ENOENT') return { entries: [], invalid: [] };
     throw error;
   }
-  const records: T[] = [];
+  const entries: JsonlEntry<T>[] = [];
   const invalid: InvalidLine[] = [];
-  if (text.length === 0) return { records, invalid };
+  if (text.length === 0) return { entries, invalid };
 
   const complete = text.endsWith('\n');
   const lines = text.split('\n');
@@ -98,7 +115,7 @@ export async function readJsonl<T>(filePath: string, schemaId: SchemaId): Promis
       invalid.push({ line: lineNumber, error: formatIssues(result.issues) });
       return;
     }
-    records.push(value as T);
+    entries.push({ line: lineNumber, record: value as T });
   });
-  return { records, invalid };
+  return { entries, invalid };
 }
