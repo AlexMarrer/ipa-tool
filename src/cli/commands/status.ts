@@ -10,6 +10,8 @@ import { isStrictlyInside } from '../../core/paths.js';
 import { findRegistryEntry, readRegistry, type WorkspaceMode } from '../../core/registry.js';
 import { readRunRecords, type RunRecord } from '../../core/run-log.js';
 import { type Halt, readState } from '../../core/state.js';
+import { dayOf } from '../../core/time.js';
+import { readNotes } from '../../notes/store.js';
 import { describeWorkspaceMode, formatFields } from '../format.js';
 import type { CliIo, CliState, GlobalOptions } from '../io.js';
 
@@ -41,6 +43,8 @@ export interface StatusReport {
   lastRun: StatusRun | null;
   snapshots: SnapshotCounts;
   halt: Halt | null;
+  /** Valid notes whose activity day is today in the configured time zone. */
+  notesToday: number;
 }
 
 export interface StatusResult {
@@ -76,6 +80,11 @@ export async function collectStatus(ctx: WorkspaceContext): Promise<StatusResult
     snapshots[manifest.kind] += 1;
   }
 
+  const notes = await readNotes(ctx, { day: dayOf(ctx.clock.now(), ctx.config.timezone) });
+  for (const line of notes.invalid) {
+    warnings.push(`Warnung: ${line.file}, Zeile ${line.line} wird übersprungen (${line.error}).`);
+  }
+
   return {
     report: {
       repositoryId: ctx.repositoryId,
@@ -91,6 +100,7 @@ export async function collectStatus(ctx: WorkspaceContext): Promise<StatusResult
       lastRun,
       snapshots,
       halt: state.halt,
+      notesToday: notes.notes.length,
     },
     warnings,
   };
@@ -123,6 +133,7 @@ export function formatStatus(report: StatusReport): string {
       `${report.snapshots.total} (Ausgangs-Snapshots: ${report.snapshots.baseline}, Arbeits-Snapshots: ${report.snapshots.work})`,
     ],
     ['Halt', report.halt === null ? NONE : `${describeHalt(report.halt)} ipa baseline --reason "<Grund>" erforderlich.`],
+    ['Notizen heute', String(report.notesToday)],
   ]);
 }
 

@@ -4,7 +4,7 @@ Lokales Kommandozeilenwerkzeug für die IPA. Es soll den Arbeitsstand eines beli
 
 Die Umsetzung erfolgt in Paketen, geplant in [`docs/implementation/`](docs/implementation/README.md).
 
-**Stand: Paket 03 (Änderungszuordnung).** Verfügbar sind `ipa init` mit Ausgangs-Snapshot, `ipa capture` ohne KI mit Zuordnung der Änderungen zum Vorgänger-Snapshot, `ipa baseline`, `ipa status` sowie eine Claude-Vorabprüfung. Noch nicht umgesetzt sind Notizen, Analyse, Journal und Zeitsteuerung.
+**Stand: Paket 04 (Notizen).** Verfügbar sind `ipa init` mit Ausgangs-Snapshot, `ipa capture` ohne KI mit Zuordnung der Änderungen zum Vorgänger-Snapshot, `ipa baseline`, `ipa note`, `ipa status` sowie eine Claude-Vorabprüfung. Noch nicht umgesetzt sind Analyse, Journal und Zeitsteuerung.
 
 ## Voraussetzungen
 
@@ -60,12 +60,13 @@ Aufbau eines Arbeitsbereichs:
 ```text
 config.json    Konfiguration (von Hand bearbeitbar, wird bei jedem Befehl validiert)
 state.json     Fortschritt und Cursor
-runs.jsonl     Laufprotokoll: eine Zeile pro schreibendem Lauf
-lock           nur während eines schreibenden Laufs
+runs.jsonl     Laufprotokoll: eine Zeile pro Lauf von init, capture und baseline
+lock           nur während eines Laufs von init, capture oder baseline
 snapshots/S000001/manifest.json          Manifest eines Snapshots
 snapshots/S000001/content/E001.patch     gespeicherte Belege (Diffs, Commit-Nachrichten als .txt)
 snapshots/S000001/content/state/0001.dat Kopie des aktuellen Stands einer geänderten Datei
-analyses/  logs/  notes/  journal/{runs,drafts,final}/  context/  tmp/
+notes/2026-10-14.jsonl                   Notizen eines Tätigkeitstags, eine Zeile pro Notiz
+analyses/  logs/  journal/{runs,drafts,final}/  context/  tmp/
 ```
 
 Das Tool sichert den Arbeitsbereich nicht selbst. Wo eine Sicherung liegt, entscheidet der Benutzer.
@@ -178,6 +179,10 @@ Aufgehobener Halt: Die Historie wurde umgeschrieben (…) (history_rewritten, er
 Arbeit zwischen dem letzten Snapshot und diesem Ausgangspunkt bleibt als Lücke sichtbar.
 ```
 
+### `ipa note [text] [optionen]`
+
+Erfasst eine Notiz: eine Tätigkeit, ein Problem, eine Entscheidung, eine Erkenntnis oder eine Planung, auf Wunsch mit gemessenem oder geschätztem Zeitaufwand. Ohne Text fragt der Befehl im Terminal nach. `note` braucht keinen Snapshot und nimmt keinen Lock, es funktioniert also direkt nach `ipa init` und auch während eines laufenden `capture`. Einzelheiten und Beispiele stehen unter [Notizen](#notizen).
+
 ### `ipa status [--json]`
 
 Zeigt den Zustand des Arbeitsbereichs. Der Befehl ist nur lesend: kein Lock, kein Laufprotokoll, keine Datei wird geschrieben. Ein nicht initialisiertes Repository ergibt Exit-Code 2, ebenso eine ungültige `config.json`. Die Meldung nennt dann den JSON-Pfad des Fehlers.
@@ -192,6 +197,7 @@ Mit `--json` erscheint ein JSON-Objekt. Dieses Format ist ein stabiler Vertrag. 
 | `lastRun` | letzter Eintrag aus `runs.jsonl` oder `null`; bei `errors` nur die Fehlercodes, ohne Meldungen. Hat der Lauf einen abgebrochenen Snapshot übernommen, steht dessen ID in `recovered`. |
 | `snapshots` | `{ total, baseline, work }`: Anzahl aller Snapshots, der Ausgangs- und der Arbeits-Snapshots |
 | `halt` | `null` oder `{ reason, detectedAt, expected: { branch, head }, observed: { branch, head } }` bei aktivem Halt |
+| `notesToday` | Anzahl der gültigen Notizen, deren Tätigkeitstag heute ist (in der Zeitzone aus `config.json`). Ungültige Zeilen der Notizdatei meldet `status` als Warnung auf stderr. |
 
 ### Exit-Codes
 
@@ -199,7 +205,7 @@ Mit `--json` erscheint ein JSON-Objekt. Dieses Format ist ein stabiler Vertrag. 
 | --- | --- |
 | 0 | Erfolg, auch wenn `capture` keine neue Arbeit findet |
 | 1 | Unerwarteter interner Fehler. Mit `IPA_DEBUG=1` wird der Stacktrace ausgegeben. |
-| 2 | Bedienungs- oder Konfigurationsfehler: ungültige Argumente oder Konfiguration, kein Git-Repository, nicht initialisiert, kein Ausgangs-Snapshot, unzulässige oder nicht beschreibbare Datenwurzel, unbekannte Schemaversion |
+| 2 | Bedienungs- oder Konfigurationsfehler: ungültige Argumente oder Konfiguration, kein Git-Repository, nicht initialisiert, kein Ausgangs-Snapshot, unzulässige oder nicht beschreibbare Datenwurzel, unbekannte Schemaversion, `ipa note` ohne Text und ohne Terminal oder mit abgebrochener Eingabe |
 | 3 | Ein anderer Lauf hält den Lock. |
 | 4 | Die Zuordnung ist wegen Branchwechsel oder umgeschriebener Historie angehalten. `ipa baseline` ist erforderlich. |
 | 5 | Der Arbeitsstand hat sich während der Aufnahme wiederholt verändert. Es wurde kein Snapshot gespeichert. |
@@ -250,6 +256,93 @@ Unter `testReports` in `config.json` lassen sich Dateien mit Testergebnissen ein
 - Ist ein Bericht neu oder hat er einen anderen Inhalt als im letzten Snapshot, entsteht ein Beleg `test_report` mit `label`, `mtime` und `fresh`. Ein unveränderter oder gelöschter Bericht ergibt keinen Beleg.
 - `fresh` ist `true`, wenn die Änderungszeit der Datei im Beobachtungszeitraum des Snapshots liegt, also nach der vorigen Aufnahme. Das ist eine Heuristik: Sie weist nicht nach, welcher Codestand getestet wurde. Ein kopierter Bericht mit alter Änderungszeit gilt als nicht frisch.
 - Das Tool führt keine Tests aus und wertet Berichte nicht aus.
+
+## Notizen
+
+Notizen halten fest, was Git nicht zuverlässig beantworten kann: Tätigkeiten ohne Codeänderung wie Recherche, Planung oder Besprechungen, Probleme mit Ursache und Lösung, Entscheidungen mit Grund und geprüften Alternativen, Erkenntnisse und Verzögerungen. Eine Notiz soll in weniger als einer Minute erfasst sein.
+
+**Arbeitszeiten stammen nur aus Notizen.** Das Aufnahmeintervall eines Snapshots und die Zeitpunkte von Commits sind keine Arbeitszeit. Ohne Zeitangabe in einer Notiz bleibt die Zeit unbekannt.
+
+### Direkte Eingabe
+
+```bash
+ipa note "Mock lieferte den falschen Datentyp; Testdaten angepasst."
+ipa note --type decision --reason "Wiederverwendung" --alternative "Logik in der Komponente" "Validierung im Service"
+ipa note --type activity --minutes 45 --measured "Recherche zur Testkonfiguration"
+ipa note --type activity --start 09:10 --end 09:55 --estimated "Besprechung zur Abnahme"
+ipa note --type problem --cause "Mock lieferte falschen Datentyp" --solution "Testdaten angepasst" --delay 20 --estimated "Integrationstest rot"
+ipa note --type plan --day 2026-10-15 "Validierung der Eingabemaske umsetzen"
+ipa note --type insight --ref S000002:E001 "Die Umbenennung vereinheitlicht die Begriffe im Modul"
+```
+
+Der Text gehört in Anführungszeichen. Mehrere Wörter ohne Anführungszeichen ergeben „zu viele Argumente“. Ein Text, der mit `-` beginnt, folgt nach `--`, zum Beispiel `ipa note -- "-5 Tests rot"`.
+
+| Option | Regel |
+| --- | --- |
+| `--type <typ>` | `general` (Standard), `activity`, `problem`, `decision`, `insight` oder `plan` |
+| `--day <YYYY-MM-DD>` | Tätigkeitstag. Standard ist heute in der Zeitzone aus `config.json`. Vergangene Tage sind erlaubt, ein Tag in der Zukunft nur mit `--type plan`. |
+| `--minutes <n>` | Zeitaufwand in Minuten, ganze Zahl grösser als 0 |
+| `--start <HH:MM> --end <HH:MM>` | Zeitspanne am selben Tag, nur beide zusammen und nicht mit `--minutes`. Die Minuten werden aus den Uhrzeiten berechnet, eine Sommerzeitumstellung dazwischen zählt nicht. `--end` muss nach `--start` liegen. Eine Tätigkeit über Mitternacht wird als zwei Notizen erfasst. |
+| `--measured`, `--estimated` | Pflicht bei jeder Zeitangabe, genau eine der beiden. Sie gilt für die Zeit und die Verzögerung derselben Notiz. Ohne Zeitangabe ist sie nicht erlaubt. |
+| `--delay <minuten>` | Verzögerung in Minuten. Sie wird getrennt gespeichert und nie zur Zeit addiert. |
+| `--reason <text>`, `--alternative <text>` | Grund und geprüfte Alternativen, nur bei `--type decision`. `--alternative` ist mehrfach möglich. Ohne `--reason` bleibt der Grund unbekannt. |
+| `--cause <text>`, `--solution <text>` | Ursache und Lösung, nur bei `--type problem` |
+| `--ref <S000000:E000>` | Verweis auf einen Beleg eines Snapshots, mehrfach möglich. Geprüft wird nur die Form. Ob es den Beleg gibt, prüft das Tool erst mit der Analyse-Pipeline (Paket 06). |
+
+Jeder Verstoss gegen diese Regeln endet mit Exit-Code 2, und es wird nichts gespeichert. Texte werden ohne Leerzeichen am Rand gespeichert, ein leerer Text ist nicht erlaubt.
+
+Die Beispiele aus dem Konzept (§6.3, §6.4) lassen sich so übernehmen, mit einer Abweichung: Eine Zeitangabe braucht immer `--measured` oder `--estimated`. `ipa note --type activity --minutes 45 "…"` ohne Basis lehnt das Tool ab, statt „Zeit gemessen“ aus dem Text zu lesen. Grund und Alternativen einer Entscheidung können im Text stehen, als `--reason` und `--alternative` sind sie aber getrennt auswertbar.
+
+Die Ausgabe nennt Notiz-ID, Tag und Typ, dazu Zeit, Verzögerung und Verweise, aber nie den Text:
+
+```text
+> ipa note --type activity --minutes 45 --measured "Recherche zur Testkonfiguration"
+Notiz gespeichert.
+Notiz-ID: N20261014T081500Z-0c1d
+Tag:      2026-10-14
+Typ:      activity
+Zeit:     45 Minuten, gemessen
+```
+
+### Interaktive Eingabe
+
+Ohne Text fragt `ipa note` im Terminal nach, jeweils mit einem Standardwert für Enter:
+
+```text
+> ipa note
+Neue Notiz für 2026-10-14. Enter übernimmt den Standardwert, Strg+C bricht ab.
+Typ (1 general, 2 activity, 3 problem, 4 decision, 5 insight, 6 plan) [general]: 3
+Text: Mock lieferte den falschen Datentyp
+Ursache (Enter = unbekannt): Testdaten mit falschem Typ
+Lösung (Enter = unbekannt): Testdaten angepasst
+Zeitaufwand in Minuten (Enter = keine Angabe): 20
+Gemessen oder geschätzt? (g/s): s
+Notiz gespeichert.
+…
+```
+
+- Die Fragen kommen in dieser Reihenfolge: Typ, Text, bei `decision` Grund und Alternativen, bei `problem` Ursache und Lösung, Zeitaufwand, und falls eine Zeit angegeben ist, gemessen oder geschätzt.
+- Optionen der Befehlszeile gelten als beantwortet, ihre Fragen entfallen. So erfasst `ipa note --day 2026-10-13` eine Notiz für den Vortag, und `ipa note --delay 20` fragt zusätzlich nach der Basis der Verzögerung.
+- Eine ungültige Antwort wird erneut erfragt. Strg+C oder Strg+D bricht ab, ohne etwas zu speichern (Exit-Code 2).
+- Das geht nur, wenn Ein- und Ausgabe ein Terminal (TTY) sind. Sonst, zum Beispiel in einem Skript oder in der Aufgabenplanung, endet der Befehl mit Exit-Code 2 und verweist auf die direkte Eingabe.
+- Die interaktive Eingabe in der Windows-Konsole ist noch nicht manuell geprüft (offener Punkt in der Paketcheckliste 04).
+
+### Ablage
+
+Jede Notiz steht als eine Zeile in `notes/<Tätigkeitstag>.jsonl` im Arbeitsbereich, bei `--workspace .ipa` also in `.ipa/notes/`. Das Tool hängt Notizen nur an und nimmt dafür keinen Lock. `runs.jsonl` erhält für `note` keinen Eintrag.
+
+```json
+{"schemaVersion":1,"id":"N20261014T081500Z-0c1d","type":"decision","text":"Validierung im Service","activityDay":"2026-10-14","recordedAt":"2026-10-14T10:15:00+02:00","time":null,"delay":null,"reason":"Wiederverwendung","alternatives":["Logik in der Komponente"],"cause":null,"solution":null,"refs":[]}
+```
+
+- `id` enthält die Erfassungszeit in UTC und einen Zufallsanteil, `recordedAt` die Erfassungszeit mit Offset.
+- `time` ist `null` oder `{ minutes, basis, start, end }` mit `basis` `measured` oder `estimated`. `start` und `end` sind nur bei `--start`/`--end` gesetzt.
+- `delay` ist `null` oder `{ minutes, basis }`.
+- `reason` und `alternatives` gibt es nur bei `decision`, `cause` und `solution` nur bei `problem`. `null` heisst unbekannt.
+
+**Bearbeiten und Löschen:** Dafür gibt es in V1 keinen Befehl. Eine Notiz lässt sich von Hand in der JSONL-Datei ändern oder löschen. Jede Zeile muss danach ein gültiges JSON-Objekt nach `schemas/note.schema.json` sein, in der Datei ihres `activityDay` stehen und eine eindeutige `id` haben. Eine Zeile, die das nicht erfüllt, wird übersprungen, und `ipa status` meldet sie als Warnung. Die übrigen Notizen bleiben lesbar.
+
+**Vertrauliche Inhalte:** Notizen werden lokal so gespeichert, wie sie eingegeben wurden. Zugangsdaten gehören nicht in eine Notiz. Die Secret-Prüfung von Notizen folgt mit der Analyse-Pipeline (Paket 06): vor jeder Übermittlung an Claude und als Warnung bei der Eingabe.
 
 ## Filter und vertrauliche Inhalte
 
@@ -370,6 +463,7 @@ src/core/           Datenwurzel, Registry, Arbeitsbereich, Konfiguration, Schema
 src/git/            Git-Aufrufe nur über die Leseliste, Parser für -z-Ausgaben, Blob-IDs ohne Schreibzugriff
 src/filter/         Pfadfilter und Secret-Prüfung
 src/collector/      Aufnahme, Konsistenzprüfung, Manifest, atomare Ablage, Wiederanlauf
+src/notes/          Notizen: Regeln der Eingabe, Ablage und Lesen (hängt nur von src/core/ ab)
 schemas/            JSON Schemas (draft-07)
 scripts/            Claude-Vorabprüfung
 test/               Tests und Test-Helfer

@@ -4,32 +4,32 @@ Einen Punkt erst abhaken, wenn er umgesetzt und geprüft ist. Den Nachweis (Test
 
 ## Voraussetzungen
 
-- [ ] Paket 01 ist im Code vorhanden, und seine Tests sind grün.
-- [ ] Git-Status geprüft, keine fremden Änderungen überschrieben.
+- [x] Paket 01 ist im Code vorhanden, und seine Tests sind grün. Nachweis: 29.09.2026 vor Beginn der Umsetzung, Linux-Cloud-Umgebung mit Node.js 22.22.2 und Git 2.43.0 (wie bei Paket 03): Paket 01 bis 03 in `checklist.md` als `abgeschlossen` geführt; `ipa init` und `ipa status --json` in einem Test-Repository mit Exit-Code 0; `npm run typecheck` fehlerfrei; `npm test` 34 Testdateien, 287 bestanden, 4 übersprungen (nur unter Windows ausgeführte Tests).
+- [x] Git-Status geprüft, keine fremden Änderungen überschrieben. Nachweis: `git status` sauber auf `claude/paket-04-notizen-qdazy7` (Stand `8039354`). Bestehende Dateien wurden nur für die Anbindung erweitert (`src/cli/main.ts`, `src/cli/io.ts`, `src/cli/commands/status.ts`, `src/core/schemas.ts`, `src/core/jsonl.ts`, `src/core/time.ts`) und die Tests an die neuen Verträge angepasst (`test/cli/main.test.ts`: Hilfe listet `note`; `test/cli/status.test.ts`: Feld `notesToday`; `test/core/schemas.test.ts`, `jsonl.test.ts`, `time.test.ts`: neue Fälle). Dazu README, spec.md und die Checklisten.
 
 ## Implementierung
 
-- [ ] Schema `note` gemäss spec.md §9.5
-- [ ] `addNote` mit Optionsprüfung, Zeitmodell und Verzögerung (AK-04-01 bis AK-04-05)
-- [ ] Interaktive Eingabe mit injizierbaren Strömen und TTY-Prüfung (AK-04-06)
-- [ ] Syntaxprüfung von `--ref` (AK-04-07)
-- [ ] `readNotes` mit Filtern und Meldung ungültiger Zeilen (AK-04-10)
-- [ ] `src/notes/` hängt nur von `core` ab (AK-04-08)
+- [x] Schema `note` gemäss spec.md §9.5. Nachweis: `schemas/note.schema.json` (draft-07, strikt, mit `if`/`then` für die Felder von `decision` und `problem` und für `start`/`end`); `test/core/schemas.test.ts` › „note (spec.md §9.5)“, 4 Tests.
+- [x] `addNote` mit Optionsprüfung, Zeitmodell und Verzögerung (AK-04-01 bis AK-04-05). Nachweis: `src/notes/input.ts`, `src/notes/store.ts`, `src/notes/types.ts`; `test/notes/input.test.ts` (18 Tests, alle Kombinationen aus Paket 04 §4); `test/notes/store.test.ts` › „addNote …“ (6 Tests).
+- [x] Interaktive Eingabe mit injizierbaren Strömen und TTY-Prüfung (AK-04-06). Nachweis: `src/cli/note-dialog.ts`, injizierbares Terminal `CliIo.terminal` in `src/cli/io.ts`; `test/cli/note-dialog.test.ts` (8 Tests: Reihenfolge, Standardwerte, erneutes Fragen, Vorbelegung durch Optionen, Abbruch); `test/cli/note.test.ts` › AK-04-06 (2 Tests). Zusätzlich am 29.09.2026 mit dem gebauten CLI in einem echten Pseudo-Terminal unter Linux (Python-Modul `pty`) geprüft: Problem-Notiz mit ungültigen und gültigen Antworten, Umlauten, Anführungszeichen und Semikolon; Entscheidung mit `--type decision --day`; Tag in der Zukunft mit erneuter Typfrage; Strg+C ergibt Exit-Code 2 ohne Notiz. Der Prozess endete jeweils nach unter 0,5 s.
+- [x] Syntaxprüfung von `--ref` (AK-04-07). Nachweis: `test/notes/input.test.ts` › „--ref prüft nur die Syntax und speichert jeden Beleg einmal (AK-04-07)“; `test/cli/note.test.ts` › „prüft --ref nur syntaktisch und speichert die Referenz (AK-04-07)“.
+- [x] `readNotes` mit Filtern und Meldung ungültiger Zeilen (AK-04-10). Nachweis: `test/notes/store.test.ts` › „readNotes …“ (9 Tests: Tag, Intervall `(von, bis]` mit verschiedenen Offsets, Snapshot-Referenz, Verknüpfung mit „und“, Sortierung, beschädigte Zeile, falsche Tagesdatei, doppelte ID, fremde Dateien); `test/cli/note.test.ts` › „eine von Hand beschädigte Zeile wird gemeldet, die übrigen Notizen bleiben lesbar (AK-04-10)“.
+- [x] `src/notes/` hängt nur von `core` ab (AK-04-08). Nachweis: `test/notes/imports.test.ts` › „importiert nur core, eigene Dateien und Node-Module (AK-04-08)“ (Import-Analyse aller Dateien in `src/notes/`).
 
 ## Integration
 
-- [ ] `ipa note` angebunden, ohne Lock (AK-04-09)
-- [ ] `ipa status` zeigt `notesToday` (AK-04-11)
+- [x] `ipa note` angebunden, ohne Lock (AK-04-09). Nachweis: `src/cli/commands/note.ts`, registriert in `src/cli/main.ts`; `test/cli/note.test.ts` › „gelingt, während ein anderer Prozess den Lock hält (AK-04-09, D-16)“ mit echtem zweitem Prozess (`test/helpers/lock-holder.mjs`; ein gleichzeitiges `capture` endet mit Exit-Code 3, `note` mit 0, die Lock-Datei bleibt unverändert); `test/notes/store.test.ts` › „hängt an, ohne den Lock zu nehmen oder anzutasten (D-16)“. `note` schreibt keinen Eintrag in `runs.jsonl`: `test/cli/note.test.ts` › „schreibt keinen Eintrag in runs.jsonl und ändert ausser der Notizdatei nichts“.
+- [x] `ipa status` zeigt `notesToday` (AK-04-11). Nachweis: `test/cli/status.test.ts` › „liefert mit --json genau die Felder der Pakete 01 bis 04 …“; `test/cli/note.test.ts` › „status zeigt notesToday, --help listet note, das Repository bleibt unverändert (AK-04-11)“.
 
 ## Tests
 
-- [ ] Unit-Tests für die Optionskombinationen und die Tagesbestimmung mit injizierter Uhr
-- [ ] Integrationstests AK-04-01 bis AK-04-11 grün, einschliesslich eines Arbeitsbereichs ohne Snapshots
-- [ ] `npm run typecheck`, `npm test` und `npm run build` grün
-- [ ] Manuell: interaktive Notiz in der Windows-Konsole, Dauer gemessen (Ziel unter einer Minute)
+- [x] Unit-Tests für die Optionskombinationen und die Tagesbestimmung mit injizierter Uhr. Nachweis: `test/notes/input.test.ts`; `test/notes/store.test.ts` › „bestimmt den Tätigkeitstag in der konfigurierten Zeitzone, nicht in UTC (Paket 04 §6)“ (23:59 und 00:30 in Zürich, Winterzeit, `America/New_York`) und „prüft den Tag gegen heute in der Zeitzone …(AK-04-05)“; `test/core/time.test.ts` › „erkennt Kalendertage im Format YYYY-MM-DD“.
+- [x] Integrationstests AK-04-01 bis AK-04-11 grün, einschliesslich eines Arbeitsbereichs ohne Snapshots. Nachweis: `test/cli/note.test.ts` (17 Tests über `node dist/cli.js`, für AK-04-06 und AK-04-08 zusätzlich `main()` mit injizierten Strömen). Zuordnung: AK-04-01 „speichert eine schemagültige Notiz vom Typ general …“; AK-04-02 bis AK-04-05 und AK-04-07 je ein Test mit der ID im Namen; AK-04-06 „interaktiv mit injizierten Strömen entsteht dieselbe Notiz wie direkt“ und „ohne TTY und ohne Text …“; AK-04-08 „funktioniert in einem Arbeitsbereich aus Paket 01 ohne Snapshots“ (angelegt mit `initializeWorkspace` ohne Ausgangs-Snapshot) und `test/notes/imports.test.ts`; AK-04-09 Lock-Test; AK-04-10 siehe oben; AK-04-11 „status zeigt notesToday …“, „legt Notizen bei Arbeitsbereich .ipa dort ab …“ und `test/cli/main.test.ts` › „ipa --help listet … note …(AK-04-11)“. Randfälle aus Paket 04 §6: Text mit Anführungszeichen, Semikolon und Umlauten; leerer Text; nicht initialisiertes Repository; Tätigkeitstag unabhängig von der Systemzeitzone (`TZ=UTC`, `Pacific/Kiritimati`, `Etc/GMT+12`).
+- [x] `npm run typecheck`, `npm test` und `npm run build` grün. Nachweis: 29.09.2026, Linux, Node.js 22.22.2, Git 2.43.0: Typecheck und Build mit Exit-Code 0; `npm test` 39 Testdateien, 352 bestanden, 4 übersprungen (nur unter Windows ausgeführte Tests aus Paket 01).
+- [ ] Manuell: interaktive Notiz in der Windows-Konsole, Dauer gemessen (Ziel unter einer Minute). Offen: In der Linux-Cloud-Umgebung dieser Sitzung nicht durchführbar. Ersatzweise unter Linux im Pseudo-Terminal geprüft (siehe Implementierung). Vorgehen: in PowerShell oder `cmd.exe` `ipa note` ausführen, eine Problem-Notiz mit Umlauten, Anführungszeichen und Zeitangabe erfassen, Dauer von Befehlsstart bis zur Ausgabe „Notiz gespeichert.“ messen, danach Strg+C in einer zweiten Eingabe prüfen.
 
 ## Dokumentation und Status
 
-- [ ] README: Abschnitt „Notizen“ mit Beispielen
-- [ ] Abweichungen in spec.md §18 eingetragen oder „keine“ bestätigt
-- [ ] Zentrale `docs/implementation/checklist.md` aktualisiert
+- [x] README: Abschnitt „Notizen“ mit Beispielen. Nachweis: `README.md` › „Notizen“ (direkte Eingabe mit den Beispielen aus Konzept §6.3 und §6.4, angepasst an D-13; Optionstabelle; interaktive Eingabe; Ablage, Bearbeiten von Hand, vertrauliche Inhalte), dazu `ipa note` unter „Befehle“, `notesToday` in der Feldtabelle von `status`, Exit-Code 2, Aufbau des Arbeitsbereichs und des Quellcodes. Stand 29.09.2026.
+- [x] Abweichungen in spec.md §18 eingetragen oder „keine“ bestätigt. Nachweis: 4 Einträge vom 29.09.2026 für Paket 04 (Laufprotokoll, `readNotes` und `notesToday`, Randfälle von `ipa note`, Schema); Definitionen in §6.3, §6.6, §9.5, §9.11 und §10 angepasst; Folgen in Paket 04 §9.
+- [x] Zentrale `docs/implementation/checklist.md` aktualisiert. Nachweis: Paketstatus „technisch abgeschlossen“, offen nur die manuelle Prüfung in der Windows-Konsole.

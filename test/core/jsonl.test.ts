@@ -1,7 +1,7 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 import { IpaError } from '../../src/core/errors.js';
-import { appendJsonl, readJsonl } from '../../src/core/jsonl.js';
+import { appendJsonl, readJsonl, readJsonlEntries } from '../../src/core/jsonl.js';
 import { createRunRecord, type RunRecord } from '../../src/core/run-log.js';
 import { createTempDir } from '../helpers/workspace.js';
 
@@ -74,5 +74,18 @@ describe('JSONL (spec.md §8.5, AK-01-09)', () => {
   it('liefert für eine fehlende Datei eine leere Liste', async () => {
     const result = await readJsonl(`${await createTempDir('jsonl')}/fehlt.jsonl`, 'run-record');
     expect(result).toEqual({ records: [], invalid: [] });
+    expect(await readJsonlEntries(`${await createTempDir('jsonl')}/fehlt.jsonl`, 'run-record')).toEqual({ entries: [], invalid: [] });
+  });
+
+  it('nennt mit readJsonlEntries die Zeile jedes gültigen Datensatzes', async () => {
+    const file = `${await createTempDir('jsonl')}/runs.jsonl`;
+    const lines = [JSON.stringify(record('R20261014T080312Z-0001')), '', '{kaputt}', JSON.stringify(record('R20261014T080312Z-0002'))];
+    await writeFile(file, `${lines.join('\n')}\n`);
+    const result = await readJsonlEntries<RunRecord>(file, 'run-record');
+    expect(result.entries.map((entry) => [entry.line, entry.record.runId])).toEqual([
+      [1, 'R20261014T080312Z-0001'],
+      [4, 'R20261014T080312Z-0002'],
+    ]);
+    expect(result.invalid).toEqual([{ line: 3, error: 'kein gültiges JSON' }]);
   });
 });

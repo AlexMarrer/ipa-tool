@@ -4,6 +4,7 @@ import { toolVersion } from '../core/tool.js';
 import { registerBaselineCommand } from './commands/baseline.js';
 import { registerCaptureCommand } from './commands/capture.js';
 import { registerInitCommand } from './commands/init.js';
+import { registerNoteCommand } from './commands/note.js';
 import { registerStatusCommand } from './commands/status.js';
 import { type CliIo, type CliState, processIo } from './io.js';
 import { translateCommanderMessage, translateHelpTitle } from './messages.js';
@@ -46,6 +47,7 @@ export function createProgram(io: CliIo, state: CliState): Command {
   registerStatusCommand(program, io, state);
   registerCaptureCommand(program, io, state);
   registerBaselineCommand(program, io, state);
+  registerNoteCommand(program, io, state);
   return program;
 }
 

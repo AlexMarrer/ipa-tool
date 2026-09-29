@@ -354,6 +354,9 @@ Ein Befehl erscheint in `ipa --help` erst, wenn sein Paket ihn umsetzt.
 - `--delay <minuten>`
 - `--reason <text>`, `--alternative <text>` (mehrfach), `--cause <text>`, `--solution <text>`
 - `--ref <S000000:E000>` (mehrfach)
+- `--measured` oder `--estimated` ohne Zeitangabe und ohne `--delay` ist ein Bedienungsfehler, ebenso ein leerer Wert einer Textoption (§18).
+- Im interaktiven Modus gelten angegebene Optionen als beantwortete Fragen. Bricht die Eingabe ab, endet der Befehl mit Exit-Code 2 ohne Notiz (§18).
+- Kein Lock (D-16) und kein Eintrag in `runs.jsonl` (§9.11)
 
 **`ipa schedule`**
 
@@ -398,6 +401,8 @@ Ein Feld erscheint erst, wenn das genannte Paket es liefert.
 | `analyses` | `{ pending, failed, blocked, exhausted, complete, skipped, notRequired, openIds: string[] }` | 06 |
 
 Die Felder erscheinen in der Reihenfolge der Tabelle. Ungültige Zeilen in `runs.jsonl` meldet `status` als Warnung auf stderr.
+
+`notesToday` zählt die gültigen Notizen, deren `activityDay` der heutige Tag in der konfigurierten Zeitzone ist. Ungültige Zeilen dieser Notizdatei meldet `status` ebenfalls als Warnung (§18).
 
 ---
 
@@ -657,6 +662,8 @@ Ein Beleg mit `omitted` hat keine Datei. Er darf zitiert werden, trägt aber kei
 
 Die Notiz enthält kein Secret-Kennzeichen. Die Secret-Prüfung erfolgt bei jedem Bau eines Eingabepakets (§12.2, D-23).
 
+Das Schema `note` prüft die Einschränkungen „nur bei `decision`“ und „nur bei `problem`“ sowie, dass `start` und `end` nur gemeinsam gesetzt sind. Dass `minutes` zu `start` und `end` passt, prüft `addNote`. Texte werden ohne Leerzeichen am Rand gespeichert (§18).
+
 ### 9.6 Analyse-Eingabepaket `attempt-<n>/input.json`
 
 | Feld | Inhalt |
@@ -777,7 +784,7 @@ Den Aufbau des Markdown-Entwurfs legt Paket 07 fest.
 - `outcome` ist `ok`, `unchanged`, `halted`, `unstable`, `lock_held`, `analysis_failed`, `outside_window`, `usage_error` oder `error`.
 - `message` enthält keine Inhalte aus dem Repository (I-12).
 - `recovered` nennt Snapshots, die der Lauf gemäss §11.6 aus einem abgebrochenen Lauf übernommen hat. Das Feld fehlt, wenn es leer wäre (§18).
-- Jeder Lauf eines schreibenden Befehls wird protokolliert, auch einer, der den Lock nicht erhält. `status` protokolliert nicht.
+- Jeder Lauf eines schreibenden Befehls wird protokolliert, auch einer, der den Lock nicht erhält. `status` protokolliert nicht. `note` protokolliert ebenfalls nicht, die Notiz selbst mit `id` und `recordedAt` ist der Nachweis (§18).
 
 ### 9.12 `ai-usage.jsonl`
 
@@ -855,8 +862,12 @@ listSnapshots(ctx: WorkspaceContext): Promise<string[]>   // aufsteigend
 
 // notes
 addNote(ctx: WorkspaceContext, input: NoteInput): Promise<Note>
+  // Prüft die Regeln aus Paket 04 §4 (IpaError mit Exit-Code 2), ergänzt id, recordedAt und den Standardtag, ohne Lock.
 readNotes(ctx: WorkspaceContext, q: { day?: string; recordedFrom?: string; recordedTo?: string; refsToSnapshot?: string }):
-  Promise<{ notes: Note[]; invalid: InvalidLine[] }>
+  Promise<{ notes: Note[]; invalid: InvalidNoteLine[] }>   // InvalidNoteLine = InvalidLine & { file } (§18)
+  // Alle angegebenen Kriterien gelten zusammen. recordedAt liegt in (recordedFrom, recordedTo] wie observedPeriod (§12.2),
+  // verglichen als Zeitpunkt. Sortiert nach recordedAt, dann id. Ungültig sind auch Zeilen in der falschen Tagesdatei,
+  // mit einem recordedAt, das kein Zeitpunkt ist, und mit einer id, die in den gelesenen Dateien schon vorkam.
 
 // claude
 interface ClaudeRequest {
@@ -1425,3 +1436,7 @@ Die Einträge entstehen während der Umsetzung. Jeder Eintrag nennt Datum, Paket
 | 2026-09-29 | 03 | Halt: Reihenfolge der Prüfungen, HEAD ohne Commit nach einem gesetzten Vorgänger-HEAD, und ein Branchwechsel zwischen Prüfung und Lesedurchgang sind offen. | Reihenfolge `branch_changed`, `head_missing` (`cat-file -e <sha>^{commit}`), `history_rewritten` (`merge-base --is-ancestor`); aktueller HEAD `null` bei gesetztem Vorgänger ergibt `history_rewritten`. Die Prüfung läuft vor jedem Lesedurchgang; liest der Durchgang einen anderen HEAD oder Branch als geprüft, wird er wie ein instabiler Durchgang wiederholt. Der Halt wird unter dem Lock in `state.json` geschrieben; `runs.jsonl` hat `outcome: halted` mit leerem `errors`. | §11.5, §9.11 |
 | 2026-09-29 | 03 | `ipa baseline`: Der Grund steht im Manifest (I-12); unklar ist das Verhalten ohne Ausgangs-Snapshot aus `init` und das Format von `halt_detected`. | Leerer Grund oder Secret-Treffer im Grund: Exit-Code 2. Ohne Ausgangs-Snapshot: Exit-Code 2 mit Verweis auf `ipa init`. `halt_detected.detail` = `<reason>, erkannt am <detectedAt>`. `state.baselineSnapshotId` bleibt der erste Ausgangs-Snapshot; der letzte wird über `previousSnapshotId` gefunden. `CaptureOptions.reason` ergänzt. | §6.3, §9.3, §10, §11.5 |
 | 2026-09-29 | 03 | Testberichte: Pfadangabe im Manifest bei Berichten ausserhalb des Repositorys, nicht lesbare Berichte, grosse Berichte, Konsistenz und Grenzen des Intervalls für `fresh` sind offen. | `path` relativ zur Repository-Wurzel, ausserhalb absolut, mit `/`; verglichen wird über diesen Pfad. Nicht vorhandene, nicht lesbare oder nicht reguläre Dateien gelten als fehlend. Berichte über `maxFileBytes` werden gestreamt gehasht und mit `file_too_large` (oder `binary`) ausgelassen. Die Konsistenzprüfung liest die Berichte erneut und vergleicht SHA-256. `fresh`: untere Grenze `observedPeriod.from` (sekundengenau), obere Grenze der genaue Aufnahmezeitpunkt; `mtime` wird sekundengenau in der konfigurierten Zeitzone gespeichert. Konfigurierte Berichte werden auch über Links gelesen, weil sie ausdrücklich angegeben sind (D-17). Ausgangs-Snapshots erfassen nur `testReports[]`. | §9.3, §9.4, D-17 |
+| 2026-09-29 | 04 | §9.11 verlangt einen Eintrag in `runs.jsonl` für jeden Lauf eines schreibenden Befehls. `ipa note` schreibt eine Notiz, nimmt aber keinen Lock (D-16); §8.1, §11.6 und das README verstehen unter einem schreibenden Lauf einen Lauf mit Lock. Ein Eintrag pro Notiz würde `lastRun` in `status` verdrängen, und Bedienungsfehler von `note` erschienen im Journal als Fehlerläufe des Tages (Paket 07). | `ipa note` schreibt keinen Eintrag in `runs.jsonl`. Die Notiz selbst mit `id` und `recordedAt` ist der Nachweis. Über `journal`, `doctor` und `schedule` entscheiden die Pakete 05, 07 und 08. | §6.3, §9.11 |
+| 2026-09-29 | 04 | §10 legt für `readNotes` weder die Verknüpfung der Kriterien noch die Grenzen des Zeitintervalls fest. `InvalidLine` nennt keine Datei, Notizen liegen aber in mehreren Tagesdateien. Beim Bearbeiten von Hand (Paket 04 §2) kann eine Zeile in die falsche Tagesdatei geraten oder mit derselben `id` kopiert werden. §6.6 legt nicht fest, was `notesToday` zählt. | Alle angegebenen Kriterien gelten zusammen. `recordedAt` liegt in `(recordedFrom, recordedTo]` wie `observedPeriod` in §12.2 und wird als Zeitpunkt verglichen, nicht als Zeichenkette; für das „oder“ aus §12.2 fragt Paket 06 Zeitraum und Referenzen getrennt ab. Ungültige Zeilen tragen zusätzlich `file` (`InvalidNoteLine` erweitert `InvalidLine`) und sind nach Datei und Zeile sortiert. Ungültig ist auch eine Zeile, deren `activityDay` nicht zum Dateinamen passt, deren `recordedAt` kein Zeitpunkt ist oder deren `id` in den gelesenen Dateien schon vorkam. Die Zeilennummern gültiger Datensätze liefert die neue Funktion `readJsonlEntries` in `src/core/jsonl.ts`; `readJsonl` bleibt unverändert. `notesToday` zählt die gültigen Notizen mit `activityDay` gleich heute in der konfigurierten Zeitzone. | §6.6, §10 |
+| 2026-09-29 | 04 | Paket 04 §4 regelt nicht: `--measured` oder `--estimated` ohne Zeitangabe, leere Werte von `--reason`, `--alternative`, `--cause` und `--solution`, eine mehrfach angegebene `--ref`, Optionen im interaktiven Modus, den Abbruch der interaktiven Eingabe und die Berechnung der Minuten über eine Sommerzeitumstellung. | Eine Basis ohne `--minutes`, `--start`/`--end` und `--delay` ergibt Exit-Code 2, ebenso ein leerer Wert. Texte werden ohne Leerzeichen am Rand gespeichert, eine doppelte `--ref` einmal. Im interaktiven Modus gelten Optionen als beantwortete Fragen. Ungültige Antworten werden erneut erfragt, auch ein Typ, der nicht zu den Optionen passt (etwa `--reason` ohne `decision` oder ein Tag in der Zukunft ohne `plan`). Die Frage nach der Basis erscheint auch für eine `--delay` der Befehlszeile. Endet die Eingabe (Strg+C, Strg+D), endet der Befehl mit Exit-Code 2 ohne Notiz. Die Minuten aus `--start`/`--end` sind die Differenz der Uhrzeiten am selben Tag, eine Sommerzeitumstellung dazwischen zählt nicht. | §6.3; Paket 04 §4, §9 |
+| 2026-09-29 | 04 | §9.5 beschränkt `reason` und `alternatives` auf `decision` sowie `cause` und `solution` auf `problem`; `start` und `end` entstehen nur gemeinsam. Von Hand bearbeitete Zeilen können diese Regeln verletzen. | `schemas/note.schema.json` prüft diese Regeln mit `if`/`then`/`else`, `readNotes` meldet eine verletzende Zeile als ungültig. Das Schemaregister übersetzt die Ajv-Meldung zu `if` ins Deutsche. Dass `minutes` zu `start` und `end` passt, prüft `addNote`. | §9.5 |
