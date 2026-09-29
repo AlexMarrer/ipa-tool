@@ -64,7 +64,7 @@ export function isNoteType(value: string): value is NoteType {
 
 export function parseNoteType(value: string): NoteType {
   if (!isNoteType(value)) {
-    throw usageError('note_type_invalid', `Unbekannter Notiztyp '${value}'. Erlaubt sind ${NOTE_TYPES.join(', ')}.`);
+    throw usageError('note_type_invalid', `Unbekannter Notiztyp. Erlaubt sind ${NOTE_TYPES.join(', ')}.`);
   }
   return value;
 }
@@ -121,10 +121,12 @@ export function checkText(text: string): string {
 /** Only the syntax of a qualified evidence ID; its existence is checked from package 06 on (D-23). */
 export function checkRefs(refs: readonly string[]): string[] {
   const result: string[] = [];
-  for (const raw of refs) {
+  for (const [index, raw] of refs.entries()) {
     const ref = raw.trim();
     if (!ID_PATTERNS.qualifiedEvidence.test(ref)) {
-      throw usageError('note_ref_invalid', `--ref erwartet einen Beleg der Form S000001:E001, nicht '${raw}'.`);
+      // The position stands in for the rejected value, which is not repeated.
+      const position = refs.length > 1 ? ` (Angabe ${index + 1} von ${refs.length})` : '';
+      throw usageError('note_ref_invalid', `--ref erwartet einen Beleg der Form S000001:E001${position}.`);
     }
     if (!result.includes(ref)) result.push(ref);
   }
@@ -251,7 +253,7 @@ export function toNoteInput(options: NoteOptions, text: string): NoteInput {
 
 function checkBasisValue(basis: string): TimeBasis {
   if (!(TIME_BASES as readonly string[]).includes(basis)) {
-    throw usageError('note_basis_invalid', `Unbekannte Zeitbasis '${basis}'. Erlaubt sind measured und estimated.`);
+    throw usageError('note_basis_invalid', 'Unbekannte Zeitbasis. Erlaubt sind measured und estimated.');
   }
   return basis as TimeBasis;
 }

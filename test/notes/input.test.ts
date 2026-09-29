@@ -9,6 +9,7 @@ import {
   toNoteInput,
 } from '../../src/notes/input.js';
 import { NOTE_TYPES, type NoteFields, type NoteInput } from '../../src/notes/types.js';
+import { createSecretMarker } from '../helpers/secrets.js';
 
 const TODAY = '2026-10-14';
 
@@ -17,16 +18,20 @@ function direct(raw: RawNoteOptions, text = 'Text'): NoteFields {
   return checkNoteInput(toNoteInput(parseNoteOptions(raw), text), TODAY);
 }
 
-/** Code of the usage error (exit code 2) that `action` raises. */
-function usageCode(action: () => unknown): string {
+/** The usage error (exit code 2) that `action` raises. */
+function usageErrorOf(action: () => unknown): IpaError {
   try {
     action();
   } catch (error) {
     if (!(error instanceof IpaError)) throw error;
     expect(error.exitCode).toBe(2);
-    return error.code;
+    return error;
   }
   throw new Error('Es wurde kein Fehler ausgelöst.');
+}
+
+function usageCode(action: () => unknown): string {
+  return usageErrorOf(action).code;
 }
 
 const EMPTY_FIELDS = { time: null, delay: null, reason: null, alternatives: [], cause: null, solution: null, refs: [] };
@@ -154,6 +159,19 @@ describe('Optionsprüfung von ipa note (Paket 04 §4)', () => {
     for (const ref of ['S1:E1', 'S000001', 'E001', 's000001:e001', 'S000001:E01', 'S0000001:E001']) {
       expect(usageCode(() => direct({ ref: [ref] })), ref).toBe('note_ref_invalid');
     }
+  });
+
+  it('wiederholt abgelehnte Werte nicht in der Meldung', () => {
+    const marker = createSecretMarker();
+    expect(usageErrorOf(() => direct({ ref: [marker] })).message).toBe('--ref erwartet einen Beleg der Form S000001:E001.');
+    expect(usageErrorOf(() => direct({ ref: ['S000001:E001', ` ${marker}`] })).message).toBe(
+      '--ref erwartet einen Beleg der Form S000001:E001 (Angabe 2 von 2).',
+    );
+    expect(usageErrorOf(() => direct({ type: marker })).message).toBe(
+      'Unbekannter Notiztyp. Erlaubt sind general, activity, problem, decision, insight, plan.',
+    );
+    const delay = { minutes: 20, basis: marker } as unknown as NoteInput['delay'];
+    expect(usageErrorOf(() => checkNoteInput({ type: 'activity', text: 'Text', delay }, TODAY)).message).not.toContain(marker);
   });
 
   it('prüft vor der interaktiven Eingabe nur, was ohne Antwort feststeht', () => {

@@ -11,6 +11,7 @@ import { dayOf } from '../../src/core/time.js';
 import type { Note } from '../../src/notes/types.js';
 import { createTempRepo, type TempRepo } from '../helpers/git-repo.js';
 import { expectRepoUnchanged, fingerprintRepo } from '../helpers/repo-fingerprint.js';
+import { createSecretMarker } from '../helpers/secrets.js';
 import { initRepo } from '../helpers/snapshots.js';
 import { createTempDataRoot, listTree, runCli, TOOL_ROOT } from '../helpers/workspace.js';
 
@@ -275,7 +276,19 @@ describe('ipa note (Paket 04)', () => {
     const bad = await runCli(['note', '--day', day, '--ref', 'S1:E1', 'Kaputter Verweis'], { dataDir, repo: repo.root });
     expect(bad.exitCode).toBe(2);
     expect(bad.stderr).toContain('S000001:E001');
+    expect(bad.stderr).not.toContain('S1:E1');
     expect(await notesOf(workspace, day)).toHaveLength(1);
+  });
+
+  it('wiederholt abgelehnte Werte von --ref und --type nicht in der Ausgabe', async () => {
+    const { repo, dataDir, workspace } = await initialized();
+    const marker = createSecretMarker();
+    for (const args of [['--ref', marker], ['--ref', 'S000001:E001', '--ref', marker], ['--type', marker]]) {
+      const result = await runCli(['note', ...args, 'Text'], { dataDir, repo: repo.root });
+      expect(result.exitCode, args.join(' ')).toBe(2);
+      expect(`${result.stdout}${result.stderr}`, args.join(' ')).not.toContain(marker);
+    }
+    expect(await noteFiles(workspace)).toEqual([]);
   });
 
   it('funktioniert in einem Arbeitsbereich aus Paket 01 ohne Snapshots (AK-04-08)', async () => {
