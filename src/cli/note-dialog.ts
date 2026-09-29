@@ -46,14 +46,24 @@ function aborted(): IpaError {
 export async function askNote(terminal: TerminalIo, preset: NoteOptions, days: { day: string; today: string }): Promise<NoteDialogResult> {
   const { output } = terminal;
   const rl = createInterface({ input: terminal.input, output, terminal: (output as { isTTY?: boolean }).isTTY === true });
-  // The iterator buffers lines that arrive before their question, for example from a pipe.
+  // The iterator buffers lines that arrive before their question, for example from a pipe, and still
+  // delivers them after readline has closed at the end of the input.
   const lines = rl[Symbol.asyncIterator]();
+  let closed = false;
+  rl.once('close', () => {
+    closed = true;
+  });
   const say = (text: string): void => {
     output.write(`${text}\n`);
   };
   const ask = async (question: string): Promise<string> => {
-    rl.setPrompt(question);
-    rl.prompt();
+    if (closed) {
+      // From Node.js 24 on, prompt() throws ERR_USE_AFTER_CLOSE on a closed interface.
+      output.write(question);
+    } else {
+      rl.setPrompt(question);
+      rl.prompt();
+    }
     const next = await lines.next();
     if (next.done === true) {
       // Ends the open prompt line, so that the error message starts on a line of its own.

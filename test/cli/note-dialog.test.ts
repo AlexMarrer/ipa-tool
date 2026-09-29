@@ -108,8 +108,11 @@ describe('Interaktive Eingabe von ipa note (Paket 04 §4, AK-04-06)', () => {
   });
 
   it('bricht ab, wenn die Eingabe endet, zum Beispiel mit Strg+D', async () => {
-    const error = await dialog(['1']).catch((e: unknown) => e);
-    expect(error).toBeInstanceOf(IpaError);
-    expect(error).toMatchObject({ code: 'note_input_aborted', exitCode: 2 });
+    // Also after an invalid answer: its question is asked again once readline has already closed.
+    for (const answers of [['1'], ['1', 'Text', 'abc']]) {
+      const error = await dialog(answers).catch((e: unknown) => e);
+      expect(error, answers.join(' / ')).toBeInstanceOf(IpaError);
+      expect(error).toMatchObject({ code: 'note_input_aborted', exitCode: 2 });
+    }
   });
 });
