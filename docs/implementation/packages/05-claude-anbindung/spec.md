@@ -1,0 +1,132 @@
+# Paket 05 – Claude-Anbindung
+
+Die gemeinsamen Verträge stehen in `docs/implementation/spec.md`. Dieses Dokument verweist mit `spec.md §…` darauf und wiederholt sie nicht.
+
+## 1. Ziel und konkretes Ergebnis
+
+Nach diesem Paket gibt es einen getesteten `ClaudeRunner`. Er startet die installierte Claude-Code-CLI gemäss spec.md §13.1 ohne Shell und ohne Werkzeuge, übergibt die Eingabe über stdin, wertet die Antwort gemäss §13.3 aus und protokolliert jede KI-Nutzung. `ipa doctor` prüft Git, die Claude-Version, die Anmeldung und die unterstützten Optionen ohne Modellaufruf. `ipa doctor --live` weist mit einem kleinen echten Aufruf nach, dass keine Werkzeuge verfügbar sind. `ipa init` führt die Prüfung ohne Modellaufruf aus.
+
+## 2. Umfang und Abgrenzung
+
+Im Umfang:
+
+- `src/claude/`:
+  - Prozessstart mit Timeout
+  - Auswertung des Antwortumschlags
+  - Fehlerklassen (§13.3)
+  - `probeClaude` mit Versionsabfrage, Auswertung von `claude auth status` ohne Übernahme von E-Mail- oder Organisationsfeldern und Flag-Prüfung über den Unknown-Option-Pfad (§13.2)
+  - Protokoll `ai-usage.jsonl` (§9.12)
+- Schemas `ai-usage`, `doctor` und `attempt-outcome`
+- Hilfsfunktion zur Prüfung von Ausgabeschemas: draft-07, kein `format`, `$schema` oder `$id`, kompakt unter 8000 Zeichen (§8.4)
+- Befehl `ipa doctor [--live]`. Ausserdem führt `ipa init` nach dem Ausgangs-Snapshot `doctor` ohne `--live` aus, ein Fehler dabei ist nur eine Warnung.
+- Test-Helfer `test/helpers/fake-claude.mjs` (§16.2), gesteuert über Umgebungsvariablen:
+  - Modi: Erfolg, ungültiges JSON, Fehler-Subtype, fehlendes `structured_output`, Exit-Code ≠ 0, Hängen
+  - Unknown-Option-Verhalten für die Flag-Prüfung
+  - stream-json-Init-Ereignis für `--live`
+- Skript `npm run test:live` mit `IPA_LIVE_CLAUDE=1` und ein Live-Test für den Doctor
+- `ipa status` erhält das Feld `claude`.
+- README: Voraussetzungen für Claude, `doctor`, Schutzwirkung und Grenzen gemäss §13.4 im Wortlaut sinngemäss
+
+Nicht im Umfang:
+
+- Analyse-Eingabepakete, Prompts für Analyse und Journal und fachliche Validierung (Pakete 06 und 07)
+- Wiederholungslogik pro Snapshot (Paket 06)
+
+## 3. Voraussetzungen und abhängige Pakete
+
+- Paket 01 ist abgeschlossen.
+- Paket 02 ist abgeschlossen, weil `init` den Ausgangs-Snapshot vor der Prüfung aufnimmt.
+- Die Pakete 03 und 04 sind nicht erforderlich.
+
+## 4. Zu implementierendes Verhalten
+
+**`ClaudeRunner.run(ctx, req)`**
+
+1. Prüfen, dass `req.cwd` existiert und nicht innerhalb von `ctx.repoRoot` liegt. Andernfalls ist das ein Programmierfehler, und es wird kein Prozess gestartet.
+2. Das Ausgabeschema mit der Hilfsfunktion prüfen und kompakt serialisieren.
+3. Die Argumente exakt in der Reihenfolge von §13.1 bilden. `--safe-mode` kommt nur hinzu, wenn `doctor.json` die Option als unterstützt meldet. `--model` kommt nur hinzu, wenn es konfiguriert ist.
+4. `spawn(command[0], [...command.slice(1), ...args], { cwd, shell: false, windowsHide: true })` starten, stdin schreiben und schliessen.
+5. Nach `timeoutSeconds` den Prozess beenden und `timeout` melden.
+6. stdout vollständig lesen, stderr auf höchstens 64 KiB begrenzen.
+7. Den Umschlag gemäss §13.3 auswerten. `meta` enthält:
+   - `cliVersion` aus `doctor.json` oder `null`
+   - `models` aus den Schlüsseln von `modelUsage`
+   - `costUsd`, `durationMs`, `exitCode`
+   - `rawStdout` und `rawStderr` zur Ablage durch den Aufrufer
+8. Pro Aufruf genau eine Zeile in `ai-usage.jsonl` schreiben, bei Erfolg und bei Fehler. Die Zeile enthält keine Inhalte.
+
+**`probeClaude(ctx, { live })`**
+
+- Git: `git --version` über den `GitRunner`. Der Aufruf steht auf der Leseliste (spec.md §14.2).
+- Claude:
+  - `claude --version` liefert die Version.
+  - `claude auth status` liefert `loggedIn` und `authMethod` aus dem JSON. Alle anderen Felder werden verworfen.
+  - Flag-Prüfung: pro Option `claude -p <option> [wert] --zz-ipa-probe x` mit leerem stdin und Timeout 20 s.
+    - Meldet stderr `unknown option '--zz-ipa-probe'`, ist die Option unterstützt.
+    - Meldet es die geprüfte Option als unbekannt, ist sie nicht unterstützt.
+    - Jede andere Ausgabe gilt als „unbekannt“ und damit als nicht unterstützt.
+  - Geprüft werden alle Optionen aus §13.1 einschliesslich `--safe-mode`.
+- `--live`: ein Aufruf mit denselben Pflichtoptionen, aber `--output-format stream-json --verbose`, einem trivialen Schema (`{ ok: boolean }`) und einer kurzen festen Eingabe.
+  - Ausgewertet werden die Felder `tools` und `mcp_servers` des Ereignisses `system/init` und das `structured_output` des Ergebnisses.
+  - `live.ok` ist `true`, wenn beide Listen leer sind und `structured_output` dem Schema entspricht.
+  - Vor dem Aufruf erscheint auf stderr der Hinweis, dass ein echter Modellaufruf Kontingent verbraucht.
+- Ergebnis:
+  - `doctor.json` atomar schreiben.
+  - `ok` ist `true`, wenn Git gefunden, Claude gefunden und angemeldet ist, alle Pflichtoptionen unterstützt werden und, bei `--live`, auch `live.ok` gilt.
+  - Exit-Code 0 oder 7.
+- Ausgabe: eine kompakte Liste der Prüfungen mit Ergebnis. Bei `authMethod` wird darauf hingewiesen, dass die geschäftliche Zulassung organisatorisch zu bestätigen ist (W-07).
+
+**Aufrufer ohne erfolgreichen Doctor**
+
+- Pakete 06 und 07 rufen `run` nur auf, wenn `doctor.json` existiert und alle Pflichtoptionen als unterstützt meldet.
+- Andernfalls führen sie die Prüfung ohne `--live` automatisch einmal aus. Scheitert sie, endet der Lauf mit Exit-Code 6.
+- Die Hilfsfunktion `ensureClaudeReady(ctx)` gehört zu diesem Paket.
+
+## 5. Betroffene Komponenten und gemeinsame Schnittstellen
+
+- Neu:
+  - `src/claude/`
+  - `schemas/ai-usage.schema.json`, `schemas/doctor.schema.json`, `schemas/attempt-outcome.schema.json`
+  - `test/helpers/fake-claude.mjs`
+- Erweitert: `src/cli/` (`doctor`, `init`, `status`)
+- Schnittstellen:
+  - `ClaudeRequest`, `ClaudeResult`, `ClaudeRunner`, `probeClaude` (spec.md §10)
+  - Fehlerklassen (§9.9, §13.3)
+  - `doctor.json` (§9.13), `ai-usage.jsonl` (§9.12)
+
+## 6. Fehler- und Randfälle
+
+- `claude` ist nicht im PATH: `not_found`, und `doctor` meldet „nicht gefunden“.
+- `claude.command` zeigt auf eine `.cmd`-Datei: Node meldet `EINVAL`. Das ergibt `not_executable` mit Hinweis auf einen absoluten Node- oder `.exe`-Befehl (A-05).
+- Leeres Argument `""` für `--tools` unter Windows (A-04): Ein Test mit der Fake-CLI prüft, dass ein leerer String ankommt.
+- stdout enthält zusätzliche Zeilen vor dem JSON, zum Beispiel Update-Hinweise: `invalid_envelope`. Die rohe Ausgabe bleibt für die Diagnose erhalten.
+- Hängender Prozess: Er wird nach Ablauf des Timeouts beendet, ein Zombie-Prozess bleibt nicht zurück, und es wird `timeout` gemeldet.
+- `claude auth status` meldet nicht angemeldet (Exit-Code 1): `loggedIn: false`.
+- Grosse stdin-Eingabe knapp unter dem Limit: Sie wird vollständig übertragen, auch bei vollem Pipe-Puffer.
+- Ungültiges Ausgabeschema, zum Beispiel mit `format`: Programmierfehler vor dem Start.
+
+## 7. Akzeptanzkriterien
+
+| ID | Kriterium |
+| --- | --- |
+| AK-05-01 | Die Fake-CLI protokolliert exakt die Argumentliste aus spec.md §13.1, einschliesslich eines leeren Arguments nach `--tools`, und ohne Shell. stdin enthält genau die übergebene Eingabe. Ein `cwd` innerhalb des Repositorys wird vor dem Start abgelehnt. |
+| AK-05-02 | Eine Erfolgsantwort der Fake-CLI liefert `ok: true`, `structuredOutput` und `meta` mit Modellnamen und Kosten. |
+| AK-05-03 | Jede Fehlerklasse aus §13.3, also `not_found`, `not_executable`, `timeout`, `invalid_envelope`, `error_result`, `nonzero_exit` und `missing_structured_output`, wird über die Fake-CLI oder einen ungültigen Befehl erzeugt und korrekt gemeldet, ohne unbehandelte Ausnahme. Ein Timeout endet spätestens 5 s nach dem konfigurierten Wert. |
+| AK-05-04 | Jeder Aufruf schreibt genau eine schemagültige Zeile in `ai-usage.jsonl` mit Zweck, Zeitpunkten, CLI-Version, Modellen, Prompt- und Schema-Version, `inputSha256` und Ergebnis. Eingabetext und Antworttext kommen darin nicht vor. |
+| AK-05-05 | `ipa doctor` mit Fake-CLI meldet Version, Anmeldestatus und Optionsunterstützung und schreibt `doctor.json`. Fehlt eine Pflichtoption, ergibt das Exit-Code 7. `--safe-mode` wird nur dann übergeben, wenn es als unterstützt gemeldet ist. |
+| AK-05-06 | `doctor.json` und die Ausgabe enthalten weder E-Mail noch Organisationsnamen noch Token, auch wenn die Fake-CLI solche Felder liefert. |
+| AK-05-07 | `ipa init` führt `doctor` ohne `--live` aus. Scheitert die Prüfung, bleibt der Exit-Code von `init` 0, es erscheint eine Warnung, und der Arbeitsbereich ist vollständig. |
+| AK-05-08 | Die Schema-Hilfsfunktion lehnt `format`, `$schema`, `$id` und Schemas über 8000 Zeichen ab und akzeptiert ein gültiges draft-07-Schema. |
+| AK-05-09 | **Manuell (live, nach Freigabe):** `ipa doctor --live` mit der installierten Claude-Version meldet leere Listen für `tools` und `mcp_servers` und ein gültiges `structured_output`. Version, Datum und Ergebnis stehen in der Checkliste. Die Annahmen A-01 bis A-05 sind in spec.md §18 als bestätigt oder widerlegt eingetragen. |
+| AK-05-10 | `ipa status --json` enthält `claude`. `ipa --help` listet `doctor`. |
+
+## 8. Notwendige Tests und Validierung
+
+- Unit-Tests: Argumentbildung, Umschlagauswertung mit festen JSON-Beispielen (Erfolg und jede Fehlervariante), Schema-Hilfsfunktion, Filter für die Auth-Felder
+- Integrationstests mit `fake-claude.mjs` über `claude.command = [process.execPath, <pfad>]` für AK-05-01 bis AK-05-08 und AK-05-10
+- Live-Test (`npm run test:live`): AK-05-09, nur nach ausdrücklicher Freigabe durch den Benutzer
+
+## 9. Offene Annahmen
+
+- A-01 bis A-05 und A-07: Sie werden mit AK-05-09 geprüft.
+- Widerlegt die Live-Prüfung A-01, weil unter 2.1.114 trotzdem Werkzeuge gemeldet werden, ist Paket 06 blockiert. Die Umsetzung stoppt dann, und der Benutzer entscheidet über ein Claude-Update (O-02).
