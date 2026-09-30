@@ -37,9 +37,6 @@ import { validateAnalysisOutput } from './validate.js';
 
 export const PROMPT_PATH = path.join(TOOL_ROOT, 'prompts', PROMPT_FILE);
 
-/** "No limit" until package 08 activates `limits.maxRunSeconds`. */
-export const NO_DEADLINE = new Date(8_640_000_000_000_000);
-
 const MAX_OUTCOME_MESSAGE = 2000;
 
 export interface QueueOptions {
@@ -61,6 +58,10 @@ interface Run {
 
 function now(ctx: WorkspaceContext): string {
   return formatZoned(ctx.clock.now(), ctx.config.timezone);
+}
+
+function deadlineReached(run: Run): boolean {
+  return run.ctx.clock.now().getTime() >= run.opts.deadline.getTime();
 }
 
 function limitMessage(text: string): string {
@@ -194,8 +195,11 @@ async function callAndStore(run: Run, manifest: Manifest, details: StatusDetails
   return true;
 }
 
-/** `pending`, `failed` or `blocked`: builds the package and, if possible, makes one attempt. */
-async function analyse(run: Run, snapshotId: string, details: StatusDetails): Promise<boolean> {
+/**
+ * `pending`, `failed` or `blocked`: builds the package and, if possible, makes one attempt. `deadline`
+ * means that the run limit passed before the call and the snapshot stays as it was.
+ */
+async function analyse(run: Run, snapshotId: string, details: StatusDetails): Promise<boolean | 'deadline'> {
   const { ctx, result } = run;
   const manifest = await readManifest(ctx, snapshotId);
   const input = await buildInputFromManifest(ctx, manifest, { onWarning: (message) => result.warnings.push(message) });
@@ -232,6 +236,8 @@ async function analyse(run: Run, snapshotId: string, details: StatusDetails): Pr
     }
     run.ready = true;
   }
+  // The readiness check may take up to 20 s; the limit applies to the start of the call itself.
+  if (deadlineReached(run)) return 'deadline';
   return callAndStore(run, manifest, details, input, inputText);
 }
 
@@ -270,11 +276,13 @@ export async function processQueue(ctx: WorkspaceContext, runner: ClaudeRunner, 
         result.stoppedBy = { reason: 'run_limit', snapshotId };
         break;
       }
-      if (ctx.clock.now().getTime() >= opts.deadline.getTime()) {
+      const analysed = deadlineReached(run) ? 'deadline' : await analyse(run, snapshotId, details);
+      if (analysed === 'deadline') {
+        // No new Claude call after the limit; the snapshot stays open for the next run (spec.md §12.2).
         result.stoppedBy = { reason: 'deadline', snapshotId };
         break;
       }
-      done = await analyse(run, snapshotId, details);
+      done = analysed;
     }
     if (!done) {
       // The cursor must not jump over an open snapshot (I-03).

@@ -2,34 +2,36 @@
 
 Einen Punkt erst abhaken, wenn er umgesetzt und geprüft ist. Den Nachweis (Test, Befehl oder Datum) hinter den Punkt schreiben.
 
+Prüfumgebung der Nachweise: 30.09.2026, Entwicklungsrechner Windows 11 Pro 10.0.26200, Node.js 24.19.0, npm 11.17.0, Git 2.51.0.windows.1. Alle automatischen Tests mit der Fake-CLI; Claude wurde nicht echt aufgerufen (Benutzerentscheidung, spec.md §18).
+
 ## Voraussetzungen
 
-- [ ] Die Pakete 06 und 07 sind im Code vorhanden, und ihre Tests laufen grün.
-- [ ] Git-Status geprüft, keine fremden Änderungen überschrieben.
+- [x] Die Pakete 06 und 07 sind im Code vorhanden, und ihre Tests laufen grün. Nachweis: 30.09.2026 vor den Änderungen: 06 in Paket- und zentraler Checkliste `abgeschlossen`, 07 `technisch abgeschlossen` (offen nur das Live-Journal); im Code `processQueue` mit Parameter `deadline` und Stoppgrund `deadline` (`src/analysis/queue.ts`), das CLI übergab `NO_DEADLINE`; `ipa journal` in `src/cli/commands/journal.ts` (in dieser Sitzung unverändert; Rauchtest `ipa journal --no-ai` an einem Test-Repository mit Exit-Code 0, das Abnahmeszenario ruft `ipa journal` dreimal über den CLI-Einstieg auf); `npm run typecheck` fehlerfrei, `npm test` 66 Testdateien, 565 bestanden, 2 übersprungen (1122 s). Offene Punkte früherer Pakete: 04 manuelle Prüfung der interaktiven Eingabe in der Windows-Konsole, 05 „`npm test` nach der Erweiterung grün (vom Benutzer)“, 07 Live-Journal.
+- [x] Git-Status geprüft, keine fremden Änderungen überschrieben. Nachweis: `git status` vor Beginn sauber auf `main` (letzter Commit `243d090`), Arbeit auf Branch `feature/schedule-and-acceptance`. Bestehende Dateien nur für die Anbindung erweitert: `src/cli/commands/capture.ts`, `src/cli/main.ts`, `src/analysis/queue.ts` (Frist direkt vor dem Aufruf, `NO_DEADLINE` entfernt), `src/core/time.ts` (`zonedWeekdayAndTime`), `test/cli/main.test.ts` (Befehlsliste, Beispiel des unbekannten Befehls), dazu README, spec.md und die Checklisten.
 
 ## Implementierung
 
-- [ ] Fensterprüfung für `capture --scheduled` in der konfigurierten Zeitzone (AK-08-01, AK-08-02, AK-08-03)
-- [ ] `deadline` aus `limits.maxRunSeconds` an `processQueue` übergeben (AK-08-06)
-- [ ] Generator für die Windows-Aufgabenplanung (XML) (AK-08-04)
-- [ ] cron-Generator, als ungeprüft gekennzeichnet (AK-08-05)
+- [x] Fensterprüfung für `capture --scheduled` in der konfigurierten Zeitzone (AK-08-01, AK-08-02, AK-08-03). Nachweis: `src/schedule/window.ts` (`checkScheduleWindow`, geschlossenes Fenster, minutengenau), `src/core/time.ts` (`zonedWeekdayAndTime` über `Intl.DateTimeFormat`); `test/schedule/window.test.ts` (20 Tests, darunter Samstag, 07:59, Dienstag 10:00, Grenzen, Wochentag in der Zeitzone statt UTC, Umstellungstage März und Oktober in Zürich sowie März und November in New York mit `TZ=UTC` und `TZ=America/New_York`).
+- [x] `deadline` aus `limits.maxRunSeconds` an `processQueue` übergeben (AK-08-06). Nachweis: `src/cli/commands/capture.ts` (`deadline` = Start des Laufs + `maxRunSeconds`), `src/analysis/queue.ts` (Prüfung vor jedem Aufruf, auch nach `ensureClaudeReady`); `test/schedule/deadline.test.ts` › „startet nach Ablauf der Frist keinen weiteren Claude-Aufruf; der laufende endet regulär, die übrigen bleiben pending, Exit-Code 0“, „beginnt die Frist mit dem Lauf …“, „endet mit Exit-Code 6, wenn ein Snapshot nach Ablauf der Frist failed bleibt“, „prüft die Frist direkt vor dem Aufruf …“.
+- [x] Generator für die Windows-Aufgabenplanung (XML) (AK-08-04). Nachweis: `src/schedule/templates.ts` (`renderWindowsTask`); `test/schedule/templates.test.ts` (Wohlgeformtheit mit dem Prüfparser `test/helpers/xml.ts`, Trigger, Einstellungen, Principal, Aktion, Escaping von Leerzeichen, `&` und Umlauten, Kommentar ohne `--`, Kodierung, `ExecutionTimeLimit`, Intervall länger als das Fenster, Zerlegung der Argumente durch Node.js unter Windows). Zusätzlich am 30.09.2026 mit der Windows-Aufgabenplanung im Modus `TASK_VALIDATE_ONLY` geprüft (ohne Registrierung): Standardvorlage aus `--output` und fünf Varianten gültig, drei fehlerhafte Varianten abgelehnt (spec.md §18, Abnahmeprotokoll).
+- [x] cron-Generator, als ungeprüft gekennzeichnet (AK-08-05). Nachweis: `src/schedule/templates.ts` (`renderCron`); `test/schedule/templates.test.ts` › „erzeugt Zeilen mit CRON_TZ, absoluten Pfaden und dem Kommentar „nicht geprüft““, „gruppiert Intervalle, die keine volle Stunde sind, nach Minute …“, „bildet die Wochentage auf cron-Nummern ab (Sonntag 0)“.
 
 ## Integration
 
-- [ ] `ipa capture --scheduled` angebunden (AK-08-01, AK-08-02)
-- [ ] `ipa schedule --os <windows|cron> [--output]` angebunden (AK-08-04, AK-08-10)
+- [x] `ipa capture --scheduled` angebunden (AK-08-01, AK-08-02). Nachweis: `src/cli/commands/capture.ts` (Option `--scheduled`, `runCapture` mit `scheduled`, Prüfung vor dem Lock, Eintrag `outside_window` ohne Lock); `test/schedule/scheduled-capture.test.ts` (6 Tests, darunter AK-08-01, AK-08-02, AK-08-03, „prüft das Fenster vor dem Lock …“ und der CLI-Einstieg mit genau den Argumenten der Aufgabe: ausserhalb stdout leer).
+- [x] `ipa schedule --os <windows|cron> [--output]` angebunden (AK-08-04, AK-08-10). Nachweis: `src/cli/commands/schedule.ts`, registriert in `src/cli/main.ts`; `test/cli/schedule.test.ts` (7 Tests: XML auf stdout mit absoluten Pfaden, `--output` als UTF-16 und Exit-Code 2 bei vorhandener Datei, Ausgabedatei im Repository und in `journal/final/` abgelehnt, cron, Warnung für Zusatzlauf ausserhalb des Fensters, `--data-dir` nur bei nicht standardmässiger Datenwurzel, Bedienungsfehler); `test/cli/main.test.ts` › „ipa --help listet alle Befehle von V1 bis schedule …“.
 
 ## Tests
 
-- [ ] Unit-Tests: Fenster mit `TZ`-Variation, XML-Struktur und Escaping, cron-Zeile
-- [ ] Integrationstests AK-08-01 bis AK-08-06 und AK-08-10 grün
-- [ ] `npm run typecheck`, `npm test` und `npm run build` grün
-- [ ] Manuell: Aufgabe unter Windows 11 importiert, ausgelöst und auf Überschneidung geprüft (AK-08-07)
-- [ ] Manuell nach Freigabe: alle Abnahmefälle live durchgeführt (AK-08-08)
+- [x] Unit-Tests: Fenster mit `TZ`-Variation, XML-Struktur und Escaping, cron-Zeile. Nachweis: `test/schedule/window.test.ts`, `test/schedule/templates.test.ts` (37 Tests, am 30.09.2026 grün).
+- [x] Integrationstests AK-08-01 bis AK-08-06 und AK-08-10 grün. Nachweis: AK-08-01, -02, -03 `test/schedule/scheduled-capture.test.ts`; AK-08-04, -05 `test/cli/schedule.test.ts` und `test/schedule/templates.test.ts`; AK-08-06 `test/schedule/deadline.test.ts`; AK-08-10 `test/cli/main.test.ts` (Hilfe) und Fingerprint-Prüfung in jedem Test (`unchanged`, `schedule()`-Helfer). Zusätzlich das Abnahmeszenario mit der Fake-CLI: `test/acceptance/acceptance.test.ts`, alle vierzehn Fälle bestanden.
+- [x] `npm run typecheck`, `npm test` und `npm run build` grün. Nachweis: 30.09.2026 auf dem Entwicklungsrechner (Windows 11, Node.js 24.19.0, Git 2.51.0.windows.1): `npm run typecheck` fehlerfrei; `npm test` 72 Testdateien, 620 bestanden, 2 übersprungen (Tests für andere Plattformen), 1111 s; `npm run build` fehlerfrei.
+- [ ] Manuell: Aufgabe unter Windows 11 importiert, ausgelöst und auf Überschneidung geprüft (AK-08-07). Offen, vom Benutzer auszuführen (ändert die Aufgabenplanung); Anleitung im Abnahmeprotokoll. Vorabprüfung mit `TASK_VALIDATE_ONLY` bestanden.
+- [ ] Manuell nach Freigabe: alle Abnahmefälle live durchgeführt (AK-08-08). Offen, nach Benutzerentscheidung vom Benutzer auszuführen: `npm run test:live -- test/live/acceptance.live.ts` mit `IPA_LIVE_CLAUDE=1`, rund zehn Modellaufrufe; dasselbe Szenario ist mit der Fake-CLI bestanden.
 
 ## Dokumentation und Status
 
-- [ ] `docs/abnahme/v1-abnahmeprotokoll.md` vollständig ausgefüllt (AK-08-07, AK-08-08)
-- [ ] README vollständig und ohne überhöhte Zusagen (AK-08-09)
-- [ ] Abweichungen in spec.md §18 eingetragen oder „keine“ bestätigt
-- [ ] Zentrale `docs/implementation/checklist.md` aktualisiert, Abnahmematrix abgehakt, soweit nachgewiesen
+- [ ] `docs/abnahme/v1-abnahmeprotokoll.md` vollständig ausgefüllt (AK-08-07, AK-08-08). Angelegt mit allen vierzehn Fällen (Vorgehen, Erwartung, automatisches Ergebnis vom 30.09.2026, Nachweis), Anleitung für den Live-Lauf und die Aufgabenplanung, Stichprobe und leerem Abschnitt für die Probe-IPA. Offen: Live-Ergebnisse, Stichprobe, AK-08-07.
+- [x] README vollständig und ohne überhöhte Zusagen (AK-08-09). Nachweis: `README.md`, Stand 30.09.2026: „Mehrere Repositories“, „Speicherort der Daten“ mit Standard und `--workspace`, „Getrennt vom Claude-Arbeitsverzeichnis“, „Sicherung“ (O-07), alle Befehle einschliesslich `ipa capture … --scheduled` mit Laufzeitgrenze und `ipa schedule`, Exit-Codes, „Zeitsteuerung“ mit Einrichtung unter Windows (Import als Schritt des Benutzers, Stand der Prüfung offen gelegt), cron als nicht geprüft, „Grenzen“ mit Erfassungslücken, Secret-Erkennung, Schutzwirkung (Verweis auf spec.md §13.4), Zeitsteuerung und Plattformen; Windows-Pfade mit fehlenden Backslashes korrigiert.
+- [x] Abweichungen in spec.md §18 eingetragen oder „keine“ bestätigt. Nachweis: elf Einträge vom 30.09.2026 zu Paket 08 (Umgebung und Benutzerentscheidung, `schedule` ohne `runs.jsonl`, `capture --scheduled` ausserhalb des Fensters, Laufzeitgrenze, Windows-Vorlage, `--data-dir`, Ausgabedatei, cron, Randfälle der Konfiguration, Abnahmeszenario, Pfadkorrektur); eingearbeitet in §6.3, §9.1, §9.11, §10, §11.1, §12.2, §13.1 und §14.1; Paketspezifikation §9 ergänzt.
+- [x] Zentrale `docs/implementation/checklist.md` aktualisiert, Abnahmematrix abgehakt, soweit nachgewiesen. Nachweis: Paketstatus und Hinweis zur Abnahmematrix vom 30.09.2026; keine Zeile abgehakt, weil kein Fall live im Abnahmeprotokoll als bestanden steht.

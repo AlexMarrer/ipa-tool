@@ -140,3 +140,13 @@ Erzeugt ein XML für die Windows-Aufgabenplanung (Task-Schema 1.2+) mit diesen E
 ## 9. Offene Annahmen
 
 - O-05: Zeiten und das Verhalten des Konsolenfensters. Das Standardverhalten ist ein kurz sichtbares Fenster. Alternativen wie „unabhängig von der Anmeldung ausführen“ erfordern die Speicherung eines Passworts durch den Benutzer und sind nicht Teil der Vorlage.
+
+Folgen aus der Umsetzung (30.09.2026, Einzelheiten in spec.md §18):
+
+- Live-Prüfungen, die nur Claude-Kontingent verbrauchen, führt nach Entscheidung des Benutzers der Benutzer selbst aus. Die Live-Abnahme (AK-08-08) ist als `test/live/acceptance.live.ts` vorbereitet; dasselbe Szenario läuft in `npm test` mit der Fake-CLI (`test/acceptance/acceptance.test.ts`). Offen sind der Live-Lauf, die Stichprobe „Beleg trägt Aussage“ und die manuelle Prüfung der Aufgabenplanung (AK-08-07).
+- `capture --scheduled` ausserhalb des Fensters schreibt den `runs.jsonl`-Eintrag ohne Lock und lässt `state.json` samt `lastSuccessfulRun` unverändert. Verglichen wird minutengenau, beide Grenzen gehören zum Fenster.
+- Die Frist wird zusätzlich direkt vor jedem Claude-Aufruf geprüft, nach der Bereitschaftsprüfung. Snapshots ohne Analysepflicht werden nach der Frist weiter abgeschlossen.
+- `schedule` schreibt keinen Eintrag in `runs.jsonl`. Die Ausgabedatei darf nicht im Repository (ausser im Arbeitsbereich) und nicht in `journal/final/` liegen. `--data-dir` steht in der Aufgabe auch, wenn die Datenwurzel aus `IPA_ASSISTANT_HOME` stammt.
+- Die Windows-Vorlage ist mit der Aufgabenplanung im Modus `TASK_VALIDATE_ONLY` geprüft (ohne Registrierung). `--output` schreibt UTF-16 mit BOM. Der Kommentar nennt statt Pfaden einen Platzhalter und die Option ohne `--`, weil XML-Kommentare kein `--` enthalten dürfen; `<Description>` nennt `--scheduled` wörtlich. Ist das Intervall länger als das Fenster, entfällt die Wiederholung.
+- Die cron-Vorlage hat eine Zeile je Minute der Startzeiten statt genau einer Zeile.
+- Das Verhalten der Aufgabenplanung bei einem Lauf genau zum Ende der Wiederholungsdauer (`windowEnd`) ist nicht beobachtet; `--scheduled` liesse ihn zu.
