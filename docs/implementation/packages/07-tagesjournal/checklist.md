@@ -27,11 +27,11 @@ Einen Punkt erst abhaken, wenn er umgesetzt und geprüft ist. Den Nachweis (Test
 
 - [x] Unit-Tests: Tageszuordnung, Zeitübersicht, Validator, Renderer als Snapshot-Test. Nachweis: `test/journal/day.test.ts`, `time-summary.test.ts`, `validate.test.ts`, `render.test.ts`, `prompt.test.ts`.
 - [x] Integrationstests AK-07-01 bis AK-07-12 mit Fake-CLI und injizierter Uhr grün. Nachweis: `test/journal/journal.test.ts` (AK-07-01, -02, -03, -04, -07, -08, -11, -12, Lock, `.ipa` im Repository) und `test/journal/journal-open-items.test.ts` (AK-07-05, -06, -09, -10, Secrets, Eingabe zu gross, Claude nicht bereit); alle Schritte mit Fingerprint-Prüfung des Repositorys.
-- [ ] `npm run typecheck`, `npm test` und `npm run build` grün
+- [x] `npm run typecheck`, `npm test` und `npm run build` grün. Nachweis: 30.09.2026 auf dem Entwicklungsrechner (Windows 11, Node.js 24.19.0, Git 2.51.0.windows.1): `npm run typecheck` fehlerfrei; `npm test` 64 Testdateien, 519 bestanden, 2 übersprungen (876 s); `npm run build` fehlerfrei. Zwei frühere Läufe scheiterten nur an Timeouts von Tests der Pakete 03 und 06 unter Last (isoliert bestanden); das Test-Timeout ist deshalb 300 s (spec.md §18).
 - [ ] Manuell nach Freigabe: Live-Journal eines künstlichen Tages, Stichprobe der Belege (Ergebnis notieren). Vorbereitet: `test/live/journal.live.ts`, ein Modellaufruf, `npm run test:live -- test/live/journal.live.ts` mit `IPA_LIVE_CLAUDE=1`. In dieser Sitzung nicht ausgeführt.
 
 ## Dokumentation und Status
 
 - [x] README: Tagesabschluss, manuelle Übernahme nach `journal/final/`, Sicherung. Nachweis: `README.md`, Abschnitte „`ipa journal [--day <YYYY-MM-DD>] [--no-ai]`“ und „Tagesjournal“ (Eingabe eines Tages, Prüfung der Antwort, Aufbau des Entwurfs, Tagesabschluss mit Übernahme nach `journal/final/`, Sicherung), dazu Stand, Aufbau des Arbeitsbereichs, Exit-Codes, Entwicklung und Aufbau des Quellcodes. Stand 30.09.2026.
-- [x] Abweichungen in spec.md §18 eingetragen oder „keine“ bestätigt. Nachweis: acht Einträge vom 30.09.2026 zu Paket 07 (Umgebung, §9.10, unklare Tageszuordnung und R-06, Zeitübersicht, `runs.jsonl`, Signatur von `generateJournal`, Rückfall ohne KI und erneute Prüfung, Tests); eingearbeitet in §6.3, §9.10, §9.11, §10 und §15. Paketspezifikation §9 ergänzt.
-- [ ] Zentrale Checkliste `docs/implementation/checklist.md` aktualisiert
+- [x] Abweichungen in spec.md §18 eingetragen oder „keine“ bestätigt. Nachweis: neun Einträge vom 30.09.2026 zu Paket 07 (Umgebung, §9.10, unklare Tageszuordnung und R-06, Zeitübersicht, `runs.jsonl`, Signatur von `generateJournal`, Rückfall ohne KI und erneute Prüfung, Tests, Test-Timeout); eingearbeitet in §6.3, §9.10, §9.11, §10 und §15. Paketspezifikation §9 ergänzt.
+- [x] Zentrale Checkliste `docs/implementation/checklist.md` aktualisiert. Nachweis: Paketstatus „technisch abgeschlossen“, offen nur das Live-Journal nach Freigabe, 30.09.2026.
