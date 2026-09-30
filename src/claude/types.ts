@@ -105,6 +105,22 @@ export interface DoctorRecord {
   ok: boolean;
 }
 
+/** Billing guard (spec.md §13.1): only names of variables, never their values. */
+export interface BillingCheck {
+  /** Set variables that bill per request through the Anthropic API, for example `ANTHROPIC_API_KEY`. */
+  apiKeyVariables: string[];
+  /** Set variables that route Claude Code to Bedrock, Vertex AI or Foundry. */
+  providerVariables: string[];
+  /** `claude auth status` reports `authMethod: third_party`, also for a provider set in the Claude Code settings. */
+  thirdPartyLogin: boolean;
+  /** Any of the three above. */
+  detected: boolean;
+  /** `claude.allowPaidUsage` is `true`; a missing field counts as `false`. */
+  allowPaidUsage: boolean;
+  /** Detected but not allowed: no model call. */
+  blocked: boolean;
+}
+
 /** Result of `probeClaude`: the stored record plus findings for the output, which are not stored. */
 export interface DoctorReport {
   record: DoctorRecord;
@@ -116,4 +132,5 @@ export interface DoctorReport {
   liveCarriedOver: boolean;
   /** Names of variables of a surrounding Claude Code session that were not passed on to `claude`. */
   droppedSessionVariables: string[];
+  billing: BillingCheck;
 }

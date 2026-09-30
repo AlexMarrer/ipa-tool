@@ -1,6 +1,6 @@
 /**
- * `ipa doctor` (spec.md §6.2, §9.13, §13.2, §13.4): Git, Claude version, login and options without a
- * model call; with `live` additionally two small real calls that replace the pre-check of package 01 (D-24).
+ * `ipa doctor` (spec.md §6.2, §9.13, §13.2, §13.4): Git, Claude version, login, options and billing guard
+ * without a model call; with `live` additionally two small real calls that replace the pre-check of package 01 (D-24).
  */
 import { access } from 'node:fs/promises';
 import path from 'node:path';
@@ -18,6 +18,7 @@ import {
   parseVersion,
   requiredFlags,
 } from './args.js';
+import { assertPaidUsageAllowed, checkBilling, paidUsageMessage } from './billing.js';
 import { claudeUsable, doctorPath, missingRequiredFlags, readDoctorRecord, writeDoctorRecord } from './doctor-record.js';
 import { claudeProcessEnv, droppedSessionVariables } from './env.js';
 import { isPlainObject, startFailure } from './envelope.js';
@@ -304,6 +305,8 @@ export async function probeClaude(ctx: WorkspaceContext, opts: ProbeOptions): Pr
   const probe = await probeClaudeCli(ctx, env);
   findings.push(...probe.findings);
   const { claude, missingFlags } = probe;
+  const billing = checkBilling(claudeProcessEnv(env), ctx.config, claude.authMethod);
+  if (billing.blocked) findings.push(paidUsageMessage(billing));
 
   let live: DoctorRecord['live'] = null;
   let settingSourcesAuthOk: boolean | null = null;
@@ -317,7 +320,9 @@ export async function probeClaude(ctx: WorkspaceContext, opts: ProbeOptions): Pr
           ? 'Pflichtoptionen fehlen'
           : claude.flags['--verbose'] !== true
             ? '--verbose wird nicht erkannt, ohne diese Option gibt es kein stream-json'
-            : null;
+            : billing.blocked
+              ? 'kostenpflichtige Nutzung ist nicht freigegeben (claude.allowPaidUsage)'
+              : null;
     if (blocker === null) {
       const result = await liveCheck(ctx, claude, env, notice);
       live = result.live;
@@ -338,29 +343,39 @@ export async function probeClaude(ctx: WorkspaceContext, opts: ProbeOptions): Pr
     git,
     claude: { ...claude, settingSourcesAuthOk },
     live,
-    ok: git.found && claude.found && claude.loggedIn === true && missingFlags.length === 0 && (!opts.live || live?.ok === true),
+    ok:
+      git.found &&
+      claude.found &&
+      claude.loggedIn === true &&
+      missingFlags.length === 0 &&
+      !billing.blocked &&
+      (!opts.live || live?.ok === true),
   };
   await writeDoctorRecord(ctx.workspaceDir, record);
-  return { record, findings, missingFlags, liveCarriedOver, droppedSessionVariables: dropped };
+  return { record, findings, missingFlags, liveCarriedOver, droppedSessionVariables: dropped, billing };
 }
 
 /**
  * For packages 06 and 07 before the first Claude call of a run: without a `doctor.json` that reports
- * all mandatory options, the check runs once without `--live`. If Claude is still not usable, an
- * `IpaError` with exit code 6 follows.
+ * all mandatory options, the check runs once without `--live`. If Claude is still not usable or paid
+ * usage is not allowed, an `IpaError` with exit code 6 follows.
  */
 export async function ensureClaudeReady(ctx: WorkspaceContext, opts: { env?: NodeJS.ProcessEnv } = {}): Promise<void> {
-  const existing = await readDoctorRecord(ctx.workspaceDir);
-  if (existing !== null && claudeUsable(existing, ctx.config)) return;
-  const report = await probeClaude(ctx, { live: false, ...(opts.env === undefined ? {} : { env: opts.env }) });
-  if (claudeUsable(report.record, ctx.config)) return;
-  const reason = report.record.claude.found
-    ? `Pflichtoptionen nicht erkannt: ${missingRequiredFlags(report.record, ctx.config).join(', ')}`
-    : 'Claude Code wurde nicht gefunden';
-  throw new IpaError(
-    'claude_not_ready',
-    EXIT.analysisIncomplete,
-    `Claude ist nicht einsatzbereit (${reason}). Der KI-Schritt entfällt, gesicherte Daten bleiben offen. ` +
-      `Details mit ipa doctor; Ergebnis in ${doctorPath(ctx.workspaceDir)}.`,
-  );
+  const env = opts.env ?? process.env;
+  let record = await readDoctorRecord(ctx.workspaceDir);
+  if (record === null || !claudeUsable(record, ctx.config)) {
+    record = (await probeClaude(ctx, { live: false, env })).record;
+    if (!claudeUsable(record, ctx.config)) {
+      const reason = record.claude.found
+        ? `Pflichtoptionen nicht erkannt: ${missingRequiredFlags(record, ctx.config).join(', ')}`
+        : 'Claude Code wurde nicht gefunden';
+      throw new IpaError(
+        'claude_not_ready',
+        EXIT.analysisIncomplete,
+        `Claude ist nicht einsatzbereit (${reason}). Der KI-Schritt entfällt, gesicherte Daten bleiben offen. ` +
+          `Details mit ipa doctor; Ergebnis in ${doctorPath(ctx.workspaceDir)}.`,
+      );
+    }
+  }
+  assertPaidUsageAllowed(claudeProcessEnv(env), ctx.config, record.claude.authMethod);
 }

@@ -44,15 +44,21 @@ export interface FakeSetup {
   calls(): Promise<FakeCall[]>;
 }
 
+/** Artificial values that must never appear in an output or a file. */
+export const FAKE_API_KEY = 'sk-ant-api03-IPA-TEST-GEHEIM-0000000000';
+export const FAKE_AUTH_TOKEN = 'ipa-test-bearer-GEHEIM-1111111111';
+
 /**
  * Environment for one fake run. Variables of a Claude Code session in which the tests themselves may
- * run are removed, so that every test sees the same environment.
+ * run are removed, as are API keys of the machine, so that every test sees the same environment.
  */
 export async function fakeClaudeEnv(mode = 'ok', extra: Record<string, string | undefined> = {}): Promise<FakeSetup> {
   const logFile = path.join(await createTempDir('fake-claude'), 'aufrufe.jsonl');
   const env: Record<string, string | undefined> = { FAKE_CLAUDE_MODE: mode, FAKE_CLAUDE_LOG: logFile };
   for (const name of Object.keys(process.env)) {
-    if (/^(CLAUDECODE|CLAUDE_.+|MCP_CONNECTION_NONBLOCKING|MCP_SERVER_CONNECTION_BATCH_SIZE)$/i.test(name)) env[name] = undefined;
+    if (/^(CLAUDECODE|CLAUDE_.+|MCP_CONNECTION_NONBLOCKING|MCP_SERVER_CONNECTION_BATCH_SIZE|ANTHROPIC_API_KEY|ANTHROPIC_AUTH_TOKEN)$/i.test(name)) {
+      env[name] = undefined;
+    }
   }
   Object.assign(env, extra);
   return { env, logFile, calls: () => readFakeCalls(logFile) };

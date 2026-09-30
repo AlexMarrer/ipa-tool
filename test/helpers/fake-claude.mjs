@@ -11,7 +11,11 @@
  *   FAKE_CLAUDE_UNSUPPORTED  comma-separated options reported as unknown, for example "--safe-mode" like 2.1.114
  *   FAKE_CLAUDE_VERSION      output of --version, default 9.9.9
  *   FAKE_CLAUDE_OUTPUT       JSON text for structured_output, default {"ok":true}
+ *   FAKE_CLAUDE_AUTH_METHOD  authMethod of auth status, for example third_party for a provider set in the settings
  *   FAKE_CLAUDE_LOG          file that receives one JSON line per call
+ *
+ * Like Claude Code 2.1.114, auth status reports third_party with CLAUDE_CODE_USE_BEDROCK, _VERTEX or _FOUNDRY,
+ * oauth_token with ANTHROPIC_AUTH_TOKEN and still claude.ai with ANTHROPIC_API_KEY.
  */
 import { createHash } from 'node:crypto';
 import { appendFileSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -79,11 +83,14 @@ if (args[0] === 'auth' && args[1] === 'status') {
     process.exit(1);
   }
   const loggedIn = mode !== 'logged-out';
+  const provider = ['BEDROCK', 'VERTEX', 'FOUNDRY'].find((name) => process.env[`CLAUDE_CODE_USE_${name}`]);
+  const authMethod =
+    process.env['FAKE_CLAUDE_AUTH_METHOD'] ?? (provider ? 'third_party' : process.env['ANTHROPIC_AUTH_TOKEN'] ? 'oauth_token' : 'claude.ai');
   // Personal fields that the tool must drop (AK-05-06).
   print({
     loggedIn,
-    authMethod: loggedIn ? 'claude.ai' : 'none',
-    apiProvider: 'firstParty',
+    authMethod: loggedIn ? authMethod : 'none',
+    apiProvider: provider ? provider.toLowerCase() : 'firstParty',
     email: 'person@example.com',
     orgId: '5f3c0000-1111-2222-3333-444455556666',
     orgName: 'Geheime Firma AG',

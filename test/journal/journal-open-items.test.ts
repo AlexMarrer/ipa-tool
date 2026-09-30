@@ -10,6 +10,7 @@ import { runSkip } from '../../src/cli/commands/skip.js';
 import type { Config } from '../../src/core/config.js';
 import { NOT_RECORDED, SECTION_TITLES, TESTED_STATE_UNPROVEN, UNKNOWN_TEST_RESULT } from '../../src/journal/render.js';
 import { namesIn } from '../helpers/analysis.js';
+import { FAKE_API_KEY, useFakeClaude } from '../helpers/claude.js';
 import { captureAt, contextAt, draftOf, draftsOf, inputOfCall, journalAt, journalRepo, noteAt } from '../helpers/journal.js';
 import { createSecretMarker, filesContaining, secretAssignment } from '../helpers/secrets.js';
 import { readManifestFile, setLimits } from '../helpers/snapshots.js';
@@ -239,6 +240,31 @@ describe('ipa journal: Tageszuordnung, offene Punkte und Ausgangslage (Paket 07)
     expect(await draftsOf(env.workspace)).toEqual([]);
 
     expect((await journalAt(env, `${DAY}T18:05:00+02:00`, { noAi: true })).exitCode).toBe(0);
+  });
+
+  it('endet mit API-Schlüssel oder Anbieter ohne Freigabe mit Exit-Code 6, ohne Modellaufruf und ohne Laufordner (spec.md §13.1)', async () => {
+    const env = await journalRepo(`${DAY}T08:00:00+02:00`);
+    await noteAt(env, `${DAY}T09:00:00+02:00`, { type: 'activity', text: 'Recherche' });
+    for (const [name, value] of [
+      ['ANTHROPIC_API_KEY', FAKE_API_KEY],
+      ['CLAUDE_CODE_USE_FOUNDRY', '1'],
+    ] as const) {
+      const run = await journalAt(env, `${DAY}T18:00:00+02:00`, { extra: { [name]: value } });
+      expect(run.exitCode, name).toBe(6);
+      expect(run.stderr).toContain(`Fehler: Kein Journal-Entwurf für ${DAY} (paid_usage_blocked)`);
+      expect(run.stderr).toContain(`Kostenpflichtige Claude-Nutzung erkannt (${name})`);
+      expect(run.stderr).toContain('--no-ai');
+      expect(run.stdout + run.stderr).not.toContain(FAKE_API_KEY);
+      expect(run.calls, name).toEqual([]);
+    }
+    expect(await namesIn(`${env.workspace}/journal/runs`)).toEqual([]);
+    expect(await draftsOf(env.workspace)).toEqual([]);
+
+    await useFakeClaude(env.workspace, { allowPaidUsage: true });
+    const allowed = await journalAt(env, `${DAY}T18:05:00+02:00`, { extra: { ANTHROPIC_API_KEY: FAKE_API_KEY } });
+    expect(allowed.exitCode, allowed.stderr).toBe(0);
+    expect(allowed.modelCalls).toHaveLength(1);
+    expect(await filesContaining(env.dataDir, FAKE_API_KEY)).toEqual([]);
   });
 
   it('endet mit Exit-Code 6 ohne Laufordner, wenn Claude nicht einsatzbereit ist', async () => {

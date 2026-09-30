@@ -8,7 +8,7 @@ import type { AiUsageRecord } from '../../src/claude/usage.js';
 import { readJsonl } from '../../src/core/jsonl.js';
 import { isSameOrInside } from '../../src/core/paths.js';
 import { validate } from '../../src/core/schemas.js';
-import { fakeClaudeEnv, SESSION_ENV, useFakeClaude } from '../helpers/claude.js';
+import { FAKE_API_KEY, FAKE_AUTH_TOKEN, fakeClaudeEnv, SESSION_ENV, useFakeClaude } from '../helpers/claude.js';
 import { createTempRepo, type TempRepo } from '../helpers/git-repo.js';
 import { expectRepoUnchanged, fingerprintRepo } from '../helpers/repo-fingerprint.js';
 import { filesContaining } from '../helpers/secrets.js';
@@ -169,6 +169,64 @@ describe('ipa doctor ohne Modellaufruf (AK-05-05, AK-05-06)', () => {
     const calls = (await fake.calls()).filter((entry) => entry.kind === 'model-call');
     expect(calls).toHaveLength(2);
     for (const call of calls) expect(call.env?.filter((name) => name.startsWith('CLAUDE'))).toEqual(['CLAUDE_CONFIG_DIR']);
+  });
+});
+
+describe('ipa doctor: Kostenschutz (spec.md §13.1)', () => {
+  it('zeigt Anmeldeart, API-Schlüssel, externen Anbieter und Freigabe an', async () => {
+    const p = await prepare();
+    const result = await doctor(p);
+    expect(result.exitCode, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/Anmeldung:\s+angemeldet, Anmeldeart claude\.ai/);
+    expect(result.stdout).toMatch(/API-Schlüssel:\s+nicht erkannt/);
+    expect(result.stdout).toMatch(/Externer Anbieter:\s+nicht erkannt/);
+    expect(result.stdout).toMatch(/Kostenpflichtige Nutzung:\s+nicht erlaubt \(claude\.allowPaidUsage: false\)\n/);
+  });
+
+  it('sperrt einen API-Schlüssel ohne Freigabe (Exit-Code 7) und gibt ihn nie aus', async () => {
+    const p = await prepare();
+    for (const [name, value] of [
+      ['ANTHROPIC_API_KEY', FAKE_API_KEY],
+      ['ANTHROPIC_AUTH_TOKEN', FAKE_AUTH_TOKEN],
+    ] as const) {
+      const result = await doctor(p, ['--live'], 'ok', { [name]: value });
+      expect(result.exitCode, name).toBe(7);
+      expect(result.record.ok, name).toBe(false);
+      expect(result.stdout).toMatch(new RegExp(`API-Schlüssel:\\s+erkannt: ${name} \\(hat Vorrang vor der Anmeldung\\)`));
+      expect(result.stdout).toMatch(/Kostenpflichtige Nutzung:\s+nicht erlaubt \(claude\.allowPaidUsage: false\), Modellaufrufe sind gesperrt/);
+      expect(result.stdout).toMatch(/Ergebnis:\s+nicht bereit/);
+      expect(result.stderr).toContain(`Befund: Kostenpflichtige Claude-Nutzung erkannt (${name})`);
+      expect(result.stderr).toContain('Live-Prüfung übersprungen: kostenpflichtige Nutzung ist nicht freigegeben');
+      expect(result.calls.some((call) => call.kind === 'model-call'), name).toBe(false);
+      expect(result.stdout + result.stderr).not.toContain(value);
+      expect(await filesContaining(p.dataDir, value), name).toEqual([]);
+    }
+    expect(await readJsonl(`${p.workspace}/ai-usage.jsonl`, 'ai-usage')).toMatchObject({ records: [] });
+  });
+
+  it('sperrt Bedrock, Vertex AI und Foundry, auch als Anbieter aus den Claude-Einstellungen', async () => {
+    const p = await prepare();
+    for (const name of ['CLAUDE_CODE_USE_BEDROCK', 'CLAUDE_CODE_USE_VERTEX', 'CLAUDE_CODE_USE_FOUNDRY']) {
+      const result = await doctor(p, [], 'ok', { [name]: '1' });
+      expect(result.exitCode, name).toBe(7);
+      expect(result.record.claude.authMethod).toBe('third_party');
+      expect(result.stdout).toMatch(new RegExp(`Externer Anbieter:\\s+erkannt: ${name}, Anmeldeart third_party`));
+      expect(result.stdout).toMatch(/API-Schlüssel:\s+nicht erkannt/);
+    }
+    const settings = await doctor(p, [], 'ok', { FAKE_CLAUDE_AUTH_METHOD: 'third_party' });
+    expect(settings.exitCode).toBe(7);
+    expect(settings.stdout).toMatch(/Externer Anbieter:\s+erkannt: Anmeldeart third_party/);
+  });
+
+  it('lässt API-Schlüssel und Anbieter mit allowPaidUsage: true zu und meldet die Abrechnung', async () => {
+    const p = await prepare();
+    await useFakeClaude(p.workspace, { allowPaidUsage: true });
+    const result = await doctor(p, ['--live'], 'ok', { ANTHROPIC_API_KEY: FAKE_API_KEY, CLAUDE_CODE_USE_BEDROCK: '1' });
+    expect(result.exitCode, result.stderr).toBe(0);
+    expect(result.record.ok).toBe(true);
+    expect(result.stdout).toMatch(/Kostenpflichtige Nutzung:\s+erlaubt \(claude\.allowPaidUsage: true\), Modellaufrufe werden kostenpflichtig abgerechnet/);
+    expect(result.calls.filter((call) => call.kind === 'model-call')).toHaveLength(2);
+    expect(result.stdout + result.stderr).not.toContain(FAKE_API_KEY);
   });
 });
 

@@ -138,6 +138,7 @@ Zielplattform und einzige geplante Prüfplattform von V1 ist Windows 11 mit Node
 | D-22 | Das Claude-Arbeitsverzeichnis ist ein neuer, leerer Ordner unter `<os.tmpdir()>/ipa-assistant/claude/<repositoryId>/<runId>-<n>/`. Es wird nach dem Aufruf gelöscht. Die Aufrufartefakte speichert das Tool im Arbeitsbereich. | Datenablage und Claude-Arbeitsverzeichnis sind getrennt (I-14). Das gilt auch, wenn der Arbeitsbereich im Repository liegt. |
 | D-23 | Notizen hängen nur von Paket 01 ab. Die Secret-Prüfung von Notizen erfolgt beim Bau eines Eingabepakets (Pakete 06 und 07). Paket 06 ergänzt `ipa note` um die Existenzprüfung von `--ref` und eine Secret-Warnung. | Notizen brauchen fachlich keinen Snapshot. Benutzerentscheidung vom 29.09.2026. |
 | D-24 | Paket 01 enthält eine praktische Claude-Vorabprüfung mit künstlichen Daten (`scripts/claude-probe.mjs`). Paket 05 ersetzt sie durch `ipa doctor --live`. | Anmeldung, Optionen, Werkzeugbeschränkung und strukturierte Ausgabe werden früh geprüft. Benutzerentscheidung vom 29.09.2026. |
+| D-25 | Kostenschutz: Claude wird standardmässig nur über das Claude-Abo aufgerufen. API-Schlüssel (`ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`) und externe Anbieter (`CLAUDE_CODE_USE_BEDROCK`, `…_VERTEX`, `…_FOUNDRY`, Anmeldeart `third_party`) sind nur mit `claude.allowPaidUsage: true` erlaubt (§13.1). | Keine unerwarteten Kosten pro Anfrage. Benutzerentscheidung vom 30.09.2026. |
 
 ### 3.3 Ungeprüfte Annahmen
 
@@ -335,6 +336,7 @@ Ein Befehl erscheint in `ipa --help` erst, wenn sein Paket ihn umsetzt.
 
 - Braucht ein initialisiertes Repository, sonst Exit-Code 2. Nimmt keinen Lock und schreibt keinen Eintrag in `runs.jsonl` (§9.11).
 - Ohne `--live` kein Modellaufruf: Git-Version, Claude-Version, Anmeldung und Optionen (§13.2). Pflicht sind die Optionen aus §13.1 ohne die bedingten; `--model` nur, wenn `claude.model` gesetzt ist.
+- Zeigt den Kostenschutz (§13.1): Anmeldeart, erkannte API-Schlüssel und externe Anbieter (nur Namen) und ob `claude.allowPaidUsage` sie erlaubt. Erkannt und nicht erlaubt ergibt `ok: false` und einen Befund; `--live` entfällt dann.
 - `--live` macht zwei kleine Modellaufrufe (§13.4).
 - Ergebnis in `doctor.json` (§9.13), Exit-Code 0 oder 7.
 
@@ -465,7 +467,8 @@ Die Felder erscheinen in der Reihenfolge der Tabelle. Ungültige Zeilen in `runs
     "timeoutSeconds": 600,
     "maxTurns": 5,
     "maxAttemptsPerSnapshot": 3,
-    "maxAnalysesPerRun": 5
+    "maxAnalysesPerRun": 5,
+    "allowPaidUsage": false
   },
   "schedule": {
     "workdays": ["mon", "tue", "wed", "thu", "fri"],
@@ -479,7 +482,7 @@ Die Felder erscheinen in der Reihenfolge der Tabelle. Ungültige Zeilen in `runs
 
 ### 7.2 Feldregeln
 
-- Das Schema `schemas/config.schema.json` ist streng: `additionalProperties: false`, und alle oben gezeigten Felder sind Pflicht.
+- Das Schema `schemas/config.schema.json` ist streng: `additionalProperties: false`, und alle oben gezeigten Felder sind Pflicht, ausser `claude.allowPaidUsage`.
 - `timezone` MUSS von `Intl.DateTimeFormat` akzeptiert werden.
 - `paths.include` und `paths.exclude` folgen der Glob-Semantik aus D-10. Ausschlüsse haben Vorrang vor Einschlüssen. `.git/**` ist immer ausgeschlossen und nicht konfigurierbar.
 - `secrets.extraPatterns` enthält JavaScript-Regex-Quellen ohne Flags. Ein ungültiges Muster führt zu Exit-Code 2.
@@ -487,6 +490,7 @@ Die Felder erscheinen in der Reihenfolge der Tabelle. Ungültige Zeilen in `runs
 - `context.files` und `testReports[].path` sind relativ zur Repository-Wurzel oder absolut. Einträge in `testReports` haben die Form `{ "path": "...", "label": "..." }`.
 - `claude.command` ist ein Array aus Programm und festen Vorargumenten. Es wird gebraucht, wenn `claude` keine direkt startbare `.exe` ist (A-05), und für Tests mit der Fake-CLI.
 - `claude.model: null` bedeutet, dass `--model` nicht übergeben wird.
+- `claude.allowPaidUsage` ist ein Boolean, Standard `false`. Nur `true` erlaubt API-Schlüssel und externe Anbieter (D-25, §13.1). Fehlt das Feld, etwa in einer vor dem 30.09.2026 angelegten Konfiguration, gilt `false`.
 - Zeiten in `schedule` haben das Format `HH:MM`. Es MUSS `windowStart < windowEnd` gelten.
 - Die Standard-Ausschlüsse sind Vorschläge. `init` schreibt sie in die Konfiguration, danach dürfen sie vollständig angepasst werden. Das Tool enthält keine fest eingebauten Annahmen über Sprache, Framework oder Verzeichnisstruktur des Projekts.
 - Die Konfiguration wird von Hand bearbeitet. Jeder Befehl validiert sie beim Laden.
@@ -827,7 +831,7 @@ Den Aufbau des Markdown-Entwurfs legt Paket 07 fest.
 ```
 
 - `outcome` ist `ok`, `unchanged`, `halted`, `unstable`, `lock_held`, `analysis_failed`, `outside_window`, `usage_error` oder `error`. `unchanged` gilt nur bei Exit-Code 0; sonst folgt `outcome` dem Exit-Code (§18).
-- `analysesCompleted` nennt die Snapshots, die in diesem Lauf `complete.json` erhielten, auch ohne Claude. `analysesFailed` nennt die Snapshots mit einem gescheiterten Versuch in diesem Lauf oder die blockiert, erschöpft oder mangels Claude offen blieben. `errors` hat dann pro Snapshot einen Eintrag mit der Fehlerklasse oder `input_too_large`, `analysis_exhausted`, `claude_not_ready` oder `analysis_store_failed` als `code` (§18).
+- `analysesCompleted` nennt die Snapshots, die in diesem Lauf `complete.json` erhielten, auch ohne Claude. `analysesFailed` nennt die Snapshots mit einem gescheiterten Versuch in diesem Lauf oder die blockiert, erschöpft oder mangels Claude offen blieben. `errors` hat dann pro Snapshot einen Eintrag mit der Fehlerklasse oder `input_too_large`, `analysis_exhausted`, `claude_not_ready`, `paid_usage_blocked` oder `analysis_store_failed` als `code` (§18).
 - `message` enthält keine Inhalte aus dem Repository (I-12).
 - `recovered` nennt Snapshots, die der Lauf gemäss §11.6 aus einem abgebrochenen Lauf übernommen hat. Das Feld fehlt, wenn es leer wäre (§18).
 - Jeder Lauf eines schreibenden Befehls wird protokolliert, auch einer, der den Lock nicht erhält. `status` protokolliert nicht. `note` protokolliert ebenfalls nicht, die Notiz selbst mit `id` und `recordedAt` ist der Nachweis (§18). `doctor` protokolliert nicht; Nachweis sind `doctor.json` mit `checkedAt` und die Zeilen in `ai-usage.jsonl` (§18). `journal` protokolliert ebenfalls nicht; Nachweis sind der Entwurf, bei Claude `journal/runs/<runId>/outcome.json` und die Zeile in `ai-usage.jsonl` (§18).
@@ -942,9 +946,12 @@ type ClaudeResult =
 interface ClaudeRunner { run(ctx: WorkspaceContext, req: ClaudeRequest): Promise<ClaudeResult> }
 createClaudeRunner(opts?: { env?: NodeJS.ProcessEnv }): ClaudeRunner   // Standard: process.env
 probeClaude(ctx: WorkspaceContext, opts: { live: boolean; env?: NodeJS.ProcessEnv; onNotice?: (message: string) => void }):
-  Promise<DoctorReport>   // DoctorReport = { record: <doctor.json>, findings, missingFlags, liveCarriedOver, droppedSessionVariables }
+  Promise<DoctorReport>   // DoctorReport = { record: <doctor.json>, findings, missingFlags, liveCarriedOver, droppedSessionVariables, billing }
+  // billing = { apiKeyVariables, providerVariables, thirdPartyLogin, detected, allowPaidUsage, blocked }, nur Namen (§13.1)
 ensureClaudeReady(ctx: WorkspaceContext, opts?: { env?: NodeJS.ProcessEnv }): Promise<void>
-  // wirft IpaError mit Exit-Code 6, wenn Claude fehlt oder Pflichtoptionen fehlen (§18)
+  // wirft IpaError mit Exit-Code 6, wenn Claude fehlt oder Pflichtoptionen fehlen (claude_not_ready, §18)
+  // oder kostenpflichtige Nutzung nicht freigegeben ist (paid_usage_blocked, §13.1)
+// ClaudeRunner.run und die Live-Aufrufe von doctor werfen paid_usage_blocked ebenfalls, bevor ein Prozess startet.
 
 // analysis
 analysisStatus(ctx: WorkspaceContext, snapshotId: string): Promise<AnalysisStatus>
@@ -1217,6 +1224,7 @@ Für Journale wird der `-p`-Text sinngemäss angepasst.
 Weitere Regeln:
 
 - Die Prozessumgebung wird für die Anmeldung durchgereicht. Es werden keine zusätzlichen Geheimnisse gesetzt, und die Umgebung wird nicht protokolliert.
+- **Kostenschutz (D-25):** Vor jedem Modellaufruf prüft der Runner die Umgebung, die `claude` erhalten würde. Kostenpflichtig sind `ANTHROPIC_API_KEY` und `ANTHROPIC_AUTH_TOKEN` (Anthropic-API oder Gateway) sowie `CLAUDE_CODE_USE_BEDROCK`, `CLAUDE_CODE_USE_VERTEX` und `CLAUDE_CODE_USE_FOUNDRY`, jeweils mit nicht leerem Wert und ohne Rücksicht auf die Schreibweise des Namens. `ensureClaudeReady` und `doctor` werten zusätzlich die Anmeldeart `third_party` aus `claude auth status` aus, die auch einen in den Einstellungen von Claude Code eingetragenen Anbieter anzeigt. Ist ein solcher Weg erkannt und `claude.allowPaidUsage` nicht `true`, startet kein Prozess, es entsteht keine Zeile in `ai-usage.jsonl`, und es folgt `IpaError` `paid_usage_blocked` mit Exit-Code 6. Die Meldung ist deutsch und nennt nur Namen, nie Werte (I-12). Die Abo-Anmeldung (`claude auth login`, `CLAUDE_CODE_OAUTH_TOKEN`) bleibt erlaubt. Mit gesetztem `ANTHROPIC_API_KEY` meldet `claude auth status` (2.1.114) weiterhin `authMethod: claude.ai`; die Anmeldeart allein belegt die Abrechnung also nicht.
 - Läuft `ipa` selbst innerhalb einer Claude-Code-Sitzung (`CLAUDECODE=1` oder `CLAUDE_CODE_ENTRYPOINT` gesetzt), gibt es deren Variablen nicht an `claude` weiter: `CLAUDECODE`, `CLAUDE_*`, `MCP_CONNECTION_NONBLOCKING` und `MCP_SERVER_CONNECTION_BATCH_SIZE`, ausgenommen dokumentierte Benutzervariablen für Anmeldung, Anbieter und Konfiguration wie `CLAUDE_CONFIG_DIR` und `CLAUDE_CODE_OAUTH_TOKEN`. Ausserhalb einer Sitzung bleibt die Umgebung unverändert (§18).
 - Nach `claude.timeoutSeconds` wird der Prozess beendet. Das Ergebnis ist `timeout`.
 - stdout wird vollständig gelesen. stderr wird auf höchstens 64 KiB begrenzt gespeichert.
@@ -1548,3 +1556,4 @@ Die Einträge entstehen während der Umsetzung. Jeder Eintrag nennt Datum, Paket
 | 2026-09-30 | 07 | Paket 07 §4 nennt den automatischen Rückfall ohne KI, „wenn weder Snapshots noch Notizen den Tag betreffen“, und „Fehlerläufe des Tages“, ohne sie abzugrenzen. I-05 verlangt eine Prüfung vor jeder Übermittlung, auch für bereits gespeicherte Commit-Nachrichten und Analyseaussagen. | Ohne Claude, mit `provenance.reason: "no_data"`, wenn kein Arbeits-Snapshot den Tag berührt und keine verwendbare Notiz vorliegt; ein Ausgangs-Snapshot ist keine Arbeit. „Keine Aufnahme“ gilt, wenn gar kein Snapshot den Tag berührt. Fehlerläufe sind Läufe mit Exit-Code ≠ 0, deren `startedAt` auf den Tag fällt; die Lücke nennt Befehl, Lauf-ID, Uhrzeit, `outcome` und Fehlercodes, keinen Meldungstext. Commit-Nachrichten und die Texte von `derived` werden vor der Übermittlung erneut geprüft; ein Treffer hält die Nachricht beziehungsweise alle Aussagen der Analyse zurück und erscheint als offene Prüfung. | §9.10, §12.2, §14.4 |
 | 2026-09-30 | 07 | Tests früherer Pakete: `test/cli/main.test.ts` verwendete `journal` als Beispiel eines unbekannten Befehls und listete die Befehle ohne `journal`. Integrationstests mit festen Tagen brauchen eine injizierte Uhr, die der CLI-Einstieg nicht bietet (Fehlerinjektion über Umgebungsvariablen ist verboten, §10). | `main.test.ts` prüft den unbekannten Befehl mit `schedule` und erwartet `journal` in der Hilfe. Die Journal-Tests führen `init` (`initializeWorkspace`), `capture` (`runCapture`), `note` (`addNote`) und `journal` (`runJournalCommand`) im Testprozess mit injizierter Uhr aus; das ausgelieferte CLI setzt keine Uhr. Die Fake-CLI erhält den Modus `journal`. `analysis` stellt `readContext`, `readSnapshotText`, `readAnalysisRecord` und `timeFieldPaths` als Lesefunktionen für `journal` bereit (§4.3). | §4.3, §16.2 |
 | 2026-09-30 | 07 | **Befund (Windows 11, Entwicklungsrechner dieser Sitzung):** Mit den Journal-Tests dauerte `npm test` 831 s beziehungsweise 914 s statt 463 s. Dabei überschritten einzelne Integrationstests früherer Pakete das Test-Timeout von 120 s (`failures.test.ts` AK-06-04 und AK-06-05, `attribution-scenarios.test.ts` AK-03-13), obwohl sie allein in 40–49 s bestehen. Laut Benutzer dauert die ganze Suite auf seinem Rechner zu Hause etwa eine Minute. | Das globale `testTimeout` in `vitest.config.ts` steigt von 120 s auf 300 s; Hänger werden weiter erkannt, die Tests selbst bleiben unverändert. Der Journal-Testhelfer legt für die Fake-CLI ein gültiges `doctor.json` an, damit die Bereitschaftsprüfung nicht pro Arbeitsbereich die Prüfprozesse startet; die Prüfung selbst deckt Paket 05 ab, und der Test „Claude nicht einsatzbereit“ verwendet sie weiter. | §16.2 |
+| 2026-09-30 | 05 (Nachtrag) | **Benutzerwunsch Kostenschutz:** Standardmässig soll nur das Claude-Abo genutzt werden, ohne unerwartete Kosten pro Anfrage. Bisher reichte der Runner die Umgebung unverändert weiter; ein gesetzter `ANTHROPIC_API_KEY` oder `CLAUDE_CODE_USE_BEDROCK` hätte jede Analyse kostenpflichtig abgerechnet. Geprüft ohne Modellaufruf mit Claude Code 2.1.114 unter Windows: `claude auth status` meldet mit `ANTHROPIC_API_KEY` weiterhin `authMethod: claude.ai` (nur `subscriptionType` fehlt), mit `ANTHROPIC_AUTH_TOKEN` `oauth_token` wie mit `CLAUDE_CODE_OAUTH_TOKEN`, mit `CLAUDE_CODE_USE_BEDROCK`, `…_VERTEX` oder `…_FOUNDRY` `third_party` und `apiProvider` `bedrock`, `vertex` oder `foundry`. | D-25: `claude.allowPaidUsage` (Standard `false`, fehlend gilt `false`, deshalb nicht Pflicht im Schema). Kostenpflichtig sind die fünf Variablen mit nicht leerem Wert, ohne Rücksicht auf die Schreibweise, und die Anmeldeart `third_party`; die Anmeldeart allein genügt nicht, weil ein API-Schlüssel sie nicht ändert. `callClaude` prüft vor jedem Modellaufruf die Umgebung für `claude`, `ensureClaudeReady` zusätzlich die Anmeldeart aus `doctor.json`; ohne Freigabe folgt `paid_usage_blocked` mit Exit-Code 6, ohne Prozessstart und ohne Zeile in `ai-usage.jsonl`. `doctor` zeigt „API-Schlüssel“, „Externer Anbieter“ und „Kostenpflichtige Nutzung“, meldet einen Befund, setzt `ok: false` und überspringt `--live`. `DoctorReport` erhält `billing`; `doctor.json` bleibt unverändert. Nicht erkennbar bleiben `apiKeyHelper` und API-Schlüssel im Block `env` der Einstellungen von Claude Code sowie zusätzliche Nutzung im Claude-Konto (README „Kostenschutz“). Tests: 65 Testdateien, 543 bestanden, 2 übersprungen. | §3.2, §6.3, §7.1, §7.2, §9.11, §10, §13.1; Paket 05 §4, §5, AK-05-12 |

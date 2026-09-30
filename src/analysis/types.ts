@@ -173,7 +173,7 @@ export type CompletionMode = 'ai' | 'deterministic';
 /** A failed attempt of this run, or a snapshot that stays blocked or exhausted. */
 export interface QueueProblem {
   snapshotId: string;
-  /** Error class, outcome or one of `analysis_exhausted`, `claude_not_ready`, `input_too_large`. */
+  /** Error class, outcome or one of `analysis_exhausted`, `claude_not_ready`, `paid_usage_blocked`, `input_too_large`. */
   code: string;
   /** German, without repository content (I-12). */
   message: string;

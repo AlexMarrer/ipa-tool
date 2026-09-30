@@ -1,7 +1,7 @@
 import { chmod, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 import type { AnalysisInput, AnalysisOutput } from '../../src/analysis/types.js';
-import { useFakeClaude } from '../helpers/claude.js';
+import { FAKE_API_KEY, useFakeClaude } from '../helpers/claude.js';
 import {
   captureOnly,
   inputOf,
@@ -14,6 +14,7 @@ import {
   stateOf,
   statusOf,
 } from '../helpers/analysis.js';
+import { filesContaining } from '../helpers/secrets.js';
 import { evidenceFor, readManifestFile, setLimits } from '../helpers/snapshots.js';
 import { createTempDir, readJsonFile } from '../helpers/workspace.js';
 
@@ -218,5 +219,23 @@ describe('Fehlerfälle der Analyse (spec.md §12.5)', () => {
     expect(await namesIn(`${env.workspace}/analyses`)).toEqual(['S000001']);
     expect(await stateOf(env.workspace)).toMatchObject({ lastAnalysedSnapshotId: 'S000001' });
     expect(await lastRunOf(env.workspace)).toMatchObject({ exitCode: 6, errors: [{ code: 'claude_not_ready' }] });
+  });
+
+  it('ruft Claude mit API-Schlüssel ohne Freigabe nicht auf; der Snapshot bleibt ohne Versuch offen (spec.md §13.1)', async () => {
+    const env = await pipelineRepo();
+    await env.repo.write('a.txt', 'eins\nzwei\n');
+    const blocked = await ipa(env, ['capture'], 'analysis', { ANTHROPIC_API_KEY: FAKE_API_KEY });
+    expect(blocked.result.exitCode).toBe(6);
+    expect(blocked.result.stderr).toContain('Kostenpflichtige Claude-Nutzung erkannt (ANTHROPIC_API_KEY)');
+    expect(blocked.result.stdout + blocked.result.stderr).not.toContain(FAKE_API_KEY);
+    expect(blocked.modelCalls).toEqual([]);
+    expect(await namesIn(`${env.workspace}/analyses`)).toEqual(['S000001']);
+    expect(await lastRunOf(env.workspace)).toMatchObject({ exitCode: 6, analysesFailed: ['S000002'], errors: [{ code: 'paid_usage_blocked' }] });
+    expect(await filesContaining(env.dataDir, FAKE_API_KEY)).toEqual([]);
+
+    const subscription = await ipa(env, ['capture']);
+    expect(subscription.result.exitCode, subscription.result.stderr).toBe(0);
+    expect(subscription.modelCalls).toHaveLength(1);
+    expect(await stateOf(env.workspace)).toMatchObject({ lastAnalysedSnapshotId: 'S000002' });
   });
 });

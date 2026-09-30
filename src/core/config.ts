@@ -51,6 +51,8 @@ export interface Config {
     maxTurns: number;
     maxAttemptsPerSnapshot: number;
     maxAnalysesPerRun: number;
+    /** Only `true` allows an API key or an external provider (spec.md §13.1); missing in older workspaces. */
+    allowPaidUsage?: boolean;
   };
   schedule: {
     workdays: Weekday[];
@@ -117,6 +119,7 @@ export function createDefaultConfig(args: { repositoryId: string; repoPath: stri
       maxTurns: 5,
       maxAttemptsPerSnapshot: 3,
       maxAnalysesPerRun: 5,
+      allowPaidUsage: false,
     },
     schedule: {
       workdays: ['mon', 'tue', 'wed', 'thu', 'fri'],

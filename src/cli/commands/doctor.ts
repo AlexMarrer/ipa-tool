@@ -4,9 +4,10 @@
  */
 import type { Command } from 'commander';
 import { requiredFlags } from '../../claude/args.js';
+import { paidUsageSources, THIRD_PARTY_AUTH_METHOD } from '../../claude/billing.js';
 import { probeClaude, STRUCTURED_OUTPUT_TOOL } from '../../claude/doctor.js';
 import { usesSafeMode, usesSettingSources } from '../../claude/doctor-record.js';
-import type { DoctorRecord, DoctorReport, ProbedFlag } from '../../claude/types.js';
+import type { BillingCheck, DoctorRecord, DoctorReport, ProbedFlag } from '../../claude/types.js';
 import { resolveContext, type WorkspaceContext } from '../../core/context.js';
 import { EXIT } from '../../core/errors.js';
 import { formatFields } from '../format.js';
@@ -29,6 +30,21 @@ function describeSettingSources(record: DoctorRecord): string {
   if (usesSettingSources(record)) return 'wird verwendet, die Anmeldung damit ist bestätigt (A-08)';
   if (record.claude.settingSourcesAuthOk === false) return 'wird nicht verwendet: die Live-Prüfung damit schlug fehl (A-08)';
   return 'wird nicht verwendet, bis ipa doctor --live die Anmeldung damit bestätigt (A-08)';
+}
+
+function describeApiKey(billing: BillingCheck): string {
+  // `claude auth status` keeps reporting claude.ai although the key takes precedence.
+  return billing.apiKeyVariables.length === 0 ? 'nicht erkannt' : `erkannt: ${billing.apiKeyVariables.join(', ')} (hat Vorrang vor der Anmeldung)`;
+}
+
+function describeProvider(billing: BillingCheck): string {
+  const sources = [...billing.providerVariables, ...(billing.thirdPartyLogin ? [`Anmeldeart ${THIRD_PARTY_AUTH_METHOD}`] : [])];
+  return sources.length === 0 ? 'nicht erkannt' : `erkannt: ${sources.join(', ')}`;
+}
+
+function describePaidUsage(billing: BillingCheck): string {
+  if (!billing.allowPaidUsage) return `nicht erlaubt (claude.allowPaidUsage: false)${billing.blocked ? ', Modellaufrufe sind gesperrt' : ''}`;
+  return `erlaubt (claude.allowPaidUsage: true)${billing.detected ? ', Modellaufrufe werden kostenpflichtig abgerechnet' : ''}`;
 }
 
 function describeLive(record: DoctorRecord, report: DoctorReport, requested: boolean): string {
@@ -64,7 +80,13 @@ export function formatDoctorReport(report: DoctorReport, ctx: WorkspaceContext, 
       ['--setting-sources', describeSettingSources(record)],
     );
   }
-  rows.push(['Live-Prüfung', describeLive(record, report, live)], ['Ergebnis', record.ok ? 'bereit' : 'nicht bereit']);
+  rows.push(
+    ['API-Schlüssel', describeApiKey(report.billing)],
+    ['Externer Anbieter', describeProvider(report.billing)],
+    ['Kostenpflichtige Nutzung', describePaidUsage(report.billing)],
+    ['Live-Prüfung', describeLive(record, report, live)],
+    ['Ergebnis', record.ok ? 'bereit' : 'nicht bereit'],
+  );
 
   const hints: string[] = [];
   if (record.claude.loggedIn === true) {
@@ -90,6 +112,7 @@ export function describeProblems(report: DoctorReport, ctx: WorkspaceContext): s
     if (record.claude.loggedIn !== true) problems.push(record.claude.loggedIn === false ? 'Claude Code ist nicht angemeldet' : 'der Anmeldestatus ist unklar');
     if (report.missingFlags.length > 0) problems.push(`Pflichtoptionen nicht erkannt: ${report.missingFlags.join(', ')}`);
   }
+  if (report.billing.blocked) problems.push(`kostenpflichtige Nutzung nicht freigegeben (${paidUsageSources(report.billing).join(', ')})`);
   return problems.length > 0 ? problems.join('; ') : 'unbekannter Grund';
 }
 
@@ -115,7 +138,7 @@ export function registerDoctorCommand(program: Command, io: CliIo, state: CliSta
   program
     .command('doctor')
     .usage('[optionen]')
-    .description('Git und Claude Code prüfen (Version, Anmeldung, Optionen), ohne Modellaufruf')
+    .description('Git und Claude Code prüfen (Version, Anmeldung, Optionen, Kostenschutz), ohne Modellaufruf')
     .option('--live', 'zusätzlich zwei kleine echte Modellaufrufe: Werkzeuge, MCP-Server, strukturierte Antwort (verbraucht Kontingent)')
     .action(async (_options: unknown, command: Command) => {
       const options = command.optsWithGlobals<DoctorCommandOptions>();
