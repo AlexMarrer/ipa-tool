@@ -8,7 +8,7 @@ import type { WorkspaceContext } from '../core/context.js';
 import { errnoCode, EXIT, IpaError } from '../core/errors.js';
 import { readJsonValidated } from '../core/json.js';
 import type { SchemaId } from '../core/schemas.js';
-import type { AttemptOutcomeRecord, CompleteMarker, SkipMarker } from './types.js';
+import type { AnalysisRecord, AttemptOutcomeRecord, CompleteMarker, SkipMarker } from './types.js';
 
 export const ANALYSES_FOLDER = 'analyses';
 export const LOGS_FOLDER = 'logs';
@@ -85,6 +85,14 @@ export function readCompleteMarker(workspaceDir: string, snapshotId: string): Pr
 
 export function readSkipMarker(workspaceDir: string, snapshotId: string): Promise<SkipMarker | null> {
   return readOptional<SkipMarker>(path.join(analysisDir(workspaceDir, snapshotId), SKIP_FILE), 'skip', snapshotId);
+}
+
+/** `analysis.json` of a completed snapshot; missing or invalid gives exit code 2 (spec.md §8.4). */
+export async function readAnalysisRecord(workspaceDir: string, snapshotId: string): Promise<AnalysisRecord> {
+  const file = path.join(analysisDir(workspaceDir, snapshotId), RECORD_FILE);
+  const record = await readJsonValidated<AnalysisRecord>(file, 'analysis-record');
+  if (record.snapshotId !== snapshotId) throw mismatch(file, snapshotId);
+  return record;
 }
 
 /** Attempts in ascending order of their number. */

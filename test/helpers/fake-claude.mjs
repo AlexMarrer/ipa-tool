@@ -7,6 +7,7 @@
  *                            | hang | hang-no-stdin | hang-ignore-term | stderr-flood | writes-file | tools | mcp
  *                            | settings-auth-fail | auth-retry | logged-out | auth-no-json
  *                            | analysis (a valid analysis answer derived from the input package on stdin)
+ *                            | journal (a valid journal answer derived from the journal input on stdin)
  *   FAKE_CLAUDE_UNSUPPORTED  comma-separated options reported as unknown, for example "--safe-mode" like 2.1.114
  *   FAKE_CLAUDE_VERSION      output of --version, default 9.9.9
  *   FAKE_CLAUDE_OUTPUT       JSON text for structured_output, default {"ok":true}
@@ -177,6 +178,41 @@ function analysisAnswer(stdin) {
   };
 }
 
+/**
+ * Answer that passes the rules of spec.md §15 for a journal input (package 07): notes by type, changed
+ * files of the day as done work, fresh reports as passed and changed test files as unknown.
+ * @param {Buffer} stdin
+ */
+function journalAnswer(stdin) {
+  /** @type {{ allowedEvidenceIds: string[], notes: { id: string, type: string, text: string, reason: string | null, alternatives: string[], cause: string | null, solution: string | null }[], evidence: { ref: string, kind: string, path: string | null, omitted: boolean, binary: boolean, fresh: boolean | null }[] }} */
+  const input = JSON.parse(stdin.toString('utf8'));
+  const allowed = new Set(input.allowedEvidenceIds);
+  /** @param {string[]} types */
+  const notesOf = (...types) => input.notes.filter((note) => types.includes(note.type));
+  const usable = input.evidence.filter((entry) => allowed.has(entry.ref) && !entry.omitted && !entry.binary);
+  const deltas = usable.filter((entry) => entry.kind === 'state_delta');
+  const reports = usable.filter((entry) => entry.kind === 'test_report' && entry.fresh === true);
+  return {
+    planned: notesOf('plan').map((note) => ({ text: note.text, evidence: [note.id] })),
+    done: [
+      ...notesOf('activity', 'general').map((note) => ({ text: note.text, evidence: [note.id] })),
+      ...deltas.map((entry) => ({ text: `Änderung an ${entry.path}`, evidence: [entry.ref] })),
+    ],
+    problems: notesOf('problem').map((note) => ({ problem: note.text, cause: note.cause, solution: note.solution, evidence: [note.id] })),
+    decisions: notesOf('decision').map((note) => ({ decision: note.text, rationale: note.reason, alternatives: note.alternatives, evidence: [note.id] })),
+    tests: [
+      ...reports.map((entry) => ({ description: `Testbericht ${entry.path}`, result: 'passed', evidence: [entry.ref] })),
+      ...deltas
+        .filter((entry) => /test/i.test(entry.path ?? ''))
+        .map((entry) => ({ description: `Geänderte Testdatei ${entry.path}`, result: 'unknown', evidence: [entry.ref] })),
+    ],
+    deviations: [],
+    insights: notesOf('insight').map((note) => ({ text: note.text, evidence: [note.id] })),
+    nextSteps: [],
+    unknowns: ['Künstlicher Journal-Entwurf der Fake-CLI.'],
+  };
+}
+
 /** @param {Buffer} stdin */
 function respond(stdin) {
   const streaming = options['--output-format'] === 'stream-json';
@@ -198,7 +234,8 @@ function respond(stdin) {
   if (mode === 'stderr-flood') process.stderr.write('x'.repeat(100 * 1024));
   if (mode === 'writes-file') writeFileSync(path.join(process.cwd(), 'doctor-injektion.txt'), 'nicht erlaubt');
 
-  const structured = mode === 'analysis' ? analysisAnswer(stdin) : JSON.parse(process.env['FAKE_CLAUDE_OUTPUT'] ?? '{"ok":true}');
+  const structured =
+    mode === 'analysis' ? analysisAnswer(stdin) : mode === 'journal' ? journalAnswer(stdin) : JSON.parse(process.env['FAKE_CLAUDE_OUTPUT'] ?? '{"ok":true}');
   const success = {
     type: 'result',
     subtype: 'success',

@@ -371,6 +371,12 @@ Ein Befehl erscheint in `ipa --help` erst, wenn sein Paket ihn umsetzt.
 - Im interaktiven Modus gelten angegebene Optionen als beantwortete Fragen. Bricht die Eingabe ab, endet der Befehl mit Exit-Code 2 ohne Notiz (§18).
 - Kein Lock (D-16) und kein Eintrag in `runs.jsonl` (§9.11)
 
+**`ipa journal [--day <YYYY-MM-DD>] [--no-ai]`** (Details in Paket 07)
+
+- Ohne `--day` gilt der heutige Tag in der konfigurierten Zeitzone. Ein Wert, der kein Kalendertag `YYYY-MM-DD` ist, ergibt Exit-Code 2.
+- Kein Lock (D-16) und kein Eintrag in `runs.jsonl` (§9.11). Braucht ein initialisiertes Repository, aber keinen Snapshot.
+- Mit Claude: Exit-Code 0 mit Entwurf oder 6 ohne Entwurf (Claude nicht bereit oder Fehler, ungültige Antwort, Eingabe über `limits.maxJournalInputBytes`); die Meldung nennt `--no-ai`. `--no-ai` und ein Tag ohne Arbeits-Snapshots und ohne verwendbare Notizen ergeben einen Entwurf ohne Claude (§18).
+
 **`ipa schedule`**
 
 - Gibt die Vorlage auf stdout aus oder schreibt sie mit `--output` in eine vom Benutzer benannte neue Datei. Eine vorhandene Datei wird nicht überschrieben.
@@ -759,7 +765,8 @@ Ein Versuchsordner ohne `outcome.json` zählt als `interrupted`.
 ```text
 { schemaVersion, purpose: "journal", promptVersion, day, timezone,
   analyses: [{ snapshotId, dayAttribution: "day"|"unclear", observedPeriod,
-               derived: <§9.7 mit qualifizierten Beleg-IDs> }],
+               derived: <§9.7 mit qualifizierten Beleg-IDs> | null,
+               statusChanges: <wie im Manifest> }],
   evidence: [{ ref, kind, path, commit, snapshotId, omitted: boolean, binary: boolean, fresh: boolean|null }],
   commits: [{ sha, snapshotId, committerDate, authoredByConfiguredUser, messageRef, message }],
   notes: [<§9.5, ohne Notizen mit Secret-Verdacht>],
@@ -770,6 +777,16 @@ Ein Versuchsordner ohne `outcome.json` zählt als `interrupted`.
 ```
 
 `evidence` enthält nur Beschreibungen, keine Inhalte. `fresh` ist nur bei `test_report` gesetzt, sonst `null`. Die Felder genügen für die Prüfung der Regeln R-02, R-03 und R-06.
+
+Weitere Regeln (§18):
+
+- `analyses` enthält alle Arbeits-Snapshots, deren `observedPeriod` den Tag berührt, aufsteigend. `derived` ist `null` ohne KI-Analyse (offen, übersprungen, ohne Analysepflicht) und wenn die erneute Prüfung der Aussagetexte anschlägt. Kontext-IDs in `derived` werden auf die Kontextdatei des Journals mit gleichem Pfad und SHA-256 abgebildet und sonst weggelassen.
+- `evidence` und `commits` umfassen die Belege der Arten `commit_message`, `state_delta` und `test_report` dieser Snapshots. Commit-Nachrichten werden erneut geprüft; bei einem Treffer ist `message` `null` und `omitted` `true`.
+- `allowedEvidenceIds` enthält nur Belege der Snapshots mit `dayAttribution: "day"`, die Notizen des Tages und die Kontext-IDs. Belege eines Snapshots mit unklarer Tageszuordnung sind beschrieben, aber nicht zitierbar.
+- `timeSummary`: `{ entries: [{ noteId, noteType, minutes, basis, start, end, counted, withheld }], totals: { measuredMinutes, estimatedMinutes }, planned: { … }, delays: [{ noteId, minutes, basis }], delayTotals: { … }, notesWithoutTime: noteId[] }`.
+- `openItems.analyses` nennt die Status `pending`, `failed`, `blocked`, `exhausted` und `skipped`. `gaps[].type` ist `rebaseline`, `previous_state_unavailable` oder `halt_detected` (aus Manifesten aller Snapshots, die den Tag berühren, auch Ausgangs-Snapshots), `halt` (aktiver Halt, am Tag erkannt), `run_failed` (Lauf des Tages mit Exit-Code ≠ 0 aus `runs.jsonl`, nur mit Fehlercodes), `no_capture` (kein Snapshot berührt den Tag), `invalid_notes` (ungültige Zeile der Notizdatei des Tages) oder `withheld` (offene Prüfung zurückgehaltener Einheiten, Notizen, Aussagen und Kontextdateien, nur mit Anzahl und IDs). `detail` enthält keine Inhalte (I-12).
+
+Ein Journal-Lauf mit Claude legt seine Artefakte wie ein Analyseversuch in `journal/runs/<runId>/` ab. `outcome.json` folgt §9.9 mit `snapshotId: null` und `attempt: 1` und ist der letzte Schritt, bei Erfolg nach dem Entwurf. Ein Lauf mit `input_too_large` enthält nur `input.json` und `outcome.json`; ist Claude nicht einsatzbereit, entsteht kein Laufordner.
 
 **Ausgabe** von Claude:
 
@@ -795,6 +812,10 @@ Ein Versuchsordner ohne `outcome.json` zählt als `interrupted`.
   provenance }
 ```
 
+- `journal` ist bei `mode: ai` die validierte Ausgabe, bei `no_ai` `null`.
+- `sources` enthält genau die Referenzen, die der Markdown-Entwurf in eckigen Klammern zeigt, in der Reihenfolge ihres ersten Auftretens. `kind` ist `commit_message`, `state_delta`, `test_report`, `note` oder `context`; `sha256` ist bei Belegen der Wert aus dem Manifest, bei Notizen der SHA-256 der kompakten JSON-Zeile (§9.8), bei Kontextdateien der Dateiinhalt.
+- `provenance` ist bei `ai` `{ promptVersion, outputSchemaVersion, cliVersion, models, inputSha256, runDir }` mit `runDir` relativ zum Arbeitsbereich, bei `no_ai` `{ deterministic: true, reason: "requested" | "no_data" }` (§18).
+
 Den Aufbau des Markdown-Entwurfs legt Paket 07 fest.
 
 ### 9.11 `runs.jsonl`
@@ -809,7 +830,7 @@ Den Aufbau des Markdown-Entwurfs legt Paket 07 fest.
 - `analysesCompleted` nennt die Snapshots, die in diesem Lauf `complete.json` erhielten, auch ohne Claude. `analysesFailed` nennt die Snapshots mit einem gescheiterten Versuch in diesem Lauf oder die blockiert, erschöpft oder mangels Claude offen blieben. `errors` hat dann pro Snapshot einen Eintrag mit der Fehlerklasse oder `input_too_large`, `analysis_exhausted`, `claude_not_ready` oder `analysis_store_failed` als `code` (§18).
 - `message` enthält keine Inhalte aus dem Repository (I-12).
 - `recovered` nennt Snapshots, die der Lauf gemäss §11.6 aus einem abgebrochenen Lauf übernommen hat. Das Feld fehlt, wenn es leer wäre (§18).
-- Jeder Lauf eines schreibenden Befehls wird protokolliert, auch einer, der den Lock nicht erhält. `status` protokolliert nicht. `note` protokolliert ebenfalls nicht, die Notiz selbst mit `id` und `recordedAt` ist der Nachweis (§18). `doctor` protokolliert nicht; Nachweis sind `doctor.json` mit `checkedAt` und die Zeilen in `ai-usage.jsonl` (§18).
+- Jeder Lauf eines schreibenden Befehls wird protokolliert, auch einer, der den Lock nicht erhält. `status` protokolliert nicht. `note` protokolliert ebenfalls nicht, die Notiz selbst mit `id` und `recordedAt` ist der Nachweis (§18). `doctor` protokolliert nicht; Nachweis sind `doctor.json` mit `checkedAt` und die Zeilen in `ai-usage.jsonl` (§18). `journal` protokolliert ebenfalls nicht; Nachweis sind der Entwurf, bei Claude `journal/runs/<runId>/outcome.json` und die Zeile in `ai-usage.jsonl` (§18).
 
 ### 9.12 `ai-usage.jsonl`
 
@@ -936,8 +957,11 @@ renderWorkLog(record: AnalysisRecord, manifest: Manifest, texts?: { commitMessag
   // texts: geprüfte Commit-Nachrichten nach Beleg-ID für die Commit-Liste im Kopf (§18)
 
 // journal
-generateJournal(ctx: WorkspaceContext, runner: ClaudeRunner | null, opts: { day: string; noAi: boolean }):
-  Promise<{ draftPath: string; exitCode: 0 | 6 }>
+generateJournal(ctx: WorkspaceContext, runner: ClaudeRunner | null, opts: { day: string; noAi: boolean; env?: NodeJS.ProcessEnv }):
+  Promise<JournalResult>
+  // JournalResult = { exitCode: 0|6, draftPath: string|null, recordPath: string|null, mode: 'ai'|'no_ai'|null,
+  //   noAiReason: 'requested'|'no_data'|null, runDir: string|null, failure: { code, message }|null, openItems, warnings } (§18)
+  // Ungültiger Tag: IpaError mit Exit-Code 2. env geht an ensureClaudeReady. runner darf nur mit noAi null sein.
 ```
 
 Für Tests gibt es diese injizierbaren Hooks:
@@ -1375,7 +1399,7 @@ Der Validator prüft diese Regeln maschinell (I-06). Ein Verstoss führt zu `rul
 | R-03 | `tests[].result` gleich `passed` oder `failed` verlangt mindestens einen `test_report`-Beleg mit `fresh: true` und ohne `omitted`. Im Journal gilt dasselbe über die qualifizierte Referenz. |
 | R-04 | `decisions[].rationale ≠ null` verlangt mindestens einen Beleg der Art `note` oder `commit_message`. |
 | R-05 | `contradictions[]` zitiert mindestens zwei verschiedene Belege. |
-| R-06 | Im Journal zitiert `done[]` mindestens einen Snapshot-Beleg oder eine Notiz vom Typ `activity`, `general` oder `problem`. |
+| R-06 | Im Journal zitiert `done[]` mindestens einen Snapshot-Beleg mit Inhalt (ohne `omitted`, nicht binär) oder eine Notiz vom Typ `activity`, `general` oder `problem`. Zitierbar sind nur Belege von Snapshots, die dem Tag zugeordnet sind (§9.10, §18). |
 | R-07 | Ausgaben enthalten keine Zeitfelder. Zeitsummen berechnet das Tool deterministisch aus Notizen. |
 
 Weitere Regeln stehen im Prompt und werden in Tests mit Beispieldaten geprüft, lassen sich aber nicht maschinell erzwingen:
@@ -1388,7 +1412,9 @@ Weitere Regeln stehen im Prompt und werden in Tests mit Beispieldaten geprüft, 
 **Zeitübersicht** (`timeSummary`, deterministisch):
 
 - eine Zeile pro Notiz mit `time`
-- Summen getrennt nach `measured` und `estimated`
+- Summen getrennt nach `measured` und `estimated`, ohne Gesamtsumme
+- Zeiten von Notizen vom Typ `plan` sind geplanter Aufwand: Sie stehen in der Tabelle, aber getrennt unter `planned` und nicht in den Summen (§18).
+- Notizen mit Secret-Verdacht zählen mit ihrer Zeit, ohne Text (§18).
 - Verzögerungen separat ausgewiesen und nicht addiert
 - Anzahl der Notizen ohne Zeitangabe
 - keine Zeiten aus `observedPeriod` oder Commit-Zeitstempeln (I-07)
@@ -1513,3 +1539,12 @@ Die Einträge entstehen während der Umsetzung. Jeder Eintrag nennt Datum, Paket
 | 2026-09-29 | 06 | §6.3 regelt für `ipa skip` nur „offene Snapshots“. Offen waren Snapshots ohne Analysepflicht, unbekannte Snapshots und der Grund, der in `skip.json` gespeichert wird. | Nur `pending`, `failed`, `blocked` und `exhausted`; `not_required` schliesst der nächste `capture` ohne Claude ab und ergibt Exit-Code 2, ebenso ein unbekannter Snapshot, ein leerer Grund oder einer mit Secret-Treffer (wie bei `ipa baseline`). `skip` führt den Wiederanlauf aus (§11.6), schreibt `skip.json`, führt den Cursor nach und protokolliert den Lauf. | §6.3 |
 | 2026-09-29 | 06 | Seit Paket 06 verarbeitet `capture` ohne `--no-analysis` die Warteschlange. In den Tests fehlt `claude` im PATH (§16.2), Arbeits-Snapshots mit Analysepflicht ergäben dort Exit-Code 6. Viele Tests der Pakete 02 bis 04 riefen `capture` ohne Option auf, das bis Paket 06 wie `--no-analysis` wirkte (§6.3). Die Tests von AK-04-07 und AK-04-08 speicherten Verweise auf nicht vorhandene Belege, was D-23 ab Paket 06 ablehnt. | Die betroffenen Tests der Aufnahme verwenden `capture --no-analysis` und prüfen damit weiter dasselbe. AK-04-07 verweist jetzt auf vorhandene Belege, AK-04-08 prüft zusätzlich die Ablehnung eines fehlenden Belegs. Die Tests der Befehlsliste und der Felder von `status` enthalten `skip`, `analyses` und `withheld`. `prompts/` gehört in `files` von `package.json` (D-12). | §16.2; Pakete 02 bis 05 |
 | 2026-09-30 | 06 | **Live-Analyse auf dem Entwicklungsrechner**, vom Benutzer ausgeführt (Windows 11, `npm run test:live -- test/live/analysis.live.ts`, Anmeldeart `claude.ai`; die Claude-Code-Version dieses Laufs ist nicht angegeben, am 29.09.2026 war es 2.1.201). Erster Lauf: Die API lehnte die Anmeldung mit HTTP 401 ab, obwohl `claude auth status` `loggedIn: true` meldete (wie in der Vorabprüfung aus Paket 01). Claude Code wiederholte etwa 180 s lang und lieferte dann ein Fehlerergebnis. Das Tool ordnete es als `claude_error`/`error_result` ein, S000002 blieb `failed`, der Cursor auf S000001, Exit-Code 6, die Meldung verwies auf eine neue Anmeldung. Nach neuer Anmeldung zweiter Lauf: bestanden, ein Modellaufruf (Modelle `claude-haiku-4-5-20251001` und `claude-opus-4-7`, 0.133 USD, 15.4 s), Antwort schemagültig und regelkonform im ersten Versuch, Repository unverändert. | Die Fehlerbehandlung verhält sich wie in §12.5 vorgesehen; keine Codeänderung. Eine abgelaufene Anmeldung lässt sich vor dem Aufruf nicht erkennen, weil `claude auth status` sie nicht meldet; sie zeigt sich erst nach den Wiederholungen von Claude Code als `error_result` mit HTTP 401. Das README nennt Symptom und Abhilfe (`claude auth login`). Paket 06 ist damit auf Linux und Windows live geprüft. | §12.5, §13.3; Paket 06 §8 |
+| 2026-09-30 | 07 | **Umgebung der Umsetzungssitzung:** Windows 11 Pro 10.0.26200, Node.js 24.19.0, npm 11.17.0, Git 2.51.0.windows.1, Claude Code 2.1.114 im PATH (nur Versions- und Optionsprüfung, kein Modellaufruf). Vor Beginn: `npm run typecheck` fehlerfrei, `npm test` 57 Testdateien, 469 bestanden, 2 übersprungen. | Voraussetzungen erfüllt: Pakete 05 und 06 `abgeschlossen`, 04 `technisch abgeschlossen` (offen nur die manuelle Prüfung der interaktiven Eingabe). Die Versionen weichen von §2.2 ab (dort Git 2.52 und Claude Code 2.1.201); ohne Auswirkung auf die automatischen Tests, die Claude nie aufrufen. | §2.2 |
+| 2026-09-30 | 07 | §9.10 lässt offen: den Aufbau von `timeSummary`, die Typen in `openItems.gaps`, `derived` für Snapshots ohne KI-Analyse, wohin die Statusänderungen gehen, die Paket 07 §4 für Snapshots ohne Analysepflicht verlangt, was Kontext-IDs einer Analyse im Journal bedeuten, wie `sources` und `provenance` aussehen und wie ein Journal-Lauf mit Claude seine Artefakte ablegt. | `analyses[]` erhält `statusChanges` aus dem Manifest; `derived` ist `null` ohne KI-Analyse. Kontext-IDs in `derived` werden auf die aktuelle Kontextdatei mit gleichem Pfad und SHA-256 abgebildet und sonst weggelassen, weil die Datei sich seit der Analyse geändert hat. `timeSummary`, Lückentypen, `sources` (genau die Referenzen, die der Entwurf zeigt) und `provenance` wie in §9.10. Artefakte in `journal/runs/<runId>/` wie bei einem Analyseversuch, `outcome.json` nach §9.9 mit `snapshotId: null` und `attempt: 1` als letzter Schritt; `input_too_large` nur mit `input.json` und `outcome.json`; ohne einsatzbereites Claude kein Laufordner. Scheitert die Ablage des Entwurfs mit einem Ein- oder Ausgabefehler, ist `outcome` `interrupted` und der Exit-Code 6. | §9.10 |
+| 2026-09-30 | 07 | AK-07-05 verlangt, dass ein Snapshot über mehrere Tage nur unter „Unklare Tageszuordnung“ erscheint. R-06 verlangt für `done[]` nur „einen Snapshot-Beleg“, Claude könnte also Belege eines solchen Snapshots als ausgeführte Arbeit zitieren. Nach §9.4 trägt ein ausgelassener Beleg zudem keine Umsetzungsaussage. | Belege eines Snapshots mit `dayAttribution: "unclear"` stehen beschrieben in `evidence`, aber nicht in `allowedEvidenceIds`; R-01 lehnt ihre Zitate ab. Den Abschnitt „Unklare Tageszuordnung“ schreibt das Tool selbst. R-06 verlangt einen Snapshot-Beleg mit Inhalt (ohne `omitted`, nicht binär) oder eine Notiz vom Typ `activity`, `general` oder `problem`. | §9.10, §15 |
+| 2026-09-30 | 07 | §15 regelt nicht, wie Zeiten von Planungsnotizen und von Notizen mit Secret-Verdacht in die Zeitübersicht eingehen. Eine Planungsnotiz mit `--minutes 60 --estimated` nennt geplanten, nicht geleisteten Aufwand. | Planungszeiten stehen in der Tabelle, zählen aber nur unter `planned`, nicht in den Summen. Notizen mit Secret-Verdacht zählen mit ihrer Zeit, weil die Prüfung nur ihre Texte betrifft; die Tabelle zeigt sie ohne Text und ohne Referenz. Eine Gesamtsumme gibt es nicht. | §15 |
+| 2026-09-30 | 07 | Der Eintrag zu Paket 04 überlässt Paket 07, ob `journal` in `runs.jsonl` protokolliert. | `journal` schreibt keinen Eintrag: Es nimmt keinen Lock (D-16), und ein gescheiterter Journal-Lauf erschiene sonst als `lastRun` in `status` und im nächsten Journal als Fehlerlauf. Nachweis sind der Entwurf, bei Claude `journal/runs/<runId>/outcome.json` und die Zeile in `ai-usage.jsonl`. | §6.3, §9.11 |
+| 2026-09-30 | 07 | §10 gibt für `generateJournal` `{ draftPath: string; exitCode: 0 \| 6 }` zurück. Bei Exit-Code 6 gibt es aber keinen Entwurf, und die Ausgabe braucht Grund, Laufordner und offene Punkte. Wie bei `processQueue` fehlt die Umgebung für `ensureClaudeReady`. | Rückgabe `JournalResult` mit `draftPath` und `recordPath` (`null` ohne Entwurf), `mode`, `noAiReason`, `runDir`, `failure`, `openItems` und `warnings`; optional `opts.env`. Ein ungültiger Tag ergibt eine `IpaError` mit Exit-Code 2. Name und bisherige Parameter bleiben. | §10 |
+| 2026-09-30 | 07 | Paket 07 §4 nennt den automatischen Rückfall ohne KI, „wenn weder Snapshots noch Notizen den Tag betreffen“, und „Fehlerläufe des Tages“, ohne sie abzugrenzen. I-05 verlangt eine Prüfung vor jeder Übermittlung, auch für bereits gespeicherte Commit-Nachrichten und Analyseaussagen. | Ohne Claude, mit `provenance.reason: "no_data"`, wenn kein Arbeits-Snapshot den Tag berührt und keine verwendbare Notiz vorliegt; ein Ausgangs-Snapshot ist keine Arbeit. „Keine Aufnahme“ gilt, wenn gar kein Snapshot den Tag berührt. Fehlerläufe sind Läufe mit Exit-Code ≠ 0, deren `startedAt` auf den Tag fällt; die Lücke nennt Befehl, Lauf-ID, Uhrzeit, `outcome` und Fehlercodes, keinen Meldungstext. Commit-Nachrichten und die Texte von `derived` werden vor der Übermittlung erneut geprüft; ein Treffer hält die Nachricht beziehungsweise alle Aussagen der Analyse zurück und erscheint als offene Prüfung. | §9.10, §12.2, §14.4 |
+| 2026-09-30 | 07 | Tests früherer Pakete: `test/cli/main.test.ts` verwendete `journal` als Beispiel eines unbekannten Befehls und listete die Befehle ohne `journal`. Integrationstests mit festen Tagen brauchen eine injizierte Uhr, die der CLI-Einstieg nicht bietet (Fehlerinjektion über Umgebungsvariablen ist verboten, §10). | `main.test.ts` prüft den unbekannten Befehl mit `schedule` und erwartet `journal` in der Hilfe. Die Journal-Tests führen `init` (`initializeWorkspace`), `capture` (`runCapture`), `note` (`addNote`) und `journal` (`runJournalCommand`) im Testprozess mit injizierter Uhr aus; das ausgelieferte CLI setzt keine Uhr. Die Fake-CLI erhält den Modus `journal`. `analysis` stellt `readContext`, `readSnapshotText`, `readAnalysisRecord` und `timeFieldPaths` als Lesefunktionen für `journal` bereit (§4.3). | §4.3, §16.2 |
+| 2026-09-30 | 07 | **Befund (Windows 11, Entwicklungsrechner dieser Sitzung):** Mit den Journal-Tests dauerte `npm test` 831 s beziehungsweise 914 s statt 463 s. Dabei überschritten einzelne Integrationstests früherer Pakete das Test-Timeout von 120 s (`failures.test.ts` AK-06-04 und AK-06-05, `attribution-scenarios.test.ts` AK-03-13), obwohl sie allein in 40–49 s bestehen. Laut Benutzer dauert die ganze Suite auf seinem Rechner zu Hause etwa eine Minute. | Das globale `testTimeout` in `vitest.config.ts` steigt von 120 s auf 300 s; Hänger werden weiter erkannt, die Tests selbst bleiben unverändert. Der Journal-Testhelfer legt für die Fake-CLI ein gültiges `doctor.json` an, damit die Bereitschaftsprüfung nicht pro Arbeitsbereich die Prüfprozesse startet; die Prüfung selbst deckt Paket 05 ab, und der Test „Claude nicht einsatzbereit“ verwendet sie weiter. | §16.2 |

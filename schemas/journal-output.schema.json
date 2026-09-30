@@ -1,0 +1,146 @@
+{
+  "title": "IPA Assistant – Journal-Ausgabe (spec.md §9.10)",
+  "description": "Jede Aussage nennt Referenzen aus allowedEvidenceIds der Journal-Eingabe. Keine Zeitangaben. Leere Listen bedeuten: nicht erfasst.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["planned", "done", "problems", "decisions", "tests", "deviations", "insights", "nextSteps", "unknowns"],
+  "properties": {
+    "planned": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["text", "evidence"],
+        "properties": {
+          "text": { "type": "string", "minLength": 1 },
+          "evidence": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string", "pattern": "^(S[0-9]{6}:E[0-9]{3,}|N[0-9]{8}T[0-9]{6}Z-[0-9a-f]{4}|C[0-9]{2,})$" }
+          }
+        }
+      }
+    },
+    "done": {
+      "description": "Nur mit einem Snapshot-Beleg mit Inhalt oder einer Notiz vom Typ activity, general oder problem.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["text", "evidence"],
+        "properties": {
+          "text": { "type": "string", "minLength": 1 },
+          "evidence": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string", "pattern": "^(S[0-9]{6}:E[0-9]{3,}|N[0-9]{8}T[0-9]{6}Z-[0-9a-f]{4}|C[0-9]{2,})$" }
+          }
+        }
+      }
+    },
+    "problems": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["problem", "cause", "solution", "evidence"],
+        "properties": {
+          "problem": { "type": "string", "minLength": 1 },
+          "cause": { "type": ["string", "null"], "minLength": 1 },
+          "solution": { "type": ["string", "null"], "minLength": 1 },
+          "evidence": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string", "pattern": "^(S[0-9]{6}:E[0-9]{3,}|N[0-9]{8}T[0-9]{6}Z-[0-9a-f]{4}|C[0-9]{2,})$" }
+          }
+        }
+      }
+    },
+    "decisions": {
+      "description": "rationale nur mit einem Notiz- oder Commit-Nachrichten-Beleg, sonst null.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["decision", "rationale", "alternatives", "evidence"],
+        "properties": {
+          "decision": { "type": "string", "minLength": 1 },
+          "rationale": { "type": ["string", "null"], "minLength": 1 },
+          "alternatives": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+          "evidence": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string", "pattern": "^(S[0-9]{6}:E[0-9]{3,}|N[0-9]{8}T[0-9]{6}Z-[0-9a-f]{4}|C[0-9]{2,})$" }
+          }
+        }
+      }
+    },
+    "tests": {
+      "description": "passed oder failed nur mit einem test_report-Beleg mit fresh true und Inhalt, sonst unknown.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["description", "result", "evidence"],
+        "properties": {
+          "description": { "type": "string", "minLength": 1 },
+          "result": { "type": "string", "enum": ["passed", "failed", "unknown"] },
+          "evidence": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string", "pattern": "^(S[0-9]{6}:E[0-9]{3,}|N[0-9]{8}T[0-9]{6}Z-[0-9a-f]{4}|C[0-9]{2,})$" }
+          }
+        }
+      }
+    },
+    "deviations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["text", "evidence"],
+        "properties": {
+          "text": { "type": "string", "minLength": 1 },
+          "evidence": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string", "pattern": "^(S[0-9]{6}:E[0-9]{3,}|N[0-9]{8}T[0-9]{6}Z-[0-9a-f]{4}|C[0-9]{2,})$" }
+          }
+        }
+      }
+    },
+    "insights": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["text", "evidence"],
+        "properties": {
+          "text": { "type": "string", "minLength": 1 },
+          "evidence": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string", "pattern": "^(S[0-9]{6}:E[0-9]{3,}|N[0-9]{8}T[0-9]{6}Z-[0-9a-f]{4}|C[0-9]{2,})$" }
+          }
+        }
+      }
+    },
+    "nextSteps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["text", "evidence"],
+        "properties": {
+          "text": { "type": "string", "minLength": 1 },
+          "evidence": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string", "pattern": "^(S[0-9]{6}:E[0-9]{3,}|N[0-9]{8}T[0-9]{6}Z-[0-9a-f]{4}|C[0-9]{2,})$" }
+          }
+        }
+      }
+    },
+    "unknowns": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+  }
+}

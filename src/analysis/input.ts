@@ -41,7 +41,7 @@ export function noteSha256(note: Note): string {
   return sha256Hex(JSON.stringify(note));
 }
 
-function emptySummary(): FilterSummary {
+export function emptySummary(): FilterSummary {
   return { excluded: 0, withheld: 0, omitted: 0, byReason: {} };
 }
 
@@ -50,7 +50,7 @@ function count(summary: FilterSummary, decision: 'excluded' | 'withheld' | 'omit
   summary.byReason[reason] = (summary.byReason[reason] ?? 0) + 1;
 }
 
-async function readSnapshotText(ctx: WorkspaceContext, snapshotId: string, file: string): Promise<string> {
+export async function readSnapshotText(ctx: WorkspaceContext, snapshotId: string, file: string): Promise<string> {
   try {
     return await readFile(path.join(snapshotDir(ctx.workspaceDir, snapshotId), file), 'utf8');
   } catch (error) {
@@ -181,7 +181,13 @@ export function contextId(index: number): string {
   return `C${String(index + 1).padStart(2, '0')}`;
 }
 
-async function readContext(ctx: WorkspaceContext, scanner: SecretScanner, summary: FilterSummary, warn: (message: string) => void): Promise<ContextEntry[]> {
+/** Context files of `config.context.files`, read and checked on every package build (spec.md §12.2). */
+export async function readContext(
+  ctx: WorkspaceContext,
+  scanner: SecretScanner,
+  summary: FilterSummary,
+  warn: (message: string) => void,
+): Promise<ContextEntry[]> {
   const entries: ContextEntry[] = [];
   for (const [index, configured] of ctx.config.context.files.entries()) {
     const id = contextId(index);

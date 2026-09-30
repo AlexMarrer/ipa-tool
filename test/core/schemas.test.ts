@@ -56,6 +56,9 @@ describe('Schemaregister (spec.md §8.4)', () => {
       'complete',
       'skip',
       'retry',
+      'journal-input',
+      'journal-output',
+      'journal-record',
     ]);
     for (const id of SCHEMA_IDS) {
       expect(() => validate(id, {})).not.toThrow();

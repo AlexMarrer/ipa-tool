@@ -31,11 +31,11 @@ function listedCommands(help: string): string[] {
     .filter((name): name is string => name !== undefined);
 }
 
-describe('CLI-Rahmen (AK-01-02, AK-02-18, AK-03-14, AK-04-11, AK-05-10, AK-06-18)', () => {
-  it('ipa --help listet init, status, doctor, capture, baseline, skip und note, aber keine Befehle späterer Pakete (AK-05-10, AK-06-18)', async () => {
+describe('CLI-Rahmen (AK-01-02, AK-02-18, AK-03-14, AK-04-11, AK-05-10, AK-06-18, AK-07-11)', () => {
+  it('ipa --help listet init, status, doctor, capture, baseline, skip, note und journal, aber keine Befehle späterer Pakete (AK-05-10, AK-06-18, AK-07-11)', async () => {
     const result = await runCli(['--help'], { dataDir: null });
     expect(result.exitCode).toBe(0);
-    expect(listedCommands(result.stdout)).toEqual(['init', 'status', 'doctor', 'capture', 'baseline', 'skip', 'note']);
+    expect(listedCommands(result.stdout)).toEqual(['init', 'status', 'doctor', 'capture', 'baseline', 'skip', 'note', 'journal']);
     expect(result.stdout).toContain('--repo <pfad>');
     expect(result.stdout).toContain('--data-dir <pfad>');
     expect(result.stdout).not.toMatch(/\bhelp \[command\]/);
@@ -49,9 +49,9 @@ describe('CLI-Rahmen (AK-01-02, AK-02-18, AK-03-14, AK-04-11, AK-05-10, AK-06-18
   });
 
   it('ein unbekannter Befehl, eine unbekannte Option und fehlende Argumente enden mit Exit-Code 2', async () => {
-    const unknownCommand = await runCli(['journal'], { dataDir: null });
+    const unknownCommand = await runCli(['schedule'], { dataDir: null });
     expect(unknownCommand.exitCode).toBe(2);
-    expect(unknownCommand.stderr).toContain("unbekannter Befehl 'journal'");
+    expect(unknownCommand.stderr).toContain("unbekannter Befehl 'schedule'");
 
     const unknownOption = await runCli(['status', '--gibt-es-nicht'], { dataDir: null });
     expect(unknownOption.exitCode).toBe(2);

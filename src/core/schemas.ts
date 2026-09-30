@@ -22,6 +22,9 @@ export const SCHEMA_IDS = [
   'complete',
   'skip',
   'retry',
+  'journal-input',
+  'journal-output',
+  'journal-record',
 ] as const;
 export type SchemaId = (typeof SCHEMA_IDS)[number];
 
