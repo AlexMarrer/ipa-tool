@@ -120,12 +120,13 @@ describe('ensureClaudeReady für die Pakete 06 und 07', () => {
     await ensureClaudeReady(await p.context(), { env: mergedEnv((await fakeClaudeEnv('ok')).env) });
   });
 
-  it('bricht ohne Modellaufruf ab, wenn Claude nicht mehr angemeldet ist oder den Anmeldestatus nicht rechtzeitig liefert', async () => {
+  it('bricht ohne Modellaufruf ab, wenn Claude nicht mehr angemeldet ist oder keinen auswertbaren Anmeldestatus rechtzeitig liefert', async () => {
     const p = await prepare();
     expect((await runCli(['doctor'], { dataDir: p.dataDir, repo: p.repo.root, env: (await fakeClaudeEnv('ok')).env })).exitCode).toBe(0);
     for (const [mode, reason] of [
       ['logged-out', 'nicht angemeldet'],
       ['auth-no-json', 'nicht angemeldet'],
+      ['auth-text', 'Anmeldestatus ist unklar'],
       ['auth-hang', 'antwortete nicht innerhalb von 20 s'],
     ] as const) {
       const fake = await fakeClaudeEnv(mode);

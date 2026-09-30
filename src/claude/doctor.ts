@@ -388,7 +388,7 @@ export async function probeClaude(ctx: WorkspaceContext, opts: ProbeOptions): Pr
  * For packages 06 and 07 before the first Claude call of a run: without a `doctor.json` that reports
  * all mandatory options, the check runs once without `--live`. The billing guard never relies on
  * `doctor.json`: environment and settings first, without starting a process, then a fresh
- * `claude auth status`. If Claude is not usable, not logged in, gives no login status in time or paid
+ * `claude auth status`. If Claude is not usable, not logged in, gives no readable login status in time or paid
  * usage is not allowed, an `IpaError` with exit code 6 follows.
  */
 export async function ensureClaudeReady(ctx: WorkspaceContext, opts: { env?: NodeJS.ProcessEnv } = {}): Promise<void> {
@@ -408,6 +408,8 @@ export async function ensureClaudeReady(ctx: WorkspaceContext, opts: { env?: Nod
   const auth = await freshAuthStatus(ctx, env);
   if (auth === 'timeout') throw notReady(ctx, `claude auth status antwortete nicht innerhalb von ${FLAG_TIMEOUT_MS / 1000} s`);
   if (auth?.loggedIn === false) throw notReady(ctx, 'Claude Code ist nicht angemeldet; Abhilfe: claude auth login');
+  // Without a readable status neither the login nor a Console key or managed provider can be ruled out.
+  if (auth !== null && auth.loggedIn === null) throw notReady(ctx, 'der Anmeldestatus ist unklar, claude auth status lieferte kein auswertbares Ergebnis');
   await assertPaidUsageAllowed(claudeProcessEnv(env), ctx.config, auth);
 }
 

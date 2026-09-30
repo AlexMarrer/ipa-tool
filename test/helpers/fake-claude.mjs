@@ -5,7 +5,7 @@
  * variables of the test (the tool itself sets none of them):
  *   FAKE_CLAUDE_MODE         ok (default) | invalid-json | extra-text | error-result | no-structured | exit-nonzero
  *                            | hang | hang-no-stdin | hang-ignore-term | stderr-flood | writes-file | tools | mcp
- *                            | settings-auth-fail | auth-retry | logged-out | auth-no-json | auth-hang
+ *                            | settings-auth-fail | auth-retry | logged-out | auth-no-json | auth-text | auth-hang
  *                            | analysis (a valid analysis answer derived from the input package on stdin)
  *                            | journal (a valid journal answer derived from the journal input on stdin)
  *   FAKE_CLAUDE_UNSUPPORTED  comma-separated options reported as unknown, for example "--safe-mode" like 2.1.114
@@ -84,6 +84,9 @@ if (args[0] === 'auth' && args[1] === 'status') {
     // Never answers, like a login that waits for a browser.
     setInterval(() => undefined, 60_000);
     await new Promise(() => undefined);
+  } else if (mode === 'auth-text') {
+    print('Logged in');
+    process.exit(0);
   } else if (mode === 'auth-no-json') {
     print('Not logged in');
     process.exit(1);

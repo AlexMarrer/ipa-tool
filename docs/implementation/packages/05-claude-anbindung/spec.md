@@ -91,7 +91,7 @@ Nicht im Umfang:
 
 - Pakete 06 und 07 rufen `run` nur auf, wenn `doctor.json` existiert und alle Pflichtoptionen als unterstützt meldet.
 - Andernfalls führen sie die Prüfung ohne `--live` automatisch einmal aus. Scheitert sie, endet der Lauf mit Exit-Code 6.
-- In jedem Fall folgt ein frisches `claude auth status` ohne Modellaufruf (Nachtrag vom 30.09.2026). Meldet es `loggedIn: false` oder antwortet es nicht innerhalb von 20 s, endet der Lauf mit `claude_not_ready` und Exit-Code 6, bevor ein Versuch entsteht.
+- In jedem Fall folgt ein frisches `claude auth status` ohne Modellaufruf (Nachtrag vom 30.09.2026). Meldet es `loggedIn: false`, liefert es kein auswertbares JSON (`loggedIn: null`) oder antwortet es nicht innerhalb von 20 s, endet der Lauf mit `claude_not_ready` und Exit-Code 6, bevor ein Versuch entsteht.
 - Die Hilfsfunktion `ensureClaudeReady(ctx)` gehört zu diesem Paket.
 
 **Kostenschutz (Nachtrag vom 30.09.2026, D-25, spec.md §13.1)**
