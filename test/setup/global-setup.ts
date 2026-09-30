@@ -6,6 +6,8 @@
  * - Git reads neither the system nor the user configuration of the machine.
  * - In the test processes `claude` is not on the PATH, so no automatic test can start the real Claude
  *   Code, and the temp directory (and with it the Claude working directory, D-22) lies in the test folder.
+ *   `CLAUDE_CONFIG_DIR` points to an empty folder, so the Claude user settings of the machine do not reach
+ *   the billing guard; managed settings of the machine still do.
  * - `dist/` is built because integration tests start the real CLI entry point.
  * - Afterwards the real data root must be unchanged.
  *
@@ -150,7 +152,12 @@ async function setup(project: TestProject, options: SetupOptions): Promise<() =>
   const tmp = path.join(root, 'tmp');
   await mkdir(tmp);
   const workerEnv: Record<string, string> = { TMPDIR: tmp, TMP: tmp, TEMP: tmp };
-  if (options.hideClaude) workerEnv['PATH'] = await pathWithoutClaude(process.env['PATH'] ?? '', root);
+  if (options.hideClaude) {
+    workerEnv['PATH'] = await pathWithoutClaude(process.env['PATH'] ?? '', root);
+    // The billing guard reads the Claude settings; the ones of the machine must not decide a test.
+    workerEnv['CLAUDE_CONFIG_DIR'] = path.join(root, 'claude-konfig');
+    await mkdir(workerEnv['CLAUDE_CONFIG_DIR']);
+  }
   project.provide('ipaWorkerEnv', workerEnv);
   project.provide('ipaSystemTmpDir', systemTmpDir);
   project.provide('ipaClaudeHidden', options.hideClaude);

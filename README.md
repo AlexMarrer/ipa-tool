@@ -11,7 +11,7 @@ Die Umsetzung erfolgt in Paketen, geplant in [`docs/implementation/`](docs/imple
 - Windows 11. Das ist die einzige geprüfte Plattform. Linux und macOS sind nicht geprüft.
 - Node.js 24 oder neuer
 - Git 2.31 oder neuer (geprüft mit 2.51)
-- Für `ipa doctor`, die Analyse und `ipa journal` ohne `--no-ai`: eine installierte und angemeldete Claude-Code-CLI. Geprüft mit Version 2.1.201 unter Windows 11, einschliesslich [`ipa doctor --live`](#ipa-doctor---live). Ein Update auf mindestens 2.1.205 wird empfohlen: Ältere Versionen ignorieren ein ungültiges Ausgabeschema still (das Tool prüft seine Schemas deshalb selbst).
+- Für `ipa doctor`, die Analyse und `ipa journal` ohne `--no-ai`: eine installierte Claude-Code-CLI, angemeldet mit einem Claude-Abo (`claude auth login`). API-Schlüssel und externe Anbieter sind standardmässig gesperrt, siehe [Kostenschutz](#kostenschutz). Geprüft mit Version 2.1.201 unter Windows 11, einschliesslich [`ipa doctor --live`](#ipa-doctor---live). Ein Update auf mindestens 2.1.205 wird empfohlen: Ältere Versionen ignorieren ein ungültiges Ausgabeschema still (das Tool prüft seine Schemas deshalb selbst).
 
 ## Installation
 
@@ -245,23 +245,38 @@ Prüft, ob Git und Claude Code für die Analyse bereit sind. Ohne `--live` finde
 - **Git:** `git --version`
 - **Claude Code:** Version (`claude --version`) und Anmeldung (`claude auth status`). Übernommen werden nur, ob eine Anmeldung besteht, und die Anmeldeart, nie E-Mail-Adresse, Organisation oder Token.
 - **Optionen:** Für jede Option des [Claude-Aufrufs](#claude-code-aufruf-schutzwirkung-und-grenzen) startet `doctor` `claude -p <option> [wert] --zz-ipa-probe` mit leerer Eingabe. Meldet Claude Code die Prüfoption als unbekannt, kennt es die geprüfte Option. Es entsteht kein Prompt und damit kein Modellaufruf. Pflicht sind die elf Optionen des Aufrufs, `--model` nur mit einem Modell in `claude.model`. `--safe-mode`, `--setting-sources` und `--verbose` sind optional; `--safe-mode` verwendet `ipa`, sobald `doctor` die Option findet.
+- **Kostenschutz:** ob ein API-Schlüssel oder ein externer Anbieter erkannt ist, aus Umgebung, Claude-Einstellungen und `claude auth status` (siehe [Kostenschutz](#kostenschutz)), und ob `claude.allowPaidUsage` kostenpflichtige Nutzung erlaubt. Genannt werden nur Namen, nie Werte. Ist ein solcher Weg erkannt, aber nicht erlaubt, ist das Ergebnis „nicht bereit“, und `--live` entfällt. Mit gesetztem `ANTHROPIC_API_KEY` meldet `claude auth status` weiterhin die Anmeldeart `claude.ai`, obwohl Claude Code den Schlüssel verwendet; massgebend ist dann die Zeile „API-Schlüssel“. Siehe [Kostenschutz](#kostenschutz).
 - **Ergebnis:** eine kompakte Liste auf stdout, Befunde auf stderr, Exit-Code 0 (bereit) oder 7 (nicht bereit). Das Ergebnis steht in `doctor.json` im Arbeitsbereich, `ipa status` zeigt es unter `claude`.
 - `doctor` braucht ein initialisiertes Repository (sonst Exit-Code 2), nimmt keinen Lock und schreibt keinen Eintrag in `runs.jsonl`. Die Prüfprozesse laufen im selben leeren Temp-Ordner wie jeder Claude-Aufruf.
 - Ob die Anmeldung der zugelassene geschäftliche Zugang ist, lässt sich technisch nicht prüfen und ist organisatorisch zu bestätigen. `doctor` weist darauf hin.
 
 ```text
 > ipa doctor
-Git:               gefunden, Version 2.52.0.windows.1
-Claude Code:       gefunden, Version 2.1.201
-Anmeldung:         angemeldet, Anmeldeart claude.ai
-Pflichtoptionen:   alle 11 erkannt
-Weitere Optionen:  --safe-mode ja, --setting-sources ja, --model ja, --verbose ja
---safe-mode:       wird verwendet
---setting-sources: wird nicht verwendet, bis ipa doctor --live die Anmeldung damit bestätigt (A-08)
-Live-Prüfung:      nicht ausgeführt (ipa doctor --live)
-Ergebnis:          bereit
+Git:                      gefunden, Version 2.52.0.windows.1
+Claude Code:              gefunden, Version 2.1.201
+Anmeldung:                angemeldet, Anmeldeart claude.ai
+Pflichtoptionen:          alle 11 erkannt
+Weitere Optionen:         --safe-mode ja, --setting-sources ja, --model ja, --verbose ja
+--safe-mode:              wird verwendet
+--setting-sources:        wird nicht verwendet, bis ipa doctor --live die Anmeldung damit bestätigt (A-08)
+API-Schlüssel:            nicht erkannt
+Externer Anbieter:        nicht erkannt
+Kostenpflichtige Nutzung: nicht erlaubt (claude.allowPaidUsage: false)
+Live-Prüfung:             nicht ausgeführt (ipa doctor --live)
+Ergebnis:                 bereit
 Hinweis: Ob diese Anmeldung der zugelassene geschäftliche Zugang ist, lässt sich technisch nicht prüfen und ist organisatorisch zu bestätigen (O-02).
 ```
+
+Mit gesetztem `ANTHROPIC_API_KEY` und ohne Freigabe lauten die betroffenen Zeilen so (Exit-Code 7):
+
+```text
+API-Schlüssel:            erkannt: ANTHROPIC_API_KEY
+Kostenpflichtige Nutzung: nicht erlaubt (claude.allowPaidUsage: false), Modellaufrufe sind gesperrt
+Ergebnis:                 nicht bereit
+Hinweis: Ein API-Schlüssel hat bei claude -p Vorrang vor der Abo-Anmeldung, auch wenn die Anmeldeart claude.ai lautet.
+```
+
+Aus den Claude-Einstellungen erscheint die Quelle in Klammern, etwa `apiKeyHelper (Benutzereinstellungen)` oder `env.CLAUDE_CODE_USE_BEDROCK (Richtlinie HKLM)`. Einstellungen, die kein gültiges JSON-Objekt sind, meldet `doctor` als Befund, ohne deswegen zu sperren.
 
 #### `ipa doctor --live`
 
@@ -308,7 +323,7 @@ Mit `--json` erscheint ein JSON-Objekt. Dieses Format ist ein stabiler Vertrag. 
 | 3 | Ein anderer Lauf hält den Lock. |
 | 4 | Die Zuordnung ist wegen Branchwechsel oder umgeschriebener Historie angehalten. `ipa baseline` ist erforderlich. |
 | 5 | Der Arbeitsstand hat sich während der Aufnahme wiederholt verändert. Es wurde kein Snapshot gespeichert. |
-| 6 | Der KI-Schritt ist nicht abgeschlossen: Claude ist nicht einsatzbereit oder meldet einen Fehler, die Antwort ist ungültig, das Eingabepaket ist zu gross (`blocked`) oder die Versuche sind erschöpft (`exhausted`). Gesicherte Daten bleiben offen. Bei `ipa journal` entsteht dann kein Entwurf; `--no-ai` erzeugt ihn ohne Claude. |
+| 6 | Der KI-Schritt ist nicht abgeschlossen: Claude ist nicht einsatzbereit oder meldet einen Fehler, kostenpflichtige Nutzung ist erkannt, aber nicht freigegeben ([Kostenschutz](#kostenschutz)), die Antwort ist ungültig, das Eingabepaket ist zu gross (`blocked`) oder die Versuche sind erschöpft (`exhausted`). Gesicherte Daten bleiben offen. Bei `ipa journal` entsteht dann kein Entwurf; `--no-ai` erzeugt ihn ohne Claude. |
 | 7 | `ipa doctor`: Die Voraussetzungen sind nicht erfüllt. |
 
 Treffen mehrere Fälle zu, gilt der höchste Code. Ausnahmen: Code 1 hat immer Vorrang, und bei `capture` geht ein Halt (4) einer nicht abgeschlossenen Analyse (6) vor, weil erst `ipa baseline` die Aufnahme wieder ermöglicht.
@@ -675,8 +690,9 @@ Claude Code analysiert neue Snapshots (siehe [Analyse und Work-Logs](#analyse-un
 - wertet die Antwort in dieser Reihenfolge aus: nicht gefunden, nicht startbar, Timeout, kein einzelnes JSON-Objekt, Fehlerergebnis, Exit-Code ungleich 0 ohne Ergebnis, fehlendes `structured_output`. Die Rohausgabe bleibt zur Diagnose erhalten, stderr bis 64 KiB.
 - schreibt eine Zeile in `ai-usage.jsonl` mit Zweck, Zeitpunkten, CLI-Version, Modellen, Prompt- und Schemaversion, SHA-256 der Eingabe, IDs der Belege, Ergebnis, Kosten und Dauer. Prompt, Eingabe und Antwort stehen nicht darin.
 - gibt Variablen einer umgebenden Claude-Code-Sitzung nicht weiter, siehe `ipa doctor --live`. Sonst wird die Umgebung für die Anmeldung unverändert weitergegeben; das Tool setzt keine Geheimnisse und protokolliert die Umgebung nicht.
+- startet nicht, wenn ein API-Schlüssel oder ein externer Anbieter erkannt und nicht freigegeben ist, siehe [Kostenschutz](#kostenschutz).
 
-Vor dem ersten Aufruf eines Laufs prüft `ipa`, ob `doctor.json` alle Pflichtoptionen meldet. Sonst führt es `ipa doctor` ohne `--live` einmal aus. Scheitert das, endet der Lauf mit Exit-Code 6.
+Vor dem ersten Aufruf eines Laufs prüft `ipa`, ob `doctor.json` alle Pflichtoptionen meldet. Sonst führt es `ipa doctor` ohne `--live` einmal aus. Danach fragt es `claude auth status` frisch ab, ohne Modellaufruf. Der Lauf endet vor dem ersten Modellaufruf mit Exit-Code 6, wenn Pflichtoptionen fehlen, Claude Code nicht angemeldet ist, `claude auth status` nicht innerhalb von 20 s oder ohne auswertbares JSON antwortet (`claude_not_ready`) oder der Kostenschutz greift (`paid_usage_blocked`). Ein nicht angemeldetes Claude verbraucht so keinen Analyseversuch.
 
 **Abgelaufene Anmeldung:** `claude auth status` kann „angemeldet“ melden, obwohl die API die Anmeldung ablehnt. Eine Analyse endet dann erst nach den Wiederholungen von Claude Code (einige Minuten) mit `error_result` und HTTP 401; der Snapshot bleibt offen. Abhilfe: `claude auth login` ausführen oder `claude` einmal interaktiv starten, danach `ipa capture` erneut ausführen.
 
@@ -696,6 +712,46 @@ Vor dem ersten Aufruf eines Laufs prüft `ipa`, ob `doctor.json` alle Pflichtopt
 
 Die Claude-Vorabprüfung aus Paket 01 ist durch `ipa doctor --live` ersetzt. Ihre Ergebnisse und die der späteren Prüfungen stehen in `docs/implementation/spec.md` §18.
 
+### Kostenschutz
+
+`ipa` ruft Claude standardmässig nur über das Claude-Abo auf: angemeldet mit `claude auth login` oder mit `CLAUDE_CODE_OAUTH_TOKEN` aus `claude setup-token`. Wege, die pro Anfrage abgerechnet werden, sind gesperrt, bis sie in `config.json` ausdrücklich freigegeben sind:
+
+| Erkannt an | Abrechnung |
+| --- | --- |
+| `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_PROFILE` oder `ANTHROPIC_FEDERATION_RULE_ID` gesetzt | Anthropic-API, Console-Profil oder Gateway, pro Anfrage |
+| `CLAUDE_CODE_USE_BEDROCK`, `…_VERTEX`, `…_FOUNDRY`, `…_ANTHROPIC_AWS` oder `…_MANTLE` gesetzt | Amazon Bedrock, Google Vertex AI, Microsoft Foundry oder ein anderer Cloud-Anbieter |
+| in den Claude-Einstellungen: `apiKeyHelper`, eine der Variablen oben im Block `env`, `forceLoginMethod` `console` oder `gateway`, `forceLoginGatewayUrl` | wie oben |
+| `claude auth status` meldet eine andere Anmeldeart als `claude.ai` oder `oauth_token` (etwa `third_party`, `api_key`, `api_key_helper`) oder eine `apiKeySource` (etwa `/login managed key` nach einem Console-Login) | API-Schlüssel, Console-Login oder Anbieter |
+
+Geprüfte Claude-Einstellungen (Orte wie in Claude Code 2.1.114): die Benutzereinstellungen `settings.json` und der Cache der Server-Einstellungen `remote-settings.json` in `CLAUDE_CONFIG_DIR` oder `%USERPROFILE%.claude`, die verwalteten Einstellungen `C:Program FilesClaudeCodemanaged-settings.json` mit `managed-settings.d*.json` sowie unter Windows der Wert `Settings` in `HKLMSOFTWAREPoliciesClaudeCode` und `HKCUSOFTWAREPoliciesClaudeCode`. Projekteinstellungen spielen keine Rolle, weil `claude` in einem leeren Ordner läuft.
+
+- Eine Variable gilt als gesetzt, sobald sie einen nicht leeren Wert hat, auch `0` oder `false`. Gross- und Kleinschreibung des Namens spielen keine Rolle.
+- Vor jedem Modellaufruf prüft `ipa` die Umgebung, die `claude` erhalten würde, und die Claude-Einstellungen, ohne `claude` zu starten. Vor dem ersten Modellaufruf eines Laufs (Analyse, Journal) fragt es zusätzlich `claude auth status` frisch ab, ohne Modellaufruf; ein älteres Ergebnis in `doctor.json` zählt dafür nicht. `ipa doctor` prüft alles bei jedem Aufruf. Greift der Schutz, startet kein Modellaufruf, und in `ai-usage.jsonl` entsteht keine Zeile. `capture` und `journal` enden mit Exit-Code 6 und dem Fehlercode `paid_usage_blocked`; gesicherte Daten bleiben offen, `ipa journal --no-ai` bleibt möglich. `ipa doctor` meldet den Befund, überspringt `--live` und endet mit Exit-Code 7.
+- Meldungen nennen nur Namen von Variablen und Einstellungen, nie ihre Werte. Werte werden weder ausgegeben noch gespeichert.
+- Abhilfe: die Variable oder Einstellung entfernen (in PowerShell für die laufende Sitzung `Remove-Item Env:ANTHROPIC_API_KEY`, dauerhaft in den Umgebungsvariablen von Windows), nach einem Console-Login `claude auth logout` und `claude auth login --claudeai`, und das Abo verwenden.
+- Freigabe, nur wenn die Kosten bewusst getragen werden: `allowPaidUsage` unter `claude` in `config.json` auf `true` setzen. Standard ist `false`; eine ältere `config.json` ohne das Feld gilt ebenfalls als `false`.
+
+  ```json
+  "claude": {
+    "command": ["claude"],
+    "model": null,
+    "timeoutSeconds": 600,
+    "maxTurns": 5,
+    "maxAttemptsPerSnapshot": 3,
+    "maxAnalysesPerRun": 5,
+    "allowPaidUsage": true
+  }
+  ```
+
+Grenzen des Schutzes (keine Garantie):
+
+- **Kontoseitige Einstellungen sind lokal nicht prüfbar.** Ob im Claude- oder Anthropic-Konto zusätzliche kostenpflichtige Nutzung (etwa Usage Credits über das Abo-Kontingent hinaus) aktiviert ist, sieht `ipa` nicht. Das ist im Konto selbst zu prüfen.
+- Geprüft wird, was lokal sichtbar ist. Nicht gelesen werden macOS-Profile (`com.anthropic.claudecode`), Einstellungen, die eine einbettende Anwendung übergibt, und Server-Einstellungen, die noch nicht im Cache liegen. Diese deckt nur `claude auth status` ab, und dort ist `ANTHROPIC_AUTH_TOKEN` von einem Abo-Token nicht zu unterscheiden (beides `oauth_token`).
+- Ein aktives Anthropic-Profil ohne `ANTHROPIC_PROFILE` (Datei `active_config` unter `%APPDATA%Anthropic`) liest `ipa` nicht.
+- Die Werte von `authMethod` und `apiKeySource` stammen aus Claude Code 2.1.114. Eine unbekannte Anmeldeart sperrt vorsichtshalber; neue Quellen, die eine spätere Version als `claude.ai` meldet, erkennt `ipa` nicht.
+- `ipa` prüft die Benutzereinstellungen auch dann, wenn `--setting-sources project,local` sie für den Aufruf ausklammert. Das kann vorsichtshalber sperren.
+- Zwischen der Prüfung und dem Modellaufruf vergehen Sekunden bis Minuten; eine Änderung genau dazwischen bleibt unbemerkt.
+
 ## Entwicklung
 
 | Befehl | Zweck |
@@ -710,7 +766,7 @@ Zu den Tests:
 - `npm test` baut zuerst `dist/`, weil Integrationstests den echten CLI-Einstieg starten.
 - Jeder Test arbeitet mit temporären Git-Repositories und einer eigenen temporären Datenwurzel. Das globale Setup setzt `IPA_ASSISTANT_HOME`, `LOCALAPPDATA` und `XDG_DATA_HOME` auf ein Temp-Verzeichnis, blendet die Git-Konfiguration des Rechners aus und prüft am Ende, dass die echte Datenwurzel unverändert ist.
 - Die Tests prüfen die Unversehrtheit der Test-Repositories über einen Fingerprint.
-- Automatische Tests rufen Claude nie echt auf. Sie verwenden die Fake-CLI `test/helpers/fake-claude.mjs` über `claude.command`; im Modus `analysis` leitet sie eine gültige Analyse aus dem Eingabepaket ab, im Modus `journal` einen gültigen Journal-Entwurf aus der Journal-Eingabe. Das globale Setup nimmt `claude` zusätzlich aus dem PATH der Testprozesse und legt ihr Temp-Verzeichnis in den Test-Ordner.
+- Automatische Tests rufen Claude nie echt auf. Sie verwenden die Fake-CLI `test/helpers/fake-claude.mjs` über `claude.command`; im Modus `analysis` leitet sie eine gültige Analyse aus dem Eingabepaket ab, im Modus `journal` einen gültigen Journal-Entwurf aus der Journal-Eingabe. Das globale Setup nimmt `claude` zusätzlich aus dem PATH der Testprozesse und legt ihr Temp-Verzeichnis in den Test-Ordner. API-Schlüssel des Rechners erhält die Fake-CLI nicht, und `CLAUDE_CONFIG_DIR` zeigt auf einen leeren Test-Ordner; die Tests des Kostenschutzes setzen künstliche Werte. Verwaltete Claude-Einstellungen des Rechners (`C:Program FilesClaudeCode`, Registry) wirken auch in den Tests.
 - Die Journal-Tests setzen eine feste Uhr ein, damit Snapshots, Notizen und Läufe auf bestimmten Tagen liegen.
 - Die Live-Tests verbrauchen Claude-Kontingent und laufen nur auf ausdrücklichen Wunsch, in PowerShell mit `$env:IPA_LIVE_CLAUDE = '1'; npm run test:live`.
 
@@ -724,7 +780,7 @@ src/git/            Git-Aufrufe nur über die Leseliste, Parser für -z-Ausgaben
 src/filter/         Pfadfilter und Secret-Prüfung
 src/collector/      Aufnahme, Konsistenzprüfung, Manifest, atomare Ablage, Wiederanlauf
 src/notes/          Notizen: Regeln der Eingabe, Ablage und Lesen (hängt nur von src/core/ ab)
-src/claude/         Claude-Aufruf ohne Werkzeuge und ohne Shell, Auswertung, ipa doctor, KI-Nutzungsprotokoll
+src/claude/         Claude-Aufruf ohne Werkzeuge und ohne Shell, Kostenschutz, Auswertung, ipa doctor, KI-Nutzungsprotokoll
 src/analysis/       Status, Eingabepaket, Prüfung der Antwort, Work-Log, Warteschlange, Cursor, ipa skip
 src/journal/        Tageseingabe, Tageszuordnung, Zeitübersicht, Prüfung der Antwort, Markdown-Entwurf, ipa journal
 prompts/            Prompts der Analyse (analyze-work.md) und des Journals (journal.md)

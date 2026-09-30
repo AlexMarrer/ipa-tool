@@ -7,7 +7,7 @@ import { ensureClaudeReady, findCmdShim } from '../../src/claude/doctor.js';
 import { readDoctorRecord } from '../../src/claude/doctor-record.js';
 import { resolveContext } from '../../src/core/context.js';
 import { IpaError } from '../../src/core/errors.js';
-import { fakeClaudeEnv, mergedEnv, useFakeClaude } from '../helpers/claude.js';
+import { FAKE_API_KEY, FAKE_KEY_HELPER, fakeClaudeEnv, mergedEnv, useFakeClaude, writeClaudeSettings } from '../helpers/claude.js';
 import { createTempRepo } from '../helpers/git-repo.js';
 import { initRepo } from '../helpers/snapshots.js';
 import { createTempDataRoot, createTempDir, runCli } from '../helpers/workspace.js';
@@ -41,12 +41,12 @@ describe('ensureClaudeReady für die Pakete 06 und 07', () => {
     expect(await readDoctorRecord(p.workspace)).toMatchObject({ ok: true, live: null });
   });
 
-  it('startet nichts, wenn doctor.json alle Pflichtoptionen meldet', async () => {
+  it('startet nur claude auth status ohne Modellaufruf, wenn doctor.json alle Pflichtoptionen meldet', async () => {
     const p = await prepare();
     expect((await runCli(['doctor'], { dataDir: p.dataDir, repo: p.repo.root, env: (await fakeClaudeEnv('ok')).env })).exitCode).toBe(0);
     const fake = await fakeClaudeEnv('ok');
     await ensureClaudeReady(await p.context(), { env: mergedEnv(fake.env) });
-    expect(await fake.calls()).toEqual([]);
+    expect((await fake.calls()).map((call) => call.kind)).toEqual(['auth']);
   });
 
   it('endet mit Exit-Code 6, wenn Pflichtoptionen fehlen oder Claude nicht gefunden wird', async () => {
@@ -62,6 +62,108 @@ describe('ensureClaudeReady für die Pakete 06 und 07', () => {
       exitCode: 6,
       message: expect.stringContaining('nicht gefunden'),
     });
+  });
+
+  it('endet ohne Freigabe mit Exit-Code 6 und ohne Prozessstart bei API-Schlüssel oder Anbietervariable', async () => {
+    const p = await prepare();
+    expect((await runCli(['doctor'], { dataDir: p.dataDir, repo: p.repo.root, env: (await fakeClaudeEnv('ok')).env })).exitCode).toBe(0);
+    for (const extra of [{ ANTHROPIC_API_KEY: FAKE_API_KEY }, { CLAUDE_CODE_USE_VERTEX: '1' }]) {
+      const fake = await fakeClaudeEnv('ok', extra);
+      const error = await ensureClaudeReady(await p.context(), { env: mergedEnv(fake.env) }).catch((caught: unknown) => caught);
+      expect(error).toBeInstanceOf(IpaError);
+      expect(error).toMatchObject({ exitCode: 6, code: 'paid_usage_blocked' });
+      expect((error as Error).message).toContain(Object.keys(extra)[0]);
+      expect((error as Error).message).not.toContain(FAKE_API_KEY);
+      expect(await fake.calls()).toEqual([]);
+    }
+  });
+
+  it('sperrt eine Anmeldung über einen externen Anbieter auch ohne doctor.json, ausser mit allowPaidUsage: true', async () => {
+    const p = await prepare();
+    await rm(`${p.workspace}/doctor.json`);
+    const fake = await fakeClaudeEnv('ok', { FAKE_CLAUDE_AUTH_METHOD: 'third_party' });
+    await expect(ensureClaudeReady(await p.context(), { env: mergedEnv(fake.env) })).rejects.toMatchObject({
+      exitCode: 6,
+      code: 'paid_usage_blocked',
+      message: expect.stringContaining('Anmeldeart third_party'),
+    });
+    expect((await fake.calls()).some((call) => call.kind === 'model-call')).toBe(false);
+    expect(await readDoctorRecord(p.workspace)).toMatchObject({ ok: false, claude: { authMethod: 'third_party' } });
+
+    await useFakeClaude(p.workspace, { allowPaidUsage: true });
+    await ensureClaudeReady(await p.context(), { env: mergedEnv((await fakeClaudeEnv('ok', { FAKE_CLAUDE_AUTH_METHOD: 'third_party' })).env) });
+  });
+
+  it('prüft die Anmeldung vor jedem Lauf frisch, statt sich auf doctor.json zu verlassen', async () => {
+    const p = await prepare();
+    expect((await runCli(['doctor'], { dataDir: p.dataDir, repo: p.repo.root, env: (await fakeClaudeEnv('ok')).env })).exitCode).toBe(0);
+    expect(await readDoctorRecord(p.workspace)).toMatchObject({ ok: true, claude: { authMethod: 'claude.ai' } });
+
+    // After doctor, the login changed to a provider and to a Console key: both are found without a model call.
+    const cases: [Record<string, string>, string][] = [
+      [{ FAKE_CLAUDE_AUTH_METHOD: 'third_party' }, 'Anmeldeart third_party'],
+      [{ FAKE_CLAUDE_API_KEY_SOURCE: '/login managed key' }, 'API-Schlüsselquelle /login managed key'],
+      [{ FAKE_CLAUDE_AUTH_METHOD: 'api_key' }, 'Anmeldeart api_key'],
+    ];
+    for (const [extra, source] of cases) {
+      const fake = await fakeClaudeEnv('ok', extra);
+      await expect(ensureClaudeReady(await p.context(), { env: mergedEnv(fake.env) }), source).rejects.toMatchObject({
+        code: 'paid_usage_blocked',
+        message: expect.stringContaining(source),
+      });
+      expect((await fake.calls()).map((call) => call.kind), source).toEqual(['auth']);
+    }
+
+    // An outdated third_party in doctor.json does not block a login that is a subscription again.
+    await runCli(['doctor'], { dataDir: p.dataDir, repo: p.repo.root, env: (await fakeClaudeEnv('ok', { FAKE_CLAUDE_AUTH_METHOD: 'third_party' })).env });
+    expect(await readDoctorRecord(p.workspace)).toMatchObject({ claude: { authMethod: 'third_party' } });
+    await ensureClaudeReady(await p.context(), { env: mergedEnv((await fakeClaudeEnv('ok')).env) });
+  });
+
+  it('bricht ohne Modellaufruf ab, wenn Claude nicht mehr angemeldet ist oder keinen auswertbaren Anmeldestatus rechtzeitig liefert', async () => {
+    const p = await prepare();
+    expect((await runCli(['doctor'], { dataDir: p.dataDir, repo: p.repo.root, env: (await fakeClaudeEnv('ok')).env })).exitCode).toBe(0);
+    for (const [mode, reason] of [
+      ['logged-out', 'nicht angemeldet'],
+      ['auth-no-json', 'nicht angemeldet'],
+      ['auth-text', 'Anmeldestatus ist unklar'],
+      ['auth-hang', 'antwortete nicht innerhalb von 20 s'],
+    ] as const) {
+      const fake = await fakeClaudeEnv(mode);
+      await expect(ensureClaudeReady(await p.context(), { env: mergedEnv(fake.env) }), mode).rejects.toMatchObject({
+        exitCode: 6,
+        code: 'claude_not_ready',
+        message: expect.stringContaining(reason),
+      });
+      expect((await fake.calls()).map((call) => call.kind), mode).toEqual(['auth']);
+    }
+  });
+
+  it('prüft die Anmeldung auch nach einer Prüfung ohne doctor.json frisch', async () => {
+    const p = await prepare();
+    await rm(`${p.workspace}/doctor.json`);
+    const fake = await fakeClaudeEnv('logged-out');
+    await expect(ensureClaudeReady(await p.context(), { env: mergedEnv(fake.env) })).rejects.toMatchObject({ code: 'claude_not_ready' });
+    expect((await fake.calls()).some((call) => call.kind === 'model-call')).toBe(false);
+  });
+
+  it('sperrt apiKeyHelper und bezahlte Variablen aus den Claude-Einstellungen, ohne einen Prozess zu starten', async () => {
+    const p = await prepare();
+    expect((await runCli(['doctor'], { dataDir: p.dataDir, repo: p.repo.root, env: (await fakeClaudeEnv('ok')).env })).exitCode).toBe(0);
+    const settings: [Record<string, unknown>, string][] = [
+      [{ apiKeyHelper: FAKE_KEY_HELPER }, 'apiKeyHelper (Benutzereinstellungen)'],
+      [{ env: { ANTHROPIC_AUTH_TOKEN: FAKE_API_KEY } }, 'env.ANTHROPIC_AUTH_TOKEN (Benutzereinstellungen)'],
+      [{ env: { CLAUDE_CODE_USE_BEDROCK: '1' } }, 'env.CLAUDE_CODE_USE_BEDROCK (Benutzereinstellungen)'],
+    ];
+    for (const [content, source] of settings) {
+      const fake = await fakeClaudeEnv('ok');
+      await writeClaudeSettings(fake.configDir, content);
+      const error = await ensureClaudeReady(await p.context(), { env: mergedEnv(fake.env) }).catch((caught: unknown) => caught);
+      expect(error, source).toMatchObject({ exitCode: 6, code: 'paid_usage_blocked', message: expect.stringContaining(source) });
+      expect((error as Error).message).not.toContain(FAKE_KEY_HELPER);
+      expect((error as Error).message).not.toContain(FAKE_API_KEY);
+      expect(await fake.calls(), source).toEqual([]);
+    }
   });
 
   it('prüft erneut, wenn ein neu konfiguriertes Modell --model verlangt', async () => {
@@ -103,6 +205,16 @@ describe('Claude-Prüfung nach ipa init (AK-05-07)', () => {
     }
     expect(thrown.out.stderr).toContain(CLAUDE_CHECK_WARNING);
     expect(thrown.out.stderr).toContain('Der Arbeitsbereich ist vollständig angelegt');
+  });
+
+  it('warnt bei nicht freigegebener kostenpflichtiger Nutzung, ohne den Schlüssel auszugeben', async () => {
+    const p = await prepare();
+    const fake = await fakeClaudeEnv('ok', { ANTHROPIC_API_KEY: FAKE_API_KEY });
+    const { io, out } = memoryIo(mergedEnv(fake.env));
+    await checkClaudeAfterInit(await p.context(), io);
+    expect(out.stderr).toContain(`${CLAUDE_CHECK_WARNING} kostenpflichtige Nutzung nicht freigegeben (ANTHROPIC_API_KEY).`);
+    expect(out.stdout + out.stderr).not.toContain(FAKE_API_KEY);
+    expect((await fake.calls()).some((call) => call.kind === 'model-call')).toBe(false);
   });
 });
 

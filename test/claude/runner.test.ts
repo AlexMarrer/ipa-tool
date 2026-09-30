@@ -15,7 +15,17 @@ import { IpaError } from '../../src/core/errors.js';
 import { readJsonl } from '../../src/core/jsonl.js';
 import { isProcessAlive } from '../../src/core/lock.js';
 import { isSameOrInside } from '../../src/core/paths.js';
-import { type FakeCall, fakeClaudeEnv, mergedEnv, SESSION_ENV, useFakeClaude } from '../helpers/claude.js';
+import {
+  FAKE_API_KEY,
+  FAKE_AUTH_TOKEN,
+  FAKE_KEY_HELPER,
+  type FakeCall,
+  fakeClaudeEnv,
+  mergedEnv,
+  SESSION_ENV,
+  useFakeClaude,
+  writeClaudeSettings,
+} from '../helpers/claude.js';
 import { createTempRepo, type TempRepo } from '../helpers/git-repo.js';
 import { expectRepoUnchanged, fingerprintRepo } from '../helpers/repo-fingerprint.js';
 import { initRepo } from '../helpers/snapshots.js';
@@ -331,6 +341,65 @@ describe('ClaudeRunner mit Fake-CLI: Ergebnisse (AK-05-02, AK-05-03, AK-05-04)',
     expect(records[2]).toMatchObject({ runId: journal.ctx.runId, purpose: 'journal', subjectId: '2026-10-14', promptVersion: 'journal@1' });
     const text = await readFile(aiUsagePath(p.workspace), 'utf8');
     for (const marker of [INPUT_MARKER, ANSWER_MARKER, 'Anführungszeichen', 'Antworte nur']) expect(text).not.toContain(marker);
+  });
+});
+
+describe('ClaudeRunner: Kostenschutz (spec.md §13.1)', () => {
+  const PAID: Record<string, string> = {
+    ANTHROPIC_API_KEY: FAKE_API_KEY,
+    ANTHROPIC_AUTH_TOKEN: FAKE_AUTH_TOKEN,
+    CLAUDE_CODE_USE_BEDROCK: '1',
+    CLAUDE_CODE_USE_VERTEX: '1',
+    CLAUDE_CODE_USE_FOUNDRY: '1',
+  };
+
+  it('startet ohne Freigabe keinen Prozess, wenn ein API-Schlüssel oder ein externer Anbieter gesetzt ist', async () => {
+    const p = await prepare();
+    for (const [name, value] of Object.entries(PAID)) {
+      const fake = await fakeClaudeEnv('ok', { [name]: value });
+      const ctx = await resolveContext({ repo: p.repo.root, dataDir: p.dataDir, requireInit: true });
+      const error = await createClaudeRunner({ env: mergedEnv(fake.env) })
+        .run(ctx, request(p.promptFile))
+        .catch((caught: unknown) => caught);
+      expect(error, name).toBeInstanceOf(IpaError);
+      expect(error, name).toMatchObject({ code: 'paid_usage_blocked', exitCode: 6 });
+      expect((error as Error).message, name).toContain(name);
+      expect((error as Error).message, name).not.toContain(FAKE_API_KEY);
+      expect((error as Error).message, name).not.toContain(FAKE_AUTH_TOKEN);
+      expect(await fake.calls(), name).toEqual([]);
+    }
+    expect(await aiUsage(p.workspace)).toEqual([]);
+  });
+
+  it('startet ohne Freigabe keinen Prozess, wenn die Claude-Einstellungen apiKeyHelper oder einen Anbieter setzen', async () => {
+    const p = await prepare();
+    for (const settings of [{ apiKeyHelper: FAKE_KEY_HELPER }, { env: { CLAUDE_CODE_USE_MANTLE: '1' } }]) {
+      const fake = await fakeClaudeEnv('ok');
+      await writeClaudeSettings(fake.configDir, settings);
+      const ctx = await resolveContext({ repo: p.repo.root, dataDir: p.dataDir, requireInit: true });
+      const error = await createClaudeRunner({ env: mergedEnv(fake.env) })
+        .run(ctx, request(p.promptFile))
+        .catch((caught: unknown) => caught);
+      expect(error).toMatchObject({ code: 'paid_usage_blocked', exitCode: 6 });
+      expect((error as Error).message).not.toContain(FAKE_KEY_HELPER);
+      expect(await fake.calls()).toEqual([]);
+    }
+    expect(await aiUsage(p.workspace)).toEqual([]);
+  });
+
+  it('ruft Claude mit der Abo-Anmeldung auf, auch mit CLAUDE_CODE_OAUTH_TOKEN', async () => {
+    const p = await prepare();
+    const { result, modelCall } = await runOnce(p, 'ok', { CLAUDE_CODE_OAUTH_TOKEN: 'abo-token' });
+    expect(result.ok).toBe(true);
+    expect(modelCall?.env).toContain('CLAUDE_CODE_OAUTH_TOKEN');
+  });
+
+  it('ruft Claude mit allowPaidUsage: true auch mit API-Schlüssel und Anbieter auf', async () => {
+    const p = await prepare({ claude: { allowPaidUsage: true } });
+    const { result, modelCall } = await runOnce(p, 'ok', { ANTHROPIC_API_KEY: FAKE_API_KEY, CLAUDE_CODE_USE_BEDROCK: '1' });
+    expect(result.ok).toBe(true);
+    expect(modelCall?.env).toContain('CLAUDE_CODE_USE_BEDROCK');
+    expect(await aiUsage(p.workspace)).toHaveLength(1);
   });
 });
 

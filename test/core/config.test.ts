@@ -40,6 +40,7 @@ const SPEC_DEFAULTS = {
     maxTurns: 5,
     maxAttemptsPerSnapshot: 3,
     maxAnalysesPerRun: 5,
+    allowPaidUsage: false,
   },
   schedule: {
     workdays: ['mon', 'tue', 'wed', 'thu', 'fri'],
@@ -76,5 +77,18 @@ describe('Konfiguration (spec.md §7)', () => {
     expect(error).toBeInstanceOf(IpaError);
     expect(error).toMatchObject({ code: 'config_invalid', exitCode: 2 });
     expect((error as IpaError).message).toContain('/timezone');
+  });
+
+  it('lädt eine ältere Konfiguration ohne claude.allowPaidUsage und verlangt sonst einen Boolean', async () => {
+    const dir = await createTempDir('config');
+    const config = createDefaultConfig({ repositoryId: 'x-111111', repoPath: 'C:/x', timezone: 'Europe/Zurich' });
+    const { allowPaidUsage: _default, ...legacyClaude } = config.claude;
+    await writeFile(`${dir}/config.json`, JSON.stringify({ ...config, claude: legacyClaude }));
+    expect((await loadConfig(dir)).claude.allowPaidUsage).toBeUndefined();
+
+    await writeFile(`${dir}/config.json`, JSON.stringify({ ...config, claude: { ...config.claude, allowPaidUsage: 'ja' } }));
+    const error = await loadConfig(dir).catch((e: unknown) => e);
+    expect(error).toMatchObject({ code: 'schema_invalid', exitCode: 2 });
+    expect((error as IpaError).message).toContain('/claude/allowPaidUsage');
   });
 });

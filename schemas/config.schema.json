@@ -117,7 +117,8 @@
         "timeoutSeconds": { "type": "integer", "minimum": 1 },
         "maxTurns": { "type": "integer", "minimum": 1 },
         "maxAttemptsPerSnapshot": { "type": "integer", "minimum": 1 },
-        "maxAnalysesPerRun": { "type": "integer", "minimum": 1 }
+        "maxAnalysesPerRun": { "type": "integer", "minimum": 1 },
+        "allowPaidUsage": { "type": "boolean" }
       }
     },
     "schedule": {

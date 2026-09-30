@@ -91,7 +91,15 @@ Nicht im Umfang:
 
 - Pakete 06 und 07 rufen `run` nur auf, wenn `doctor.json` existiert und alle Pflichtoptionen als unterstützt meldet.
 - Andernfalls führen sie die Prüfung ohne `--live` automatisch einmal aus. Scheitert sie, endet der Lauf mit Exit-Code 6.
+- In jedem Fall folgt ein frisches `claude auth status` ohne Modellaufruf (Nachtrag vom 30.09.2026). Meldet es `loggedIn: false`, liefert es kein auswertbares JSON (`loggedIn: null`) oder antwortet es nicht innerhalb von 20 s, endet der Lauf mit `claude_not_ready` und Exit-Code 6, bevor ein Versuch entsteht.
 - Die Hilfsfunktion `ensureClaudeReady(ctx)` gehört zu diesem Paket.
+
+**Kostenschutz (Nachtrag vom 30.09.2026, D-25, spec.md §13.1)**
+
+- Standard ist die Abo-Anmeldung. `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `CLAUDE_CODE_USE_BEDROCK`, `CLAUDE_CODE_USE_VERTEX`, `CLAUDE_CODE_USE_FOUNDRY` (nicht leer) und die Anmeldeart `third_party` gelten als kostenpflichtig.
+- Nur `claude.allowPaidUsage: true` erlaubt sie. Standard und fehlendes Feld bedeuten `false`.
+- `callClaude` prüft vor jedem Modellaufruf die Umgebung für `claude`, `ensureClaudeReady` zusätzlich die Anmeldeart aus `doctor.json`. Greift der Schutz: kein Prozessstart, keine Zeile in `ai-usage.jsonl`, `IpaError` `paid_usage_blocked` mit Exit-Code 6 und deutscher Meldung ohne Werte.
+- `ipa doctor` zeigt die Zeilen „API-Schlüssel“, „Externer Anbieter“ und „Kostenpflichtige Nutzung“ neben der Anmeldeart. Greift der Schutz, ist `ok` `false` (Exit-Code 7), und `--live` entfällt.
 
 ## 5. Betroffene Komponenten und gemeinsame Schnittstellen
 
@@ -104,6 +112,7 @@ Nicht im Umfang:
   - `ClaudeRequest`, `ClaudeResult`, `ClaudeRunner`, `probeClaude` (spec.md §10)
   - Fehlerklassen (§9.9, §13.3)
   - `doctor.json` (§9.13), `ai-usage.jsonl` (§9.12)
+  - Kostenschutz: `src/claude/billing.ts`, `claude.allowPaidUsage` in `config.json` (spec.md §7, §13.1)
 
 ## 6. Fehler- und Randfälle
 
@@ -131,11 +140,12 @@ Nicht im Umfang:
 | AK-05-09 | **Manuell (live, nach Freigabe):** `ipa doctor --live` mit der installierten Claude-Version meldet leere Listen für `tools` und `mcp_servers` und ein gültiges `structured_output`. Version, Datum und Ergebnis stehen in der Checkliste. Die Annahmen A-01 bis A-05 und A-08 sind in spec.md §18 als bestätigt oder widerlegt eingetragen, zusätzlich zum Ergebnis der Vorabprüfung aus Paket 01. |
 | AK-05-10 | `ipa status --json` enthält `claude`, und `ipa --help` listet `doctor`. `scripts/claude-probe.mjs` und `probe:claude` sind entfernt, und das README verweist auf `ipa doctor --live`. |
 | AK-05-11 | `--setting-sources project,local` wird nur übergeben, wenn `doctor.json` `settingSourcesAuthOk: true` meldet. Der Test prüft beide Fälle mit der Fake-CLI. |
+| AK-05-12 | Kostenschutz (Nachtrag, D-25): Mit einer der fünf Variablen oder der Anmeldeart `third_party` und ohne `claude.allowPaidUsage: true` startet weder `ClaudeRunner.run` noch `doctor --live` noch `capture` noch `journal` einen Modellaufruf; `capture` und `journal` enden mit Exit-Code 6 (`paid_usage_blocked`), `doctor` mit 7. Werte der Variablen erscheinen weder in Ausgaben noch in Dateien. Die Abo-Anmeldung funktioniert unverändert, und mit `allowPaidUsage: true` sind die Aufrufe erlaubt. `doctor` zeigt Anmeldeart, API-Schlüssel, externen Anbieter und Freigabe. |
 
 ## 8. Notwendige Tests und Validierung
 
-- Unit-Tests: Argumentbildung, Umschlagauswertung mit festen JSON-Beispielen (Erfolg und jede Fehlervariante), Schema-Hilfsfunktion, Filter für die Auth-Felder
-- Integrationstests mit `fake-claude.mjs` über `claude.command = [process.execPath, <pfad>]` für AK-05-01 bis AK-05-08, AK-05-10 und AK-05-11
+- Unit-Tests: Argumentbildung, Umschlagauswertung mit festen JSON-Beispielen (Erfolg und jede Fehlervariante), Schema-Hilfsfunktion, Filter für die Auth-Felder, Kostenschutz
+- Integrationstests mit `fake-claude.mjs` über `claude.command = [process.execPath, <pfad>]` für AK-05-01 bis AK-05-08 und AK-05-10 bis AK-05-12
 - Live-Test (`npm run test:live`): AK-05-09, nur nach ausdrücklicher Freigabe durch den Benutzer
 
 ## 9. Offene Annahmen

@@ -106,7 +106,7 @@ describe('Flag-Prüfung ohne Modellaufruf (spec.md §13.2, AK-05-05)', () => {
 });
 
 describe('Filter für claude auth status (AK-05-06)', () => {
-  it('übernimmt nur loggedIn und authMethod', () => {
+  it('übernimmt nur loggedIn, authMethod und apiKeySource', () => {
     const raw = JSON.stringify({
       loggedIn: true,
       authMethod: 'claude.ai',
@@ -115,16 +115,19 @@ describe('Filter für claude auth status (AK-05-06)', () => {
       orgId: '5f3c0000-1111',
       accessToken: 'sk-ant-oat01-FAKE',
     });
-    expect(filterAuthStatus(raw, 0)).toEqual({ loggedIn: true, authMethod: 'claude.ai' });
+    expect(filterAuthStatus(raw, 0)).toEqual({ loggedIn: true, authMethod: 'claude.ai', apiKeySource: null });
+    const withKey = JSON.stringify({ loggedIn: true, authMethod: 'claude.ai', apiKeySource: '/login managed key', subscriptionType: null });
+    expect(filterAuthStatus(withKey, 0)).toEqual({ loggedIn: true, authMethod: 'claude.ai', apiKeySource: '/login managed key' });
   });
 
   it('ersetzt eine auffällige Anmeldeart und wertet Exit-Code 1 ohne JSON als nicht angemeldet', () => {
-    expect(filterAuthStatus(JSON.stringify({ loggedIn: false, authMethod: 'person@example.com' }), 1)).toEqual({
+    expect(filterAuthStatus(JSON.stringify({ loggedIn: false, authMethod: 'person@example.com', apiKeySource: 'sk-ant-api03-GEHEIM' }), 1)).toEqual({
       loggedIn: false,
       authMethod: 'unbekannt',
+      apiKeySource: 'unbekannt',
     });
-    expect(filterAuthStatus('Not logged in', 1)).toEqual({ loggedIn: false, authMethod: null });
-    expect(filterAuthStatus('kein json', 0)).toEqual({ loggedIn: null, authMethod: null });
-    expect(filterAuthStatus('[1,2]', 0)).toEqual({ loggedIn: null, authMethod: null });
+    expect(filterAuthStatus('Not logged in', 1)).toEqual({ loggedIn: false, authMethod: null, apiKeySource: null });
+    expect(filterAuthStatus('kein json', 0)).toEqual({ loggedIn: null, authMethod: null, apiKeySource: null });
+    expect(filterAuthStatus('[1,2]', 0)).toEqual({ loggedIn: null, authMethod: null, apiKeySource: null });
   });
 });

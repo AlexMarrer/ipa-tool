@@ -7,6 +7,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import type { WorkspaceContext } from '../core/context.js';
 import { formatZoned } from '../core/time.js';
 import { buildClaudeArgs, PRINT_PROMPTS } from './args.js';
+import { assertPaidUsageAllowed } from './billing.js';
 import { readDoctorRecord, usesSafeMode, usesSettingSources } from './doctor-record.js';
 import { claudeProcessEnv } from './env.js';
 import { type Evaluation, evaluateEnvelope, evaluateStream, parseStreamJson, type StreamSummary } from './envelope.js';
@@ -61,10 +62,13 @@ function assertSubject(purpose: ClaudePurpose, subjectId: string | null): void {
 
 /**
  * Creates the working directory, starts Claude, evaluates the answer (spec.md §13.3), removes the
- * directory again and writes exactly one line to `ai-usage.jsonl`.
+ * directory again and writes exactly one line to `ai-usage.jsonl`. Unallowed paid usage stops before
+ * anything starts (spec.md §13.1).
  */
 export async function callClaude(ctx: WorkspaceContext, spec: CallSpec): Promise<CallDetails> {
   assertSubject(spec.purpose, spec.subjectId);
+  const env = claudeProcessEnv(spec.env);
+  await assertPaidUsageAllowed(env, ctx.config);
   const { command, maxTurns, model } = ctx.config.claude;
   const workdir = await createClaudeWorkdir(ctx, spec.promptText);
   const startedAt = ctx.clock.now();
@@ -85,7 +89,7 @@ export async function callClaude(ctx: WorkspaceContext, spec: CallSpec): Promise
       command,
       args,
       cwd: workdir.dir,
-      env: claudeProcessEnv(spec.env),
+      env,
       input: spec.stdin,
       timeoutMs: spec.timeoutSeconds * 1000,
       ...(spec.onStdoutLine === undefined ? {} : { onStdoutLine: spec.onStdoutLine }),
