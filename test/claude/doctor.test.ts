@@ -120,6 +120,32 @@ describe('ensureClaudeReady für die Pakete 06 und 07', () => {
     await ensureClaudeReady(await p.context(), { env: mergedEnv((await fakeClaudeEnv('ok')).env) });
   });
 
+  it('bricht ohne Modellaufruf ab, wenn Claude nicht mehr angemeldet ist oder den Anmeldestatus nicht rechtzeitig liefert', async () => {
+    const p = await prepare();
+    expect((await runCli(['doctor'], { dataDir: p.dataDir, repo: p.repo.root, env: (await fakeClaudeEnv('ok')).env })).exitCode).toBe(0);
+    for (const [mode, reason] of [
+      ['logged-out', 'nicht angemeldet'],
+      ['auth-no-json', 'nicht angemeldet'],
+      ['auth-hang', 'antwortete nicht innerhalb von 20 s'],
+    ] as const) {
+      const fake = await fakeClaudeEnv(mode);
+      await expect(ensureClaudeReady(await p.context(), { env: mergedEnv(fake.env) }), mode).rejects.toMatchObject({
+        exitCode: 6,
+        code: 'claude_not_ready',
+        message: expect.stringContaining(reason),
+      });
+      expect((await fake.calls()).map((call) => call.kind), mode).toEqual(['auth']);
+    }
+  });
+
+  it('prüft die Anmeldung auch nach einer Prüfung ohne doctor.json frisch', async () => {
+    const p = await prepare();
+    await rm(`${p.workspace}/doctor.json`);
+    const fake = await fakeClaudeEnv('logged-out');
+    await expect(ensureClaudeReady(await p.context(), { env: mergedEnv(fake.env) })).rejects.toMatchObject({ code: 'claude_not_ready' });
+    expect((await fake.calls()).some((call) => call.kind === 'model-call')).toBe(false);
+  });
+
   it('sperrt apiKeyHelper und bezahlte Variablen aus den Claude-Einstellungen, ohne einen Prozess zu starten', async () => {
     const p = await prepare();
     expect((await runCli(['doctor'], { dataDir: p.dataDir, repo: p.repo.root, env: (await fakeClaudeEnv('ok')).env })).exitCode).toBe(0);
