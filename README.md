@@ -590,6 +590,8 @@ Claude Code analysiert neue Snapshots (siehe [Analyse und Work-Logs](#analyse-un
 
 Vor dem ersten Aufruf eines Laufs prüft `ipa`, ob `doctor.json` alle Pflichtoptionen meldet. Sonst führt es `ipa doctor` ohne `--live` einmal aus. Scheitert das, endet der Lauf mit Exit-Code 6.
 
+**Abgelaufene Anmeldung:** `claude auth status` kann „angemeldet“ melden, obwohl die API die Anmeldung ablehnt. Eine Analyse endet dann erst nach den Wiederholungen von Claude Code (einige Minuten) mit `error_result` und HTTP 401; der Snapshot bleibt offen. Abhilfe: `claude auth login` ausführen oder `claude` einmal interaktiv starten, danach `ipa capture` erneut ausführen.
+
 **Schutzwirkung:** Die Optionen schränken die Möglichkeiten des Modells ein. Sie sind **keine Betriebssystem-Sandbox und kein garantierter Schreibschutz**. Der Schutz des Projekts beruht auf diesen Massnahmen zusammen:
 
 1. keine eingebauten und keine MCP-Werkzeuge, zusätzlich `--permission-mode dontAsk`
