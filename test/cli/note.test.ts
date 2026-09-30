@@ -267,12 +267,15 @@ describe('ipa note (Paket 04)', () => {
     expect(await noteFiles(workspace)).toEqual([]);
   });
 
-  it('prüft --ref nur syntaktisch und speichert die Referenz (AK-04-07)', async () => {
+  it('prüft --ref syntaktisch und speichert die Referenz; seit Paket 06 muss der Beleg existieren (AK-04-07)', async () => {
     const { repo, dataDir, workspace } = await initialized();
+    // A new file gives S000002 with an unstaged diff (E001) and a state delta (E002).
+    await repo.write('neu.txt', 'neu\n');
+    expect((await runCli(['capture', '--no-analysis'], { dataDir, repo: repo.root })).exitCode).toBe(0);
     const day = zurichDay(-3);
-    const ok = await runCli(['note', '--day', day, '--ref', 'S000001:E001', '--ref', 'S000042:E0007', 'Mit Verweis'], { dataDir, repo: repo.root });
+    const ok = await runCli(['note', '--day', day, '--ref', 'S000002:E002', '--ref', 'S000002:E001', 'Mit Verweis'], { dataDir, repo: repo.root });
     expect(ok.exitCode, ok.stderr).toBe(0);
-    expect((await notesOf(workspace, day))[0]?.refs).toEqual(['S000001:E001', 'S000042:E0007']);
+    expect((await notesOf(workspace, day))[0]?.refs).toEqual(['S000002:E002', 'S000002:E001']);
     const bad = await runCli(['note', '--day', day, '--ref', 'S1:E1', 'Kaputter Verweis'], { dataDir, repo: repo.root });
     expect(bad.exitCode).toBe(2);
     expect(bad.stderr).toContain('S000001:E001');
@@ -304,7 +307,7 @@ describe('ipa note (Paket 04)', () => {
 
     for (const args of [
       ['note', 'Nur Text'],
-      ['note', '--day', day, '--ref', 'S000001:E001', 'Verweis auf einen noch nicht vorhandenen Beleg'],
+      ['note', '--day', day, '--type', 'insight', 'Erkenntnis ohne Verweis'],
       ['note', '--day', day, '--type', 'activity', '--start', '09:10', '--end', '09:55', '--measured', '--delay', '10', 'Besprechung'],
       ['note', '--day', day, '--type', 'decision', '--reason', 'Grund', '--alternative', 'Alternative', 'Entscheidung'],
       ['note', '--day', day, '--type', 'problem', '--cause', 'Ursache', '--solution', 'Lösung', 'Problem'],
@@ -312,6 +315,9 @@ describe('ipa note (Paket 04)', () => {
       const result = await runCli(args, { dataDir, repo: repo.root });
       expect(result.exitCode, `${args.join(' ')}: ${result.stderr}`).toBe(0);
     }
+    // Since package 06 a reference must name stored evidence (D-23).
+    const reference = await runCli(['note', '--day', day, '--ref', 'S000001:E001', 'Verweis auf einen noch nicht vorhandenen Beleg'], { dataDir, repo: repo.root });
+    expect(reference.exitCode).toBe(2);
     const interactive = await runInteractive(['--data-dir', dataDir, '--repo', repo.root, 'note', '--day', day], ['insight', 'Erkenntnis', '']);
     expect(interactive.exitCode, interactive.stderr).toBe(0);
 
@@ -331,7 +337,7 @@ describe('ipa note (Paket 04)', () => {
     const holder = await startLockHolder(workspace);
     try {
       const lock = await readFile(`${workspace}/lock`, 'utf8');
-      const capture = await runCli(['capture'], { dataDir, repo: repo.root });
+      const capture = await runCli(['capture', '--no-analysis'], { dataDir, repo: repo.root });
       expect(capture.exitCode).toBe(3);
       const note = await runCli(['note', '--type', 'activity', 'Während ein capture läuft'], { dataDir, repo: repo.root });
       expect(note.exitCode, note.stderr).toBe(0);
@@ -394,8 +400,9 @@ describe('ipa note und ipa status (AK-04-10, AK-04-11)', () => {
     const status = await runCli(['status', '--json'], { dataDir, repo: repo.root });
     expect(status.exitCode).toBe(0);
     const report = JSON.parse(status.stdout) as Record<string, unknown>;
-    // Package 05 appends `claude` after `notesToday` (spec.md §6.6).
-    expect(Object.keys(report).slice(-2)).toEqual(['notesToday', 'claude']);
+    // Later packages append their fields after `notesToday` (spec.md §6.6).
+    const keys = Object.keys(report);
+    expect(keys.slice(keys.indexOf('notesToday'))).toEqual(['notesToday', 'claude', 'analyses', 'withheld']);
     // Only a run across midnight in Zurich would see a different day.
     if (zurichDay() === today) expect(report['notesToday']).toBe(2);
     const human = await runCli(['status'], { dataDir, repo: repo.root });

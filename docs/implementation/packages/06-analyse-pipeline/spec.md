@@ -208,3 +208,16 @@ Weitere Regeln:
 ## 9. Offene Annahmen
 
 - Die Standardwerte für `maxTurns` (5) und `maxAnalysesPerRun` (5) sind geschätzt. Der Live-Test prüft, ob fünf Turns für die strukturierte Ausgabe genügen. Abweichungen werden in spec.md §18 eingetragen.
+
+Folgen aus der Umsetzung (29.09.2026, Einzelheiten in spec.md §18):
+
+- Die Live-Analyse (§8) ist nach Freigabe im Linux-Container mit Claude Code 2.1.285 bestanden: ein Modellaufruf, Erfolg im ersten Versuch; fünf Turns (`claude.maxTurns`) genügen. `claude.maxAnalysesPerRun` (5) bleibt ein Schätzwert, der sich erst im Betrieb zeigt. Auf dem Entwicklungsrechner (Windows) ist sie am 30.09.2026 nach einer neuen Anmeldung bestanden; der erste Lauf scheiterte mit HTTP 401, obwohl `claude auth status` angemeldet meldete, und blieb korrekt offen (spec.md §18). Der Test liegt in `test/live/analysis.live.ts`.
+- Bei `capture` hat ein Halt (4) Vorrang vor einer nicht abgeschlossenen Analyse (6); spec.md §6.4 nennt die Ausnahme. Die Warteschlange läuft nach jedem Ergebnis der Aufnahme, auch nach einer instabilen (Exit-Code 5, oder 6, wenn eine Analyse offen bleibt).
+- `outcome.json` ist der letzte Schritt eines Versuchs, bei Erfolg nach `complete.json`. Ein Abbruch vorher ergibt `interrupted`, eine gescheiterte Ablage ebenfalls, mit dem Fehlercode in `message`.
+- `<n>` in `retry-<n>.json` ist die Nummer des letzten Versuchs bei der Freigabe. `--retry` ist nur für `exhausted` erlaubt.
+- Belege werden vor der Übermittlung erneut auf Secrets geprüft. Kontextdateien umgehen wie Testberichte den Pfadfilter; ihre IDs folgen der Position in `context.files`.
+- `ipa status` erhält neben `analyses` das Feld `withheld: { units, notes }` für zurückgehaltene Einheiten und Notizen (offener Punkt aus Paket 02).
+- `renderWorkLog` erhält optional die geprüften Commit-Nachrichten, `buildAnalysisInput` optional `onWarning`, `processQueue` optional `env`.
+- Tests der Pakete 02 bis 04, die nur die Aufnahme prüfen, rufen `capture --no-analysis` auf; die Tests von AK-04-07 und AK-04-08 berücksichtigen die Existenzprüfung von `--ref`.
+- Werden zwei Snapshots in derselben Sekunde aufgenommen, ist der Beobachtungszeitraum `(von, bis]` leer, weil Zeitstempel ganze Sekunden haben. Eine Notiz aus dieser Sekunde gehört dann zum früheren Snapshot. Im Betrieb liegen Aufnahmen Minuten auseinander; der Test von AK-06-11 wartet deshalb eine Sekunde.
+- Für Paket 07: Der Journal-Eingang kann `analysis.json` mit `evidenceIndex` (Pfade relativ zum Arbeitsbereich) und die Status aus `analysisStatus` lesen; übersprungene Snapshots haben `skip.json` mit Grund.

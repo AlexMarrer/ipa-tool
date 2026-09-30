@@ -16,6 +16,12 @@ export const SCHEMA_IDS = [
   'ai-usage',
   'doctor',
   'attempt-outcome',
+  'analysis-input',
+  'analysis-output',
+  'analysis-record',
+  'complete',
+  'skip',
+  'retry',
 ] as const;
 export type SchemaId = (typeof SCHEMA_IDS)[number];
 

@@ -1,0 +1,251 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "IPA Assistant – Analyse-Datensatz analyses/<snapshotId>/analysis.json (spec.md §9.8)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "snapshotId",
+    "previousSnapshotId",
+    "observedPeriod",
+    "repository",
+    "commits",
+    "evidenceIndex",
+    "statusChanges",
+    "analysis",
+    "provenance"
+  ],
+  "properties": {
+    "schemaVersion": { "type": "integer", "const": 1 },
+    "snapshotId": { "$ref": "#/definitions/snapshotId" },
+    "previousSnapshotId": { "type": ["string", "null"], "pattern": "^S[0-9]{6}$" },
+    "observedPeriod": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from", "to"],
+      "properties": {
+        "from": { "$ref": "#/definitions/timestampOrNull" },
+        "to": { "$ref": "#/definitions/timestamp" }
+      }
+    },
+    "repository": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["branch", "head"],
+      "properties": {
+        "branch": { "type": ["string", "null"], "minLength": 1 },
+        "head": { "$ref": "#/definitions/objectIdOrNull" }
+      }
+    },
+    "commits": { "type": "array", "items": { "$ref": "#/definitions/objectId" } },
+    "evidenceIndex": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "kind", "path", "snapshotFile"],
+        "properties": {
+          "id": { "$ref": "#/definitions/localId" },
+          "kind": {
+            "type": "string",
+            "enum": ["commit_message", "commit_diff", "staged_diff", "unstaged_diff", "state_delta", "test_report", "note", "context"]
+          },
+          "path": { "type": ["string", "null"], "minLength": 1 },
+          "snapshotFile": {
+            "description": "Relativ zum Arbeitsbereich, zum Beispiel snapshots/S000002/content/E001.patch; null ohne gespeicherte Datei.",
+            "type": ["string", "null"],
+            "pattern": "^snapshots/S[0-9]{6}/content/[^\\\\]+$"
+          }
+        }
+      }
+    },
+    "statusChanges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "blob", "from", "to", "commit", "attribution", "previousEvidence"],
+        "properties": {
+          "path": { "type": "string", "minLength": 1 },
+          "blob": { "$ref": "#/definitions/objectIdOrNull" },
+          "from": { "type": "string", "enum": ["clean", "staged", "unstaged", "mixed", "untracked"] },
+          "to": { "type": "string", "enum": ["clean", "staged", "unstaged", "mixed", "untracked", "committed"] },
+          "commit": { "$ref": "#/definitions/objectIdOrNull" },
+          "attribution": { "type": "string", "enum": ["documented", "baseline", "unclear"] },
+          "previousEvidence": { "type": "array", "items": { "type": "string", "pattern": "^S[0-9]{6}:E[0-9]{3,}$" } }
+        }
+      }
+    },
+    "analysis": {
+      "oneOf": [{ "type": "null" }, { "$ref": "#/definitions/analysis" }]
+    },
+    "provenance": {
+      "oneOf": [{ "$ref": "#/definitions/aiProvenance" }, { "$ref": "#/definitions/deterministicProvenance" }]
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "analysis": { "type": "null" } } },
+      "then": { "properties": { "provenance": { "$ref": "#/definitions/deterministicProvenance" } } },
+      "else": { "properties": { "provenance": { "$ref": "#/definitions/aiProvenance" } } }
+    }
+  ],
+  "definitions": {
+    "snapshotId": { "type": "string", "pattern": "^S[0-9]{6}$" },
+    "localId": { "type": "string", "pattern": "^(E[0-9]{3,}|N[0-9]{8}T[0-9]{6}Z-[0-9a-f]{4}|C[0-9]{2,})$" },
+    "objectId": { "type": "string", "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$" },
+    "objectIdOrNull": { "type": ["string", "null"], "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$" },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(Z|[+-][0-9]{2}:[0-9]{2})$"
+    },
+    "timestampOrNull": {
+      "type": ["string", "null"],
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(Z|[+-][0-9]{2}:[0-9]{2})$"
+    },
+    "text": { "type": "string", "minLength": 1 },
+    "textOrNull": { "type": ["string", "null"], "minLength": 1 },
+    "evidence": { "type": "array", "minItems": 1, "items": { "$ref": "#/definitions/localId" } },
+    "analysis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["summary", "implemented", "decisions", "problems", "tests", "contradictions", "unknowns"],
+      "properties": {
+        "summary": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["text", "evidence"],
+          "properties": { "text": { "$ref": "#/definitions/text" }, "evidence": { "$ref": "#/definitions/evidence" } }
+        },
+        "implemented": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["title", "description", "evidence"],
+            "properties": {
+              "title": { "$ref": "#/definitions/text" },
+              "description": { "$ref": "#/definitions/text" },
+              "evidence": { "$ref": "#/definitions/evidence" }
+            }
+          }
+        },
+        "decisions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["title", "description", "rationale", "alternatives", "evidence"],
+            "properties": {
+              "title": { "$ref": "#/definitions/text" },
+              "description": { "$ref": "#/definitions/text" },
+              "rationale": { "$ref": "#/definitions/textOrNull" },
+              "alternatives": { "type": "array", "items": { "$ref": "#/definitions/text" } },
+              "evidence": { "$ref": "#/definitions/evidence" }
+            }
+          }
+        },
+        "problems": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["title", "description", "cause", "solution", "evidence"],
+            "properties": {
+              "title": { "$ref": "#/definitions/text" },
+              "description": { "$ref": "#/definitions/text" },
+              "cause": { "$ref": "#/definitions/textOrNull" },
+              "solution": { "$ref": "#/definitions/textOrNull" },
+              "evidence": { "$ref": "#/definitions/evidence" }
+            }
+          }
+        },
+        "tests": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["description", "result", "evidence"],
+            "properties": {
+              "description": { "$ref": "#/definitions/text" },
+              "result": { "type": "string", "enum": ["passed", "failed", "unknown"] },
+              "evidence": { "$ref": "#/definitions/evidence" }
+            }
+          }
+        },
+        "contradictions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["description", "evidence"],
+            "properties": {
+              "description": { "$ref": "#/definitions/text" },
+              "evidence": { "type": "array", "minItems": 2, "items": { "$ref": "#/definitions/localId" } }
+            }
+          }
+        },
+        "unknowns": { "type": "array", "items": { "$ref": "#/definitions/text" } }
+      }
+    },
+    "aiProvenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "attempt",
+        "analysedAt",
+        "cliVersion",
+        "models",
+        "promptVersion",
+        "outputSchemaVersion",
+        "inputSha256",
+        "notesUsed",
+        "contextUsed"
+      ],
+      "properties": {
+        "attempt": { "type": "integer", "minimum": 1 },
+        "analysedAt": { "$ref": "#/definitions/timestamp" },
+        "cliVersion": { "type": ["string", "null"], "minLength": 1 },
+        "models": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "promptVersion": { "type": "string", "minLength": 1 },
+        "outputSchemaVersion": { "type": "string", "minLength": 1 },
+        "inputSha256": { "$ref": "#/definitions/sha256" },
+        "notesUsed": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "sha256"],
+            "properties": {
+              "id": { "type": "string", "pattern": "^N[0-9]{8}T[0-9]{6}Z-[0-9a-f]{4}$" },
+              "sha256": { "$ref": "#/definitions/sha256" }
+            }
+          }
+        },
+        "contextUsed": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "path", "sha256"],
+            "properties": {
+              "id": { "type": "string", "pattern": "^C[0-9]{2,}$" },
+              "path": { "type": "string", "minLength": 1 },
+              "sha256": { "$ref": "#/definitions/sha256" }
+            }
+          }
+        }
+      }
+    },
+    "deterministicProvenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["deterministic", "generatedAt"],
+      "properties": {
+        "deterministic": { "type": "boolean", "const": true },
+        "generatedAt": { "$ref": "#/definitions/timestamp" }
+      }
+    }
+  }
+}

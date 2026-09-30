@@ -7,7 +7,7 @@ import { createTempRepo } from '../helpers/git-repo.js';
 import { expectRepoUnchanged, fingerprintRepo } from '../helpers/repo-fingerprint.js';
 import { createTempDataRoot, listTree, readJsonFile, runCli } from '../helpers/workspace.js';
 
-// Fields of packages 01 to 05 from spec.md §6.6, in the prescribed order.
+// Fields of packages 01 to 06 from spec.md §6.6, in the prescribed order.
 const STATUS_FIELDS = [
   'repositoryId',
   'repoPath',
@@ -24,6 +24,8 @@ const STATUS_FIELDS = [
   'halt',
   'notesToday',
   'claude',
+  'analyses',
+  'withheld',
 ];
 
 async function initialized(options: { workspace?: string } = {}) {
@@ -36,8 +38,8 @@ async function initialized(options: { workspace?: string } = {}) {
   return { repo, dataDir, entry };
 }
 
-describe('ipa status (Pakete 01 bis 05)', () => {
-  it('liefert mit --json genau die Felder der Pakete 01 bis 05 und schreibt keine Datei (AK-01-13, AK-02-18, AK-03-14, AK-04-11, AK-05-10)', async () => {
+describe('ipa status (Pakete 01 bis 06)', () => {
+  it('liefert mit --json genau die Felder der Pakete 01 bis 06 und schreibt keine Datei (AK-01-13, AK-02-18, AK-03-14, AK-04-11, AK-05-10, AK-06-18)', async () => {
     const { repo, dataDir, entry } = await initialized();
     const treeBefore = await listTree(dataDir);
     const repoBefore = await fingerprintRepo(repo.root);
@@ -63,13 +65,16 @@ describe('ipa status (Pakete 01 bis 05)', () => {
       notesToday: 0,
       // init ran the Claude check; in the tests claude is not on the PATH.
       claude: { ok: false, cliVersion: null },
+      // The baseline is closed deterministically by the next capture (package 06).
+      analyses: { pending: 0, failed: 0, blocked: 0, exhausted: 0, complete: 0, skipped: 0, notRequired: 1, openIds: [] },
+      withheld: { units: 0, notes: 0 },
     });
     expect((report['claude'] as { checkedAt: string }).checkedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/);
     expect(report['lastRun']).toMatchObject({ command: 'init', outcome: 'ok', exitCode: 0, errors: [] });
 
     const human = await runCli(['status'], { dataDir, repo: repo.root });
     expect(human.exitCode).toBe(0);
-    for (const label of ['Repository-ID:', 'Arbeitsbereich:', 'Speichermodus:', 'Datenwurzel:', 'Zeitzone:', 'Letzter Lauf:', 'Snapshots:', 'Halt:', 'Notizen heute:', 'Claude-Prüfung:']) {
+    for (const label of ['Repository-ID:', 'Arbeitsbereich:', 'Speichermodus:', 'Datenwurzel:', 'Zeitzone:', 'Letzter Lauf:', 'Snapshots:', 'Halt:', 'Notizen heute:', 'Claude-Prüfung:', 'Analysen:', 'Zurückgehalten:']) {
       expect(human.stdout).toContain(label);
     }
     expect(human.stdout).toContain('Standard (Datenwurzel, ausserhalb des Repositorys)');
@@ -82,7 +87,7 @@ describe('ipa status (Pakete 01 bis 05)', () => {
     const { repo, dataDir } = await initialized();
     await repo.git('checkout', '-q', '-b', 'anderer');
     const before = await fingerprintRepo(repo.root);
-    expect((await runCli(['capture'], { dataDir, repo: repo.root })).exitCode).toBe(4);
+    expect((await runCli(['capture', '--no-analysis'], { dataDir, repo: repo.root })).exitCode).toBe(4);
 
     const result = await runCli(['status', '--json'], { dataDir, repo: repo.root });
     expect(result.exitCode).toBe(0);

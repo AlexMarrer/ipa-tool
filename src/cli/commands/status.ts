@@ -2,6 +2,7 @@
  * `ipa status [--json]`: read-only, without lock and without run log entry (spec.md §6.6).
  */
 import type { Command } from 'commander';
+import { type AnalysesSummary, countWithheldNotes, summarizeAnalyses } from '../../analysis/summary.js';
 import { readDoctorRecord } from '../../claude/doctor-record.js';
 import { describeHalt } from '../../collector/halt.js';
 import { listSnapshots, readManifest } from '../../collector/snapshots.js';
@@ -55,6 +56,14 @@ export interface StatusReport {
   notesToday: number;
   /** `null` until `ipa doctor` (or `init`) has written `doctor.json`. */
   claude: ClaudeStatus | null;
+  analyses: AnalysesSummary;
+  /** Open reviews: withheld units of all snapshots and notes with a secret hit (spec.md §12.2, §14.4). */
+  withheld: WithheldCounts;
+}
+
+export interface WithheldCounts {
+  units: number;
+  notes: number;
 }
 
 export interface StatusResult {
@@ -84,10 +93,12 @@ export async function collectStatus(ctx: WorkspaceContext): Promise<StatusResult
     last === undefined ? null : { ...last, errors: last.errors.map((error) => ({ code: error.code })) };
 
   const snapshots: SnapshotCounts = { total: 0, baseline: 0, work: 0 };
+  let withheldUnits = 0;
   for (const snapshotId of await listSnapshots(ctx)) {
     const manifest = await readManifest(ctx, snapshotId);
     snapshots.total += 1;
     snapshots[manifest.kind] += 1;
+    withheldUnits += manifest.filterDecisions.filter((decision) => decision.decision === 'withheld').length;
   }
 
   const notes = await readNotes(ctx, { day: dayOf(ctx.clock.now(), ctx.config.timezone) });
@@ -113,6 +124,8 @@ export async function collectStatus(ctx: WorkspaceContext): Promise<StatusResult
       halt: state.halt,
       notesToday: notes.notes.length,
       claude: doctor === null ? null : { checkedAt: doctor.checkedAt, ok: doctor.ok, cliVersion: doctor.claude.version },
+      analyses: await summarizeAnalyses(ctx),
+      withheld: { units: withheldUnits, notes: await countWithheldNotes(ctx) },
     },
     warnings,
   };
@@ -125,6 +138,28 @@ function describeClaude(claude: ClaudeStatus | null): string {
 }
 
 const NONE = 'keiner';
+
+function describeAnalyses(analyses: AnalysesSummary): string {
+  const parts = [
+    `${analyses.complete} abgeschlossen`,
+    `${analyses.skipped} übersprungen`,
+    `${analyses.notRequired} ohne KI ausstehend`,
+    `${analyses.pending} ausstehend`,
+    `${analyses.failed} fehlgeschlagen`,
+    `${analyses.blocked} blockiert`,
+    `${analyses.exhausted} erschöpft`,
+  ];
+  const open = analyses.openIds.length === 0 ? 'keine offenen' : `offen: ${analyses.openIds.join(', ')}`;
+  return `${parts.join(', ')} (${open})`;
+}
+
+function describeWithheld(withheld: WithheldCounts): string {
+  if (withheld.units === 0 && withheld.notes === 0) return 'keine';
+  return (
+    `${withheld.units} Einheit(en) in Snapshots, ${withheld.notes} Notiz(en) wegen Secret-Verdacht zurückgehalten; ` +
+    'offene Prüfung (filterDecisions im Manifest, Notizdateien)'
+  );
+}
 
 function describeRun(run: StatusRun | null): string {
   if (run === null) return NONE;
@@ -153,6 +188,8 @@ export function formatStatus(report: StatusReport): string {
     ['Halt', report.halt === null ? NONE : `${describeHalt(report.halt)} ipa baseline --reason "<Grund>" erforderlich.`],
     ['Notizen heute', String(report.notesToday)],
     ['Claude-Prüfung', describeClaude(report.claude)],
+    ['Analysen', describeAnalyses(report.analyses)],
+    ['Zurückgehalten', describeWithheld(report.withheld)],
   ]);
 }
 

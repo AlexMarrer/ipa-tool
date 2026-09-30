@@ -6,6 +6,7 @@
  *   FAKE_CLAUDE_MODE         ok (default) | invalid-json | extra-text | error-result | no-structured | exit-nonzero
  *                            | hang | hang-no-stdin | hang-ignore-term | stderr-flood | writes-file | tools | mcp
  *                            | settings-auth-fail | auth-retry | logged-out | auth-no-json
+ *                            | analysis (a valid analysis answer derived from the input package on stdin)
  *   FAKE_CLAUDE_UNSUPPORTED  comma-separated options reported as unknown, for example "--safe-mode" like 2.1.114
  *   FAKE_CLAUDE_VERSION      output of --version, default 9.9.9
  *   FAKE_CLAUDE_OUTPUT       JSON text for structured_output, default {"ok":true}
@@ -152,10 +153,32 @@ if (mode === 'hang-no-stdin') {
 } else {
   const stdin = await readStdin();
   modelCall(stdin);
-  respond();
+  respond(stdin);
 }
 
-function respond() {
+/**
+ * Answer that passes the rules of spec.md §15 for an analysis input package (package 06).
+ * @param {Buffer} stdin
+ */
+function analysisAnswer(stdin) {
+  /** @type {{ snapshotId: string, allowedEvidenceIds: string[], evidence: { id: string, kind: string, path: string | null, label?: string, fresh?: boolean, omitted: unknown, binary: boolean, content: string | null }[] }} */
+  const input = JSON.parse(stdin.toString('utf8'));
+  const usable = input.evidence.filter((entry) => entry.omitted === null && !entry.binary && entry.content !== null);
+  const deltas = usable.filter((entry) => entry.kind === 'state_delta');
+  const reports = usable.filter((entry) => entry.kind === 'test_report' && entry.fresh === true);
+  return {
+    summary: { text: `Künstliche Analyse von ${input.snapshotId}.`, evidence: input.allowedEvidenceIds.slice(0, 1) },
+    implemented: deltas.map((entry) => ({ title: `Änderung an ${entry.path}`, description: 'Von der Fake-CLI erzeugt.', evidence: [entry.id] })),
+    decisions: [],
+    problems: [],
+    tests: reports.map((entry) => ({ description: `Testbericht ${entry.label}`, result: 'passed', evidence: [entry.id] })),
+    contradictions: [],
+    unknowns: ['Die Begründung der Änderungen ist nicht belegt.'],
+  };
+}
+
+/** @param {Buffer} stdin */
+function respond(stdin) {
   const streaming = options['--output-format'] === 'stream-json';
   const settingSources = typeof options['--setting-sources'] === 'string';
   if (mode === 'hang' || (mode === 'auth-retry' && !streaming)) return hang();
@@ -175,7 +198,7 @@ function respond() {
   if (mode === 'stderr-flood') process.stderr.write('x'.repeat(100 * 1024));
   if (mode === 'writes-file') writeFileSync(path.join(process.cwd(), 'doctor-injektion.txt'), 'nicht erlaubt');
 
-  const structured = JSON.parse(process.env['FAKE_CLAUDE_OUTPUT'] ?? '{"ok":true}');
+  const structured = mode === 'analysis' ? analysisAnswer(stdin) : JSON.parse(process.env['FAKE_CLAUDE_OUTPUT'] ?? '{"ok":true}');
   const success = {
     type: 'result',
     subtype: 'success',

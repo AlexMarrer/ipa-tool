@@ -4,14 +4,14 @@ Lokales Kommandozeilenwerkzeug für die IPA. Es soll den Arbeitsstand eines beli
 
 Die Umsetzung erfolgt in Paketen, geplant in [`docs/implementation/`](docs/implementation/README.md).
 
-**Stand: Paket 05 (Claude-Anbindung).** Verfügbar sind `ipa init` mit Ausgangs-Snapshot, `ipa capture` ohne KI mit Zuordnung der Änderungen zum Vorgänger-Snapshot, `ipa baseline`, `ipa note`, `ipa status` und `ipa doctor`, das Git und Claude Code prüft. Der Aufruf von Claude Code ist vorbereitet, wird aber erst mit der Analyse genutzt. Noch nicht umgesetzt sind Analyse, Journal und Zeitsteuerung.
+**Stand: Paket 06 (Analyse-Pipeline).** Verfügbar sind `ipa init` mit Ausgangs-Snapshot, `ipa capture` mit Zuordnung der Änderungen zum Vorgänger-Snapshot und anschliessender Analyse durch Claude Code zu belegten Work-Logs, `ipa skip`, `ipa baseline`, `ipa note`, `ipa status` und `ipa doctor`, das Git und Claude Code prüft. Noch nicht umgesetzt sind Journal und Zeitsteuerung.
 
 ## Voraussetzungen
 
 - Windows 11. Das ist die einzige geprüfte Plattform. Linux und macOS sind nicht geprüft.
 - Node.js 24 oder neuer
 - Git 2.31 oder neuer (geprüft mit 2.51)
-- Für `ipa doctor` und die spätere Analyse: eine installierte und angemeldete Claude-Code-CLI. Geprüft mit Version 2.1.201 unter Windows 11, einschliesslich [`ipa doctor --live`](#ipa-doctor---live). Ein Update auf mindestens 2.1.205 wird empfohlen: Ältere Versionen ignorieren ein ungültiges Ausgabeschema still (das Tool prüft seine Schemas deshalb selbst).
+- Für `ipa doctor` und die Analyse: eine installierte und angemeldete Claude-Code-CLI. Geprüft mit Version 2.1.201 unter Windows 11, einschliesslich [`ipa doctor --live`](#ipa-doctor---live). Ein Update auf mindestens 2.1.205 wird empfohlen: Ältere Versionen ignorieren ein ungültiges Ausgabeschema still (das Tool prüft seine Schemas deshalb selbst).
 
 ## Installation
 
@@ -60,15 +60,19 @@ Aufbau eines Arbeitsbereichs:
 ```text
 config.json    Konfiguration (von Hand bearbeitbar, wird bei jedem Befehl validiert)
 state.json     Fortschritt und Cursor
-runs.jsonl     Laufprotokoll: eine Zeile pro Lauf von init, capture und baseline
-lock           nur während eines Laufs von init, capture oder baseline
+runs.jsonl     Laufprotokoll: eine Zeile pro Lauf von init, capture, baseline und skip
+lock           nur während eines Laufs von init, capture, baseline oder skip
 doctor.json    letztes Ergebnis von ipa doctor (auch aus init)
 ai-usage.jsonl KI-Nutzung: eine Zeile pro Modellaufruf, ohne Prompt, Eingabe und Antwort
 snapshots/S000001/manifest.json          Manifest eines Snapshots
 snapshots/S000001/content/E001.patch     gespeicherte Belege (Diffs, Commit-Nachrichten als .txt)
 snapshots/S000001/content/state/0001.dat Kopie des aktuellen Stands einer geänderten Datei
 notes/2026-10-14.jsonl                   Notizen eines Tätigkeitstags, eine Zeile pro Notiz
-analyses/  logs/  journal/{runs,drafts,final}/  context/  tmp/
+analyses/S000002/attempt-1/              ein Analyseversuch: input.json, prompt.md, schema.json, response.json, stderr.txt, outcome.json
+analyses/S000002/analysis.json           geprüfter Analyse-Datensatz
+analyses/S000002/complete.json           Abschlussmarkierung; skip.json nach ipa skip, retry-<n>.json nach --retry
+logs/S000002.md                          Work-Log eines Snapshots
+journal/{runs,drafts,final}/  context/  tmp/
 ```
 
 Das Tool sichert den Arbeitsbereich nicht selbst. Wo eine Sicherung liegt, entscheidet der Benutzer.
@@ -126,9 +130,12 @@ Ausgangs-Snapshot: S000001
 Claude-Prüfung: bereit (Claude Code 2.1.201, ohne Modellaufruf). Einen echten Aufruf prüft ipa doctor --live.
 ```
 
-### `ipa capture [--no-analysis]`
+### `ipa capture [--no-analysis] [--retry <snapshotId>]`
 
-Nimmt einen Arbeits-Snapshot auf, sofern seit dem letzten Snapshot neue Arbeit vorliegt (siehe [Zuordnung von Änderungen](#zuordnung-von-änderungen)). Es gibt noch keine Analyse durch Claude; `--no-analysis` wird schon akzeptiert und hat bis Paket 06 keine Wirkung.
+Nimmt einen Arbeits-Snapshot auf, sofern seit dem letzten Snapshot neue Arbeit vorliegt (siehe [Zuordnung von Änderungen](#zuordnung-von-änderungen)). Danach verarbeitet `capture` die offenen Analysen, siehe [Analyse und Work-Logs](#analyse-und-work-logs).
+
+- `--no-analysis`: nur aufnehmen. Offene Analysen bleiben offen und folgen im nächsten Lauf.
+- `--retry <snapshotId>`: gibt für einen Snapshot im Status `exhausted` weitere Versuche frei (Datei `retry-<n>.json`) und verarbeitet danach die offenen Analysen. Für einen Snapshot in einem anderen Status endet der Befehl mit Exit-Code 2.
 
 Erfasst werden getrennt:
 
@@ -147,10 +154,12 @@ Ablauf und Schutz:
 - Vor dem ersten `capture` braucht es den Ausgangs-Snapshot von `ipa init`, sonst Exit-Code 2.
 - Ohne neue Arbeit wird kein Snapshot gespeichert: Exit-Code 0, Meldung „Keine neue Arbeit …“ und in `runs.jsonl` das Ergebnis `unchanged`.
 - Nach einem Branchwechsel oder bei umgeschriebener Historie hält `capture` an: Exit-Code 4, siehe [`ipa baseline`](#ipa-baseline---reason-text---force).
+- Die offenen Analysen laufen auch nach einem Halt, ohne neue Arbeit und nach einem unruhigen Stand, damit gesicherte Snapshots nicht warten.
+- Exit-Code: 0, wenn Aufnahme und Analysen ohne offene Fehler enden; 6, wenn danach ein Snapshot `failed`, `blocked` oder `exhausted` ist oder Claude nicht einsatzbereit ist; 4 bei einem Halt, auch wenn zusätzlich eine Analyse scheitert; 5 bei unruhigem Stand, ausser eine Analyse ist nicht abgeschlossen (dann 6).
 
 ```text
 > ipa capture
-Snapshot S000002 gespeichert (Arbeits-Snapshot, ohne Analyse).
+Snapshot S000002 gespeichert (Arbeits-Snapshot).
 Commits:          2
 Dateizustände:    5
 Belege:           12
@@ -163,6 +172,9 @@ Ausgeschlossen:   1
 Zurückgehalten:   1
 Ausgelassen:      0
 Hinweis: 1 Einheit(en) wegen Secret-Verdacht zurückgehalten. Offene Prüfung: filterDecisions im Manifest von S000002 nennt Pfad, Detektor und Zeile, nie den Wert.
+Analyse S000001 abgeschlossen (ohne KI), Work-Log: logs/S000001.md
+Analyse S000002 abgeschlossen (Claude), Work-Log: logs/S000002.md
+Analyse-Cursor: S000002; offene Analysen: keine
 ```
 
 Ohne `user.email` in der Git-Konfiguration gelten alle Commits als fremd, und `capture` gibt eine Warnung aus. Gespeichert wird nur, ob ein Commit vom konfigurierten Benutzer stammt, nie eine E-Mail-Adresse.
@@ -184,9 +196,23 @@ Aufgehobener Halt: Die Historie wurde umgeschrieben (…) (history_rewritten, er
 Arbeit zwischen dem letzten Snapshot und diesem Ausgangspunkt bleibt als Lücke sichtbar.
 ```
 
+### `ipa skip <snapshotId> --reason <text>`
+
+Lässt die Analyse eines offenen Snapshots bewusst aus, zum Beispiel wenn Claude für diesen Stand dauerhaft scheitert oder das Eingabepaket zu gross ist. Der Snapshot bleibt gespeichert, die Lücke bleibt in `ipa status` und später im Journal sichtbar.
+
+- Erlaubt nur für offene Analysen (`pending`, `failed`, `blocked`, `exhausted`). Für abgeschlossene, bereits übersprungene, unbekannte Snapshots und für Snapshots ohne Analysepflicht (`not_required`) endet der Befehl mit Exit-Code 2.
+- `--reason` ist Pflicht und steht in `analyses/<snapshotId>/skip.json`. Ein leerer Grund oder einer, der wie ein Zugangsdatum aussieht, ergibt Exit-Code 2.
+- Nimmt den Lock, schreibt `skip.json`, führt den Analyse-Cursor nach und protokolliert den Lauf in `runs.jsonl`. Claude wird nicht aufgerufen.
+
+```text
+> ipa skip S000004 --reason "Nur generierte Dateien, keine eigene Leistung"
+Analyse S000004 übersprungen (vorher exhausted). Die Lücke bleibt in status und im Journal sichtbar.
+Analyse-Cursor: S000004
+```
+
 ### `ipa note [text] [optionen]`
 
-Erfasst eine Notiz: eine Tätigkeit, ein Problem, eine Entscheidung, eine Erkenntnis oder eine Planung, auf Wunsch mit gemessenem oder geschätztem Zeitaufwand. Ohne Text fragt der Befehl im Terminal nach. `note` braucht keinen Snapshot und nimmt keinen Lock, es funktioniert also direkt nach `ipa init` und auch während eines laufenden `capture`. Einzelheiten und Beispiele stehen unter [Notizen](#notizen).
+Erfasst eine Notiz: eine Tätigkeit, ein Problem, eine Entscheidung, eine Erkenntnis oder eine Planung, auf Wunsch mit gemessenem oder geschätztem Zeitaufwand. Ohne Text fragt der Befehl im Terminal nach. `note` braucht keinen Snapshot und nimmt keinen Lock, es funktioniert also direkt nach `ipa init` und auch während eines laufenden `capture`. Einzelheiten und Beispiele stehen unter [Notizen](#notizen). Ein Verweis mit `--ref` muss auf einen gespeicherten Beleg zeigen, und bei einem möglichen Zugangsdatum warnt `note`, ohne den Wert zu nennen.
 
 ### `ipa doctor [--live]`
 
@@ -245,6 +271,8 @@ Mit `--json` erscheint ein JSON-Objekt. Dieses Format ist ein stabiler Vertrag. 
 | `halt` | `null` oder `{ reason, detectedAt, expected: { branch, head }, observed: { branch, head } }` bei aktivem Halt |
 | `notesToday` | Anzahl der gültigen Notizen, deren Tätigkeitstag heute ist (in der Zeitzone aus `config.json`). Ungültige Zeilen der Notizdatei meldet `status` als Warnung auf stderr. |
 | `claude` | `null` oder `{ checkedAt, ok, cliVersion }` aus `doctor.json`: Zeitpunkt und Ergebnis der letzten Prüfung und die Version von Claude Code |
+| `analyses` | `{ pending, failed, blocked, exhausted, complete, skipped, notRequired, openIds }`: Anzahl der Snapshots je [Status](#status-einer-analyse) und die IDs der offenen (`pending`, `failed`, `blocked`, `exhausted`). `notRequired` zählt Snapshots ohne Analysepflicht, die der nächste `capture` ohne Claude abschliesst. |
+| `withheld` | `{ units, notes }`: wegen Secret-Verdacht zurückgehaltene Einheiten aller Snapshots und Notizen mit möglichem Zugangsdatum. Beides sind offene Prüfungen; die Werte selbst erscheinen nie. |
 
 ### Exit-Codes
 
@@ -256,14 +284,97 @@ Mit `--json` erscheint ein JSON-Objekt. Dieses Format ist ein stabiler Vertrag. 
 | 3 | Ein anderer Lauf hält den Lock. |
 | 4 | Die Zuordnung ist wegen Branchwechsel oder umgeschriebener Historie angehalten. `ipa baseline` ist erforderlich. |
 | 5 | Der Arbeitsstand hat sich während der Aufnahme wiederholt verändert. Es wurde kein Snapshot gespeichert. |
-| 6 | Der KI-Schritt ist nicht abgeschlossen, etwa weil Claude nicht einsatzbereit ist oder einen Fehler meldet. Gesicherte Daten bleiben offen. Tritt ab Paket 06 auf. |
+| 6 | Der KI-Schritt ist nicht abgeschlossen: Claude ist nicht einsatzbereit oder meldet einen Fehler, die Antwort ist ungültig, das Eingabepaket ist zu gross (`blocked`) oder die Versuche sind erschöpft (`exhausted`). Gesicherte Daten bleiben offen. |
 | 7 | `ipa doctor`: Die Voraussetzungen sind nicht erfüllt. |
+
+Treffen mehrere Fälle zu, gilt der höchste Code. Ausnahmen: Code 1 hat immer Vorrang, und bei `capture` geht ein Halt (4) einer nicht abgeschlossenen Analyse (6) vor, weil erst `ipa baseline` die Aufnahme wieder ermöglicht.
+
+## Analyse und Work-Logs
+
+Nach jeder Aufnahme verarbeitet `ipa capture` die offenen Snapshots der Reihe nach. Das Ziel ist ein belegter Entwurf pro Snapshot: Jede Aussage nennt die Belege, auf die sie sich stützt. Der Entwurf ersetzt die persönliche Prüfung nicht.
+
+### Ablauf
+
+1. Verarbeitet wird in aufsteigender Reihenfolge ab dem **Analyse-Cursor** (`lastAnalysedSnapshotId` in `ipa status`).
+2. **Ohne Claude** abgeschlossen werden Ausgangs-Snapshots und Snapshots ohne neuen Inhalt, die nur Statusänderungen bereits dokumentierter Stände enthalten (`analysisRequired: false`). Sie erhalten einen deterministischen Work-Log. Der Log eines Ausgangs-Snapshots trägt die Überschrift „Ausgangslage – keine neu erbrachte Leistung“.
+3. Für alle anderen baut das Tool ein **Eingabepaket**, prüft dessen Grösse, ruft Claude Code auf (siehe [Claude Code](#claude-code-aufruf-schutzwirkung-und-grenzen)) und prüft die Antwort.
+4. Nur eine gültige Antwort wird übernommen: zuerst `analysis.json`, dann `logs/<snapshotId>.md`, dann `complete.json`. Erst danach rückt der Cursor vor.
+5. Die Verarbeitung hält beim ersten Snapshot an, der offen bleibt. Der Cursor springt nie über einen offenen Snapshot.
+
+Grenzen pro Lauf: höchstens `claude.maxAnalysesPerRun` (Standard 5) Aufrufe von Claude, weitere Snapshots folgen im nächsten Lauf. Ist nichts offen, ruft `capture` Claude nicht auf, auch nicht für die Prüfung der Voraussetzungen.
+
+### Eingabepaket
+
+Claude erhält ausschliesslich `attempt-<n>/input.json` über stdin:
+
+- aus dem Snapshot die Zustandsdeltas, Commit-Nachrichten und Testberichte mit Inhalt; Commit-, Staged- und Unstaged-Diffs gehen nicht an Claude
+- die Commits ohne Blob-IDs, die Statusänderungen und ob ein Commit vom konfigurierten Benutzer stammt
+- die Notizen, die im Beobachtungszeitraum `(von, bis]` des Snapshots erfasst wurden oder mit `--ref` auf ihn verweisen; ein Verweis auf einen nicht vorhandenen Beleg wird mit Warnung ignoriert
+- die Kontextdateien aus `context.files` in `config.json`, etwa Anforderungen oder eine Planung, mit den IDs `C01`, `C02` … in der Reihenfolge der Konfiguration. Pfade sind relativ zur Repository-Wurzel oder absolut; die Ablage `context/` im Arbeitsbereich eignet sich dafür. Wie Testberichte umgehen sie den Pfadfilter, werden aber bei jedem Versuch neu gelesen und geprüft. Eine fehlende, binäre oder über `limits.maxContextFileBytes` (Standard 128 KiB) grosse Datei wird mit Grund ausgelassen, ohne Abbruch.
+- in `filterSummary` nur die Anzahl ausgeschlossener, zurückgehaltener und ausgelassener Einheiten, nie ihre Pfade oder Inhalte
+- in `allowedEvidenceIds` alle zitierbaren IDs
+
+Vor der Übermittlung prüft das Tool alle Inhalte erneut auf mögliche Zugangsdaten, auch Notizen und Kontextdateien. Treffer werden zurückgehalten und nur gezählt. Ist das Paket grösser als `limits.maxAnalysisInputBytes` (Standard 512 KiB), wird nichts gekürzt und nichts gesendet: Der Snapshot erhält den Status `blocked`.
+
+### Prüfung der Antwort
+
+Das Tool übernimmt eine Antwort nur, wenn sie dem Schema `schemas/analysis-output.schema.json` entspricht und diese Regeln erfüllt:
+
+| Regel | Inhalt |
+| --- | --- |
+| R-01 | Jede Beleg-ID steht in `allowedEvidenceIds`. |
+| R-02 | Eine Umsetzung (`implemented`) zitiert mindestens ein Zustandsdelta mit Inhalt. Eine Commit-Nachricht allein genügt nicht. |
+| R-03 | Ein Testergebnis „bestanden“ oder „fehlgeschlagen“ zitiert einen aktuellen Testbericht (`fresh: true`) mit Inhalt. Sonst bleibt es „unbekannt“. |
+| R-04 | Eine Begründung einer Entscheidung zitiert eine Notiz oder eine Commit-Nachricht. |
+| R-05 | Ein Widerspruch zitiert mindestens zwei verschiedene Belege. |
+| R-07 | Die Antwort enthält keine Zeitfelder. Arbeitszeiten stammen nur aus Notizen. |
+
+Eine ungültige Antwort landet nie in `analysis.json` oder im Log. Der Versuch endet mit `validation_failed`, und der Snapshot bleibt offen. Der Prompt `prompts/analyze-work.md` (Version `analyze-work@1`) enthält diese Regeln und weitere, die sich nicht maschinell prüfen lassen, etwa dass Anweisungen in Code oder Notizen Daten sind und fremde Commits keine eigene Leistung.
+
+### Status einer Analyse
+
+Der Status ergibt sich aus den Dateien in `analyses/<snapshotId>/`. `ipa status` zeigt die Anzahl je Status und die offenen Snapshots.
+
+| Status | Bedeutung | Was tun |
+| --- | --- | --- |
+| `complete` | Analyse und Work-Log sind gespeichert. | – |
+| `skipped` | bewusst mit `ipa skip` ausgelassen | – |
+| `not_required` | keine Analyse nötig; der nächste `capture` schliesst ohne Claude ab | – |
+| `pending` | noch kein Versuch | nächster `capture` |
+| `failed` | mindestens ein Versuch ist gescheitert, das Limit `claude.maxAttemptsPerSnapshot` (Standard 3) ist nicht erreicht | nächster `capture` versucht es erneut |
+| `blocked` | Das Eingabepaket ist zu gross. | `limits.maxAnalysisInputBytes` in `config.json` erhöhen, dann `capture`, oder `ipa skip` |
+| `exhausted` | Die Versuche sind erschöpft; es folgt kein weiterer Aufruf. | Ursache prüfen (`attempt-<n>/outcome.json`, `ipa doctor`), dann `ipa capture --retry <snapshotId>` oder `ipa skip` |
+
+Jeder Versuch liegt in `analyses/<snapshotId>/attempt-<n>/` mit Eingabe, Prompt, Schema, roher Antwort (`response.json`), stderr und Ergebnis (`outcome.json`). `outcome` ist `success`, `claude_error`, `invalid_response`, `validation_failed`, `input_too_large` oder `interrupted`, dazu die Fehlerklasse. Ein Versuch mit `input_too_large` zählt nicht zum Limit; solange das Paket zu gross bleibt, entsteht kein weiterer Versuchsordner.
+
+### Work-Log
+
+`logs/<snapshotId>.md` beginnt mit dem Hinweis „Automatisch erzeugter KI-Entwurf – vor Verwendung persönlich prüfen.“ (ohne Claude: „Automatisch erzeugter Entwurf ohne KI …“). Der Kopf nennt Snapshot, Vorgänger, Beobachtungszeitraum, Branch, HEAD, Herkunft und die Commits mit geprüfter Nachricht. Danach folgen immer diese Abschnitte:
+
+1. Zusammenfassung
+2. Umgesetzt
+3. Entscheidungen
+4. Probleme
+5. Tests
+6. Widersprüche
+7. Statusänderungen (vom Tool, nicht von Claude)
+8. Unbekannt/offen
+9. Erfassungshinweise: Anzahl und Gründe von Auslassungen, Lücken
+10. Belege: Tabelle mit ID, Art, Pfad und Datei im Arbeitsbereich
+
+Jede Aussage endet mit ihren Beleg-IDs, zum Beispiel `[E003, N20261014T081500Z-0c1d]`. Eine leere Liste erscheint als „nicht erfasst“: Sie bedeutet nicht, dass es nichts gab. Ein Test ohne passenden Bericht erscheint als „Ergebnis unbekannt – kein passender Testbericht“.
+
+### Abbruch und Wiederanlauf
+
+- Bricht ein Lauf nach `complete.json`, aber vor dem Cursor ab, führt der nächste Lauf den Cursor ohne Aufruf von Claude und ohne zweiten Log nach.
+- Bricht er vorher ab, zählt der Versuch als `interrupted`. Der nächste Lauf analysiert den Snapshot erneut und überschreibt `analysis.json` und den Log unter denselben Pfaden.
+- Scheitert das Speichern, etwa bei voller Platte, bleibt der Snapshot offen und der Cursor unverändert; `outcome.json` nennt den Grund.
 
 ## Zuordnung von Änderungen
 
 `capture` vergleicht jede Aufnahme mit dem letzten gespeicherten Snapshot, damit dieselbe Arbeit nicht doppelt erfasst wird.
 
-**Zustandsdelta:** Für jede Datei zählt ihr *wirksamer Stand*, also der Inhalt im Working Tree, unabhängig davon, ob er gestagt oder committet ist. Hat er sich seit dem letzten Snapshot verändert, entsteht ein Beleg `state_delta` mit einem Patch vom vorigen zum aktuellen Stand (`fromBlob` → `toBlob`). Er ist der inhaltliche Hauptbeleg für die spätere Analyse. Auch eine Rücknahme auf den committeten Stand ergibt ein Delta; eine gelöschte und identisch wieder angelegte Datei ergibt keines. Mehrere Commits zwischen zwei Aufnahmen zeigt das Delta als Nettoeffekt. Der Patch durchläuft dieselbe Secret-Prüfung wie alle Patches, einschliesslich entfernter Zeilen.
+**Zustandsdelta:** Für jede Datei zählt ihr *wirksamer Stand*, also der Inhalt im Working Tree, unabhängig davon, ob er gestagt oder committet ist. Hat er sich seit dem letzten Snapshot verändert, entsteht ein Beleg `state_delta` mit einem Patch vom vorigen zum aktuellen Stand (`fromBlob` → `toBlob`). Er ist der inhaltliche Hauptbeleg für die Analyse. Auch eine Rücknahme auf den committeten Stand ergibt ein Delta; eine gelöschte und identisch wieder angelegte Datei ergibt keines. Mehrere Commits zwischen zwei Aufnahmen zeigt das Delta als Nettoeffekt. Der Patch durchläuft dieselbe Secret-Prüfung wie alle Patches, einschliesslich entfernter Zeilen.
 
 **Statusänderungen:** Wird ein bereits erfasster Stand nur gestagt oder unverändert committet, entsteht kein neues Delta. Das Manifest führt dann in `statusChanges` einen Eintrag, zum Beispiel `unstaged` → `committed`, mit Verweis auf das frühere Delta (`previousEvidence`).
 
@@ -276,7 +387,7 @@ Mit `--json` erscheint ein JSON-Objekt. Dieses Format ist ein stabiler Vertrag. 
 | `new` | Ein Delta dieses Snapshots deckt die Datei ab (`coveredBy`). |
 | `unclear` | Keine der obigen Zuordnungen ist möglich, etwa bei einem Zwischenstand, der vor der nächsten Aufnahme zurückgenommen wurde. |
 
-**Kein Snapshot ohne neue Arbeit:** Ein Arbeits-Snapshot wird nur gespeichert, wenn sich HEAD geändert hat, ein Delta entstanden ist oder ein Testbericht neu ist oder sich geändert hat. Reines Stagen genügt nicht. Die eigenen Dateien eines Arbeitsbereichs im Repository wie `.ipa/` zählen nie. `analysisRequired` im Manifest ist `true`, wenn es ein Delta, einen neuen Testbericht oder eine Commit-Datei mit `new` oder `unclear` gibt; ein Snapshot nur mit Statusänderungen braucht später keine KI-Analyse.
+**Kein Snapshot ohne neue Arbeit:** Ein Arbeits-Snapshot wird nur gespeichert, wenn sich HEAD geändert hat, ein Delta entstanden ist oder ein Testbericht neu ist oder sich geändert hat. Reines Stagen genügt nicht. Die eigenen Dateien eines Arbeitsbereichs im Repository wie `.ipa/` zählen nie. `analysisRequired` im Manifest ist `true`, wenn es ein Delta, einen neuen Testbericht oder eine Commit-Datei mit `new` oder `unclear` gibt; ein Snapshot nur mit Statusänderungen braucht keine KI-Analyse und erhält einen Work-Log ohne KI.
 
 **Lücken:** Wurde die Kopie einer Datei im vorigen Snapshot zurückgehalten, etwa wegen Secret-Verdacht oder Grösse, fehlt der vorige Inhalt. Das Delta zeigt dann nur den aktuellen Stand, und `gaps` enthält `previous_state_unavailable`.
 
@@ -335,7 +446,7 @@ Der Text gehört in Anführungszeichen. Mehrere Wörter ohne Anführungszeichen 
 | `--delay <minuten>` | Verzögerung in Minuten. Sie wird getrennt gespeichert und nie zur Zeit addiert. |
 | `--reason <text>`, `--alternative <text>` | Grund und geprüfte Alternativen, nur bei `--type decision`. `--alternative` ist mehrfach möglich. Ohne `--reason` bleibt der Grund unbekannt. |
 | `--cause <text>`, `--solution <text>` | Ursache und Lösung, nur bei `--type problem` |
-| `--ref <S000000:E000>` | Verweis auf einen Beleg eines Snapshots, mehrfach möglich. Geprüft wird nur die Form. Ob es den Beleg gibt, prüft das Tool erst mit der Analyse-Pipeline (Paket 06). |
+| `--ref <S000000:E000>` | Verweis auf einen Beleg eines gespeicherten Snapshots, mehrfach möglich. Gibt es den Snapshot oder den Beleg nicht, endet der Befehl mit Exit-Code 2, und es wird nichts gespeichert. Die Belege eines Snapshots stehen in seinem Manifest und in der Tabelle „Belege“ seines Work-Logs. |
 
 Jeder Verstoss gegen diese Regeln endet mit Exit-Code 2, und es wird nichts gespeichert. Texte werden ohne Leerzeichen am Rand gespeichert, ein leerer Text ist nicht erlaubt.
 
@@ -390,7 +501,7 @@ Jede Notiz steht als eine Zeile in `notes/<Tätigkeitstag>.jsonl` im Arbeitsbere
 
 **Bearbeiten und Löschen:** Dafür gibt es in V1 keinen Befehl. Eine Notiz lässt sich von Hand in der JSONL-Datei ändern oder löschen. Jede Zeile muss danach ein gültiges JSON-Objekt nach `schemas/note.schema.json` sein, in der Datei ihres `activityDay` stehen und eine eindeutige `id` haben. Eine Zeile, die das nicht erfüllt, wird übersprungen, und `ipa status` meldet sie als Warnung. Die übrigen Notizen bleiben lesbar.
 
-**Vertrauliche Inhalte:** Notizen werden lokal so gespeichert, wie sie eingegeben wurden. Zugangsdaten gehören nicht in eine Notiz. Die Secret-Prüfung von Notizen folgt mit der Analyse-Pipeline (Paket 06): vor jeder Übermittlung an Claude und als Warnung bei der Eingabe.
+**Vertrauliche Inhalte:** Notizen werden lokal so gespeichert, wie sie eingegeben wurden. Zugangsdaten gehören nicht in eine Notiz. Findet die Secret-Prüfung in Text, Grund, Alternativen, Ursache oder Lösung ein mögliches Zugangsdatum, speichert `note` die Notiz trotzdem und warnt auf stderr mit dem Namen des Detektors, nie mit dem Wert. Solche Notizen gehen nie an Claude: Die Prüfung wiederholt sich bei jedem Eingabepaket, und `ipa status` zählt sie unter `withheld.notes` als offene Prüfung. Nach einer Korrektur der Notizdatei entfällt die Zurückhaltung.
 
 ## Filter und vertrauliche Inhalte
 
@@ -414,7 +525,7 @@ Jede Notiz steht als eine Zeile in `notes/<Tätigkeitstag>.jsonl` im Arbeitsbere
 
 ### Secret-Prüfung
 
-Jede Einheit wird vor der Speicherung auf mögliche Zugangsdaten geprüft: Dateikopien, Diffs und Zustandsdeltas einschliesslich entfernter Zeilen und Kontextzeilen, Commit-Nachrichten und Testberichte. Bei einem Treffer wird die **ganze Einheit zurückgehalten**, geschwärzt wird nichts. Das Manifest nennt in `filterDecisions` Pfad, Detektor und Zeilennummer, nie den Wert.
+Jede Einheit wird vor der Speicherung auf mögliche Zugangsdaten geprüft: Dateikopien, Diffs und Zustandsdeltas einschliesslich entfernter Zeilen und Kontextzeilen, Commit-Nachrichten und Testberichte. Vor jeder Übermittlung an Claude prüft das Tool die Belege erneut, dazu Notizen und Kontextdateien (siehe [Eingabepaket](#eingabepaket)). Bei einem Treffer wird die **ganze Einheit zurückgehalten**, geschwärzt wird nichts. Das Manifest nennt in `filterDecisions` Pfad, Detektor und Zeilennummer, nie den Wert.
 
 | Detektor | erkennt |
 | --- | --- |
@@ -457,7 +568,7 @@ Jede Auslassung steht mit Grund im Manifest, in `filterDecisions` und beim betro
 
 ## Claude Code: Aufruf, Schutzwirkung und Grenzen
 
-Ab Paket 06 analysiert Claude Code neue Snapshots. Der Aufruf ist mit Paket 05 vorbereitet und mit `ipa doctor` prüfbar. Jeder Aufruf:
+Claude Code analysiert neue Snapshots (siehe [Analyse und Work-Logs](#analyse-und-work-logs)). Der Aufruf lässt sich mit `ipa doctor` prüfen. Jeder Aufruf:
 
 - startet das Programm aus `claude.command` in `config.json` ohne Shell. Standard ist `["claude"]`. Ist Claude Code über npm installiert (`claude.cmd`), startet es ohne Shell nicht; dann gehört der absolute Pfad der `claude.exe` oder `["<pfad zu node.exe>", "<pfad zur cli.js von Claude Code>"]` in `claude.command`.
 - läuft in einem neuen, leeren Ordner `<Temp>/ipa-assistant/claude/<repositoryId>/<runId>-<n>/`, der nur `prompt.md` enthält und danach gelöscht wird. Er liegt immer ausserhalb von Repository und Arbeitsbereich, auch bei `--workspace .ipa`. Zeigt das Temp-Verzeichnis (unter Windows `TEMP` oder `TMP`, sonst `TMPDIR`) in das Repository oder den Arbeitsbereich, bricht der Aufruf vor dem Start mit Exit-Code 2 ab. Verwaiste Ordner älter als 24 Stunden entfernt der nächste Aufruf.
@@ -478,6 +589,8 @@ Ab Paket 06 analysiert Claude Code neue Snapshots. Der Aufruf ist mit Paket 05 v
 - gibt Variablen einer umgebenden Claude-Code-Sitzung nicht weiter, siehe `ipa doctor --live`. Sonst wird die Umgebung für die Anmeldung unverändert weitergegeben; das Tool setzt keine Geheimnisse und protokolliert die Umgebung nicht.
 
 Vor dem ersten Aufruf eines Laufs prüft `ipa`, ob `doctor.json` alle Pflichtoptionen meldet. Sonst führt es `ipa doctor` ohne `--live` einmal aus. Scheitert das, endet der Lauf mit Exit-Code 6.
+
+**Abgelaufene Anmeldung:** `claude auth status` kann „angemeldet“ melden, obwohl die API die Anmeldung ablehnt. Eine Analyse endet dann erst nach den Wiederholungen von Claude Code (einige Minuten) mit `error_result` und HTTP 401; der Snapshot bleibt offen. Abhilfe: `claude auth login` ausführen oder `claude` einmal interaktiv starten, danach `ipa capture` erneut ausführen.
 
 **Schutzwirkung:** Die Optionen schränken die Möglichkeiten des Modells ein. Sie sind **keine Betriebssystem-Sandbox und kein garantierter Schreibschutz**. Der Schutz des Projekts beruht auf diesen Massnahmen zusammen:
 
@@ -509,7 +622,7 @@ Zu den Tests:
 - `npm test` baut zuerst `dist/`, weil Integrationstests den echten CLI-Einstieg starten.
 - Jeder Test arbeitet mit temporären Git-Repositories und einer eigenen temporären Datenwurzel. Das globale Setup setzt `IPA_ASSISTANT_HOME`, `LOCALAPPDATA` und `XDG_DATA_HOME` auf ein Temp-Verzeichnis, blendet die Git-Konfiguration des Rechners aus und prüft am Ende, dass die echte Datenwurzel unverändert ist.
 - Die Tests prüfen die Unversehrtheit der Test-Repositories über einen Fingerprint.
-- Automatische Tests rufen Claude nie echt auf. Sie verwenden die Fake-CLI `test/helpers/fake-claude.mjs` über `claude.command`. Das globale Setup nimmt `claude` zusätzlich aus dem PATH der Testprozesse und legt ihr Temp-Verzeichnis in den Test-Ordner.
+- Automatische Tests rufen Claude nie echt auf. Sie verwenden die Fake-CLI `test/helpers/fake-claude.mjs` über `claude.command`; im Modus `analysis` leitet sie eine gültige Analyse aus dem Eingabepaket ab. Das globale Setup nimmt `claude` zusätzlich aus dem PATH der Testprozesse und legt ihr Temp-Verzeichnis in den Test-Ordner.
 - Der Live-Test verbraucht Claude-Kontingent und läuft nur auf ausdrücklichen Wunsch, in PowerShell mit `$env:IPA_LIVE_CLAUDE = '1'; npm run test:live`.
 
 Aufbau:
@@ -523,6 +636,8 @@ src/filter/         Pfadfilter und Secret-Prüfung
 src/collector/      Aufnahme, Konsistenzprüfung, Manifest, atomare Ablage, Wiederanlauf
 src/notes/          Notizen: Regeln der Eingabe, Ablage und Lesen (hängt nur von src/core/ ab)
 src/claude/         Claude-Aufruf ohne Werkzeuge und ohne Shell, Auswertung, ipa doctor, KI-Nutzungsprotokoll
+src/analysis/       Status, Eingabepaket, Prüfung der Antwort, Work-Log, Warteschlange, Cursor, ipa skip
+prompts/            Prompt der Analyse (analyze-work.md)
 schemas/            JSON Schemas (draft-07)
 test/               Tests und Test-Helfer, test/live/ für den Live-Test
 ```

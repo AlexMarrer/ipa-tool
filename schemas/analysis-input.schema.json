@@ -1,0 +1,289 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "IPA Assistant – Analyse-Eingabepaket attempt-<n>/input.json (spec.md §9.6, §12.2)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "purpose",
+    "promptVersion",
+    "snapshotId",
+    "previousSnapshotId",
+    "observedPeriod",
+    "repository",
+    "commits",
+    "statusChanges",
+    "evidence",
+    "notes",
+    "context",
+    "filterSummary",
+    "allowedEvidenceIds"
+  ],
+  "properties": {
+    "schemaVersion": { "type": "integer", "const": 1 },
+    "purpose": { "type": "string", "const": "analysis" },
+    "promptVersion": { "type": "string", "minLength": 1 },
+    "snapshotId": { "$ref": "#/definitions/snapshotId" },
+    "previousSnapshotId": { "type": ["string", "null"], "pattern": "^S[0-9]{6}$" },
+    "observedPeriod": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from", "to"],
+      "properties": {
+        "from": { "$ref": "#/definitions/timestampOrNull" },
+        "to": { "$ref": "#/definitions/timestamp" }
+      }
+    },
+    "repository": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["branch", "head"],
+      "properties": {
+        "branch": { "type": ["string", "null"], "minLength": 1 },
+        "head": { "$ref": "#/definitions/objectIdOrNull" }
+      }
+    },
+    "commits": { "type": "array", "items": { "$ref": "#/definitions/commit" } },
+    "statusChanges": { "type": "array", "items": { "$ref": "#/definitions/statusChange" } },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          { "$ref": "#/definitions/messageEvidence" },
+          { "$ref": "#/definitions/stateDeltaEvidence" },
+          { "$ref": "#/definitions/testReportEvidence" }
+        ]
+      }
+    },
+    "notes": { "type": "array", "items": { "$ref": "#/definitions/note" } },
+    "context": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "path", "sha256", "content"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^C[0-9]{2,}$" },
+          "path": { "type": "string", "minLength": 1 },
+          "sha256": { "$ref": "#/definitions/sha256" },
+          "content": { "type": "string" }
+        }
+      }
+    },
+    "filterSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["excluded", "withheld", "omitted", "byReason"],
+      "properties": {
+        "excluded": { "$ref": "#/definitions/count" },
+        "withheld": { "$ref": "#/definitions/count" },
+        "omitted": { "$ref": "#/definitions/count" },
+        "byReason": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "excluded": { "$ref": "#/definitions/count" },
+            "secret_suspected": { "$ref": "#/definitions/count" },
+            "binary": { "$ref": "#/definitions/count" },
+            "file_too_large": { "$ref": "#/definitions/count" },
+            "snapshot_limit": { "$ref": "#/definitions/count" },
+            "unreadable": { "$ref": "#/definitions/count" },
+            "symlink": { "$ref": "#/definitions/count" }
+          }
+        }
+      }
+    },
+    "allowedEvidenceIds": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^(E[0-9]{3,}|N[0-9]{8}T[0-9]{6}Z-[0-9a-f]{4}|C[0-9]{2,})$" }
+    }
+  },
+  "definitions": {
+    "snapshotId": { "type": "string", "pattern": "^S[0-9]{6}$" },
+    "evidenceId": { "type": "string", "pattern": "^E[0-9]{3,}$" },
+    "evidenceIdOrNull": { "type": ["string", "null"], "pattern": "^E[0-9]{3,}$" },
+    "qualifiedEvidence": { "type": "string", "pattern": "^S[0-9]{6}:E[0-9]{3,}$" },
+    "objectId": { "type": "string", "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$" },
+    "objectIdOrNull": { "type": ["string", "null"], "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$" },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "sha256OrNull": { "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$" },
+    "count": { "type": "integer", "minimum": 0 },
+    "timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(Z|[+-][0-9]{2}:[0-9]{2})$"
+    },
+    "timestampOrNull": {
+      "type": ["string", "null"],
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(Z|[+-][0-9]{2}:[0-9]{2})$"
+    },
+    "repoPathOrNull": { "type": ["string", "null"], "minLength": 1 },
+    "stage": { "type": "string", "enum": ["clean", "staged", "unstaged", "mixed", "untracked"] },
+    "textOrNull": { "type": ["string", "null"], "minLength": 1 },
+    "omission": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["reason"],
+      "properties": {
+        "reason": {
+          "type": "string",
+          "enum": ["excluded", "secret_suspected", "binary", "file_too_large", "snapshot_limit", "unreadable", "symlink"]
+        },
+        "rule": { "type": "string", "minLength": 1 },
+        "detector": {
+          "type": "string",
+          "enum": [
+            "private_key",
+            "aws_access_key",
+            "github_token",
+            "slack_token",
+            "anthropic_or_openai_key",
+            "jwt",
+            "url_credentials",
+            "assignment",
+            "custom"
+          ]
+        }
+      }
+    },
+    "commit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sha", "parents", "authorDate", "committerDate", "authoredByConfiguredUser", "isMerge", "messageEvidence", "files"],
+      "properties": {
+        "sha": { "$ref": "#/definitions/objectId" },
+        "parents": { "type": "array", "items": { "$ref": "#/definitions/objectId" } },
+        "authorDate": { "$ref": "#/definitions/timestamp" },
+        "committerDate": { "$ref": "#/definitions/timestamp" },
+        "authoredByConfiguredUser": { "type": "boolean" },
+        "isMerge": { "type": "boolean" },
+        "messageEvidence": { "$ref": "#/definitions/evidenceIdOrNull" },
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "oldPath", "change", "evidence", "attribution", "coveredBy", "previousEvidence"],
+            "properties": {
+              "path": { "type": "string", "minLength": 1 },
+              "oldPath": { "$ref": "#/definitions/repoPathOrNull" },
+              "change": { "type": "string", "enum": ["A", "M", "D", "R", "T", "C"] },
+              "evidence": { "$ref": "#/definitions/evidenceIdOrNull" },
+              "attribution": { "type": ["string", "null"], "enum": ["new", "documented", "baseline", "unclear", null] },
+              "coveredBy": { "type": "array", "items": { "$ref": "#/definitions/evidenceId" } },
+              "previousEvidence": { "type": "array", "items": { "$ref": "#/definitions/qualifiedEvidence" } }
+            }
+          }
+        }
+      }
+    },
+    "statusChange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "blob", "from", "to", "commit", "attribution", "previousEvidence"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "blob": { "$ref": "#/definitions/objectIdOrNull" },
+        "from": { "$ref": "#/definitions/stage" },
+        "to": { "type": "string", "enum": ["clean", "staged", "unstaged", "mixed", "untracked", "committed"] },
+        "commit": { "$ref": "#/definitions/objectIdOrNull" },
+        "attribution": { "type": "string", "enum": ["documented", "baseline", "unclear"] },
+        "previousEvidence": { "type": "array", "items": { "$ref": "#/definitions/qualifiedEvidence" } }
+      }
+    },
+    "messageEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "path", "oldPath", "commit", "bytes", "sha256", "binary", "omitted", "content"],
+      "properties": {
+        "id": { "$ref": "#/definitions/evidenceId" },
+        "kind": { "type": "string", "const": "commit_message" },
+        "path": { "$ref": "#/definitions/repoPathOrNull" },
+        "oldPath": { "$ref": "#/definitions/repoPathOrNull" },
+        "commit": { "$ref": "#/definitions/objectIdOrNull" },
+        "bytes": { "$ref": "#/definitions/count" },
+        "sha256": { "$ref": "#/definitions/sha256OrNull" },
+        "binary": { "type": "boolean" },
+        "omitted": { "$ref": "#/definitions/omission" },
+        "content": { "type": ["string", "null"] }
+      }
+    },
+    "stateDeltaEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "path", "oldPath", "commit", "bytes", "sha256", "binary", "omitted", "content", "fromBlob", "toBlob"],
+      "properties": {
+        "id": { "$ref": "#/definitions/evidenceId" },
+        "kind": { "type": "string", "const": "state_delta" },
+        "path": { "$ref": "#/definitions/repoPathOrNull" },
+        "oldPath": { "$ref": "#/definitions/repoPathOrNull" },
+        "commit": { "$ref": "#/definitions/objectIdOrNull" },
+        "bytes": { "$ref": "#/definitions/count" },
+        "sha256": { "$ref": "#/definitions/sha256OrNull" },
+        "binary": { "type": "boolean" },
+        "omitted": { "$ref": "#/definitions/omission" },
+        "content": { "type": ["string", "null"] },
+        "fromBlob": { "$ref": "#/definitions/objectIdOrNull" },
+        "toBlob": { "$ref": "#/definitions/objectIdOrNull" }
+      }
+    },
+    "testReportEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "path", "oldPath", "commit", "bytes", "sha256", "binary", "omitted", "content", "label", "mtime", "fresh"],
+      "properties": {
+        "id": { "$ref": "#/definitions/evidenceId" },
+        "kind": { "type": "string", "const": "test_report" },
+        "path": { "$ref": "#/definitions/repoPathOrNull" },
+        "oldPath": { "$ref": "#/definitions/repoPathOrNull" },
+        "commit": { "$ref": "#/definitions/objectIdOrNull" },
+        "bytes": { "$ref": "#/definitions/count" },
+        "sha256": { "$ref": "#/definitions/sha256OrNull" },
+        "binary": { "type": "boolean" },
+        "omitted": { "$ref": "#/definitions/omission" },
+        "content": { "type": ["string", "null"] },
+        "label": { "type": "string", "minLength": 1 },
+        "mtime": { "$ref": "#/definitions/timestamp" },
+        "fresh": { "type": "boolean" }
+      }
+    },
+    "note": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "id", "type", "text", "activityDay", "recordedAt", "time", "delay", "reason", "alternatives", "cause", "solution", "refs"],
+      "properties": {
+        "schemaVersion": { "type": "integer", "const": 1 },
+        "id": { "type": "string", "pattern": "^N[0-9]{8}T[0-9]{6}Z-[0-9a-f]{4}$" },
+        "type": { "type": "string", "enum": ["general", "activity", "problem", "decision", "insight", "plan"] },
+        "text": { "type": "string", "minLength": 1 },
+        "activityDay": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+        "recordedAt": { "$ref": "#/definitions/timestamp" },
+        "time": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["minutes", "basis", "start", "end"],
+          "properties": {
+            "minutes": { "type": "integer", "minimum": 1 },
+            "basis": { "type": "string", "enum": ["measured", "estimated"] },
+            "start": { "type": ["string", "null"], "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$" },
+            "end": { "type": ["string", "null"], "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$" }
+          }
+        },
+        "delay": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["minutes", "basis"],
+          "properties": {
+            "minutes": { "type": "integer", "minimum": 1 },
+            "basis": { "type": "string", "enum": ["measured", "estimated"] }
+          }
+        },
+        "reason": { "$ref": "#/definitions/textOrNull" },
+        "alternatives": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "cause": { "$ref": "#/definitions/textOrNull" },
+        "solution": { "$ref": "#/definitions/textOrNull" },
+        "refs": { "type": "array", "items": { "$ref": "#/definitions/qualifiedEvidence" } }
+      }
+    }
+  }
+}

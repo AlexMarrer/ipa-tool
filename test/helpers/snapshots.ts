@@ -51,7 +51,7 @@ export async function initRepo(repo: TempRepo, dataDir: string, args: string[] =
 
 /** `ipa capture` that must succeed. */
 export async function captureRepo(repo: TempRepo, dataDir: string): Promise<CliResult> {
-  const result = await runCli(['capture'], { dataDir, repo: repo.root });
+  const result = await runCli(['capture', '--no-analysis'], { dataDir, repo: repo.root });
   expect(result.exitCode, result.stderr).toBe(0);
   return result;
 }
