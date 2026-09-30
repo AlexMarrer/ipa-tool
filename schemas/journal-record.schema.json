@@ -1,0 +1,223 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "IPA Assistant – Journal-Datensatz journal/drafts/<day>-<runId>.json (spec.md §9.10)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "day", "runId", "generatedAt", "mode", "journal", "timeSummary", "openItems", "sources", "provenance"],
+  "properties": {
+    "schemaVersion": { "type": "integer", "const": 1 },
+    "day": { "$ref": "#/definitions/day" },
+    "runId": { "type": "string", "pattern": "^R[0-9]{8}T[0-9]{6}Z-[0-9a-f]{4}$" },
+    "generatedAt": { "$ref": "#/definitions/timestamp" },
+    "mode": { "type": "string", "enum": ["ai", "no_ai"] },
+    "journal": { "oneOf": [{ "type": "null" }, { "$ref": "#/definitions/journal" }] },
+    "timeSummary": { "$ref": "#/definitions/timeSummary" },
+    "openItems": { "$ref": "#/definitions/openItems" },
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["ref", "kind", "path", "snapshotId", "sha256"],
+        "properties": {
+          "ref": { "$ref": "#/definitions/ref" },
+          "kind": { "type": "string", "enum": ["commit_message", "state_delta", "test_report", "note", "context"] },
+          "path": { "type": ["string", "null"], "minLength": 1 },
+          "snapshotId": { "type": ["string", "null"], "pattern": "^S[0-9]{6}$" },
+          "sha256": { "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$" }
+        }
+      }
+    },
+    "provenance": { "oneOf": [{ "$ref": "#/definitions/aiProvenance" }, { "$ref": "#/definitions/noAiProvenance" }] }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "mode": { "const": "ai" } } },
+      "then": { "properties": { "journal": { "$ref": "#/definitions/journal" }, "provenance": { "$ref": "#/definitions/aiProvenance" } } },
+      "else": { "properties": { "journal": { "type": "null" }, "provenance": { "$ref": "#/definitions/noAiProvenance" } } }
+    }
+  ],
+  "definitions": {
+    "day": { "type": "string", "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$" },
+    "snapshotId": { "type": "string", "pattern": "^S[0-9]{6}$" },
+    "noteId": { "type": "string", "pattern": "^N[0-9]{8}T[0-9]{6}Z-[0-9a-f]{4}$" },
+    "ref": { "type": "string", "pattern": "^(S[0-9]{6}:E[0-9]{3,}|N[0-9]{8}T[0-9]{6}Z-[0-9a-f]{4}|C[0-9]{2,})$" },
+    "evidence": { "type": "array", "minItems": 1, "items": { "$ref": "#/definitions/ref" } },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "count": { "type": "integer", "minimum": 0 },
+    "minutes": { "type": "integer", "minimum": 1 },
+    "basis": { "type": "string", "enum": ["measured", "estimated"] },
+    "timeOfDayOrNull": { "type": ["string", "null"], "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$" },
+    "timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(Z|[+-][0-9]{2}:[0-9]{2})$"
+    },
+    "text": { "type": "string", "minLength": 1 },
+    "textOrNull": { "type": ["string", "null"], "minLength": 1 },
+    "statement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text", "evidence"],
+      "properties": { "text": { "$ref": "#/definitions/text" }, "evidence": { "$ref": "#/definitions/evidence" } }
+    },
+    "journal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["planned", "done", "problems", "decisions", "tests", "deviations", "insights", "nextSteps", "unknowns"],
+      "properties": {
+        "planned": { "type": "array", "items": { "$ref": "#/definitions/statement" } },
+        "done": { "type": "array", "items": { "$ref": "#/definitions/statement" } },
+        "problems": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["problem", "cause", "solution", "evidence"],
+            "properties": {
+              "problem": { "$ref": "#/definitions/text" },
+              "cause": { "$ref": "#/definitions/textOrNull" },
+              "solution": { "$ref": "#/definitions/textOrNull" },
+              "evidence": { "$ref": "#/definitions/evidence" }
+            }
+          }
+        },
+        "decisions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["decision", "rationale", "alternatives", "evidence"],
+            "properties": {
+              "decision": { "$ref": "#/definitions/text" },
+              "rationale": { "$ref": "#/definitions/textOrNull" },
+              "alternatives": { "type": "array", "items": { "$ref": "#/definitions/text" } },
+              "evidence": { "$ref": "#/definitions/evidence" }
+            }
+          }
+        },
+        "tests": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["description", "result", "evidence"],
+            "properties": {
+              "description": { "$ref": "#/definitions/text" },
+              "result": { "type": "string", "enum": ["passed", "failed", "unknown"] },
+              "evidence": { "$ref": "#/definitions/evidence" }
+            }
+          }
+        },
+        "deviations": { "type": "array", "items": { "$ref": "#/definitions/statement" } },
+        "insights": { "type": "array", "items": { "$ref": "#/definitions/statement" } },
+        "nextSteps": { "type": "array", "items": { "$ref": "#/definitions/statement" } },
+        "unknowns": { "type": "array", "items": { "$ref": "#/definitions/text" } }
+      }
+    },
+    "minuteSums": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["measuredMinutes", "estimatedMinutes"],
+      "properties": { "measuredMinutes": { "$ref": "#/definitions/count" }, "estimatedMinutes": { "$ref": "#/definitions/count" } }
+    },
+    "timeSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entries", "totals", "planned", "delays", "delayTotals", "notesWithoutTime"],
+      "properties": {
+        "entries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["noteId", "noteType", "minutes", "basis", "start", "end", "counted", "withheld"],
+            "properties": {
+              "noteId": { "$ref": "#/definitions/noteId" },
+              "noteType": { "type": "string", "enum": ["general", "activity", "problem", "decision", "insight", "plan"] },
+              "minutes": { "$ref": "#/definitions/minutes" },
+              "basis": { "$ref": "#/definitions/basis" },
+              "start": { "$ref": "#/definitions/timeOfDayOrNull" },
+              "end": { "$ref": "#/definitions/timeOfDayOrNull" },
+              "counted": { "type": "boolean" },
+              "withheld": { "type": "boolean" }
+            }
+          }
+        },
+        "totals": { "$ref": "#/definitions/minuteSums" },
+        "planned": { "$ref": "#/definitions/minuteSums" },
+        "delays": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["noteId", "minutes", "basis"],
+            "properties": {
+              "noteId": { "$ref": "#/definitions/noteId" },
+              "minutes": { "$ref": "#/definitions/minutes" },
+              "basis": { "$ref": "#/definitions/basis" }
+            }
+          }
+        },
+        "delayTotals": { "$ref": "#/definitions/minuteSums" },
+        "notesWithoutTime": { "type": "array", "items": { "$ref": "#/definitions/noteId" } }
+      }
+    },
+    "openItems": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["analyses", "gaps"],
+      "properties": {
+        "analyses": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["snapshotId", "status"],
+            "properties": {
+              "snapshotId": { "$ref": "#/definitions/snapshotId" },
+              "status": { "type": "string", "enum": ["pending", "failed", "blocked", "exhausted", "skipped"] }
+            }
+          }
+        },
+        "gaps": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["snapshotId", "type", "detail"],
+            "properties": {
+              "snapshotId": { "type": ["string", "null"], "pattern": "^S[0-9]{6}$" },
+              "type": {
+                "type": "string",
+                "enum": ["rebaseline", "previous_state_unavailable", "halt_detected", "halt", "run_failed", "no_capture", "invalid_notes", "withheld"]
+              },
+              "detail": { "$ref": "#/definitions/text" }
+            }
+          }
+        }
+      }
+    },
+    "aiProvenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["promptVersion", "outputSchemaVersion", "cliVersion", "models", "inputSha256", "runDir"],
+      "properties": {
+        "promptVersion": { "$ref": "#/definitions/text" },
+        "outputSchemaVersion": { "$ref": "#/definitions/text" },
+        "cliVersion": { "$ref": "#/definitions/textOrNull" },
+        "models": { "type": "array", "items": { "$ref": "#/definitions/text" } },
+        "inputSha256": { "$ref": "#/definitions/sha256" },
+        "runDir": { "type": "string", "pattern": "^journal/runs/R[0-9]{8}T[0-9]{6}Z-[0-9a-f]{4}$" }
+      }
+    },
+    "noAiProvenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["deterministic", "reason"],
+      "properties": {
+        "deterministic": { "type": "boolean", "const": true },
+        "reason": { "type": "string", "enum": ["requested", "no_data"] }
+      }
+    }
+  }
+}

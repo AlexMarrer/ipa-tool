@@ -39,17 +39,24 @@ function keyWords(key: string): string[] {
     .filter((word) => word !== '');
 }
 
-function timeKeys(value: unknown, at: string, found: string[]): void {
+function collectTimeKeys(value: unknown, at: string, found: string[]): void {
   if (Array.isArray(value)) {
-    value.forEach((item, index) => timeKeys(item, `${at}[${index}]`, found));
+    value.forEach((item, index) => collectTimeKeys(item, `${at}[${index}]`, found));
     return;
   }
   if (typeof value !== 'object' || value === null) return;
   for (const [key, child] of Object.entries(value)) {
     const location = at === '' ? key : `${at}.${key}`;
     if (keyWords(key).some((word) => TIME_WORDS.has(word))) found.push(location);
-    timeKeys(child, location, found);
+    collectTimeKeys(child, location, found);
   }
+}
+
+/** Positions of all keys that name a time or duration (R-07); shared with the journal validator. */
+export function timeFieldPaths(value: unknown): string[] {
+  const found: string[] = [];
+  collectTimeKeys(value, '', found);
+  return found;
 }
 
 interface ClaimRef {
@@ -75,8 +82,7 @@ function withContent(entry: InputEvidence): boolean {
 
 /** spec.md §10. Messages name positions and IDs only, never content of the answer. */
 export function validateAnalysisOutput(input: AnalysisInput, output: unknown): AnalysisValidation {
-  const times: string[] = [];
-  timeKeys(output, '', times);
+  const times = timeFieldPaths(output);
   if (times.length > 0) {
     return { ok: false, errorCode: 'rule_violation', errors: times.map((at) => `${at}: Zeitfelder sind nicht erlaubt (R-07)`) };
   }
