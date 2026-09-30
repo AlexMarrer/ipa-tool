@@ -10,6 +10,7 @@ import { formatZoned } from '../core/time.js';
 import { createGitRunner, GitCommandError, GitSpawnError } from '../git/runner.js';
 import {
   buildFlagProbeArgs,
+  type AuthStatus,
   classifyFlagProbe,
   FLAG_SPECS,
   type FlagProbeResult,
@@ -18,7 +19,7 @@ import {
   parseVersion,
   requiredFlags,
 } from './args.js';
-import { assertPaidUsageAllowed, checkBilling, paidUsageMessage } from './billing.js';
+import { assertPaidUsageAllowed, checkBilling, paidUsageError, paidUsageMessage } from './billing.js';
 import { claudeUsable, doctorPath, missingRequiredFlags, readDoctorRecord, writeDoctorRecord } from './doctor-record.js';
 import { claudeProcessEnv, droppedSessionVariables } from './env.js';
 import { isPlainObject, startFailure } from './envelope.js';
@@ -150,6 +151,8 @@ function abortOnRepeatedAuthFailure(): (line: string) => 'continue' | 'abort' {
 
 interface ClaudeProbe {
   claude: Omit<DoctorRecord['claude'], 'settingSourcesAuthOk'>;
+  /** `apiKeySource` of `claude auth status`; not stored in `doctor.json`. */
+  apiKeySource: string | null;
   missingFlags: ProbedFlag[];
   findings: string[];
 }
@@ -173,14 +176,14 @@ async function probeClaudeCli(ctx: WorkspaceContext, env: NodeJS.ProcessEnv): Pr
             'die claude.exe oder ["<pfad zu node.exe>", "<pfad zur cli.js von Claude Code>"] eintragen (A-05).',
         );
       }
-      return { claude, missingFlags: [], findings };
+      return { claude, apiKeySource: null, missingFlags: [], findings };
     }
     claude.found = true;
     claude.version = parseVersion(version.stdout);
     if (claude.version === null) findings.push('Die Version von Claude Code liess sich nicht bestimmen (claude --version).');
 
     const auth = await run(['auth', 'status']);
-    const { loggedIn, authMethod } = filterAuthStatus(auth.stdout, auth.exitCode);
+    const { loggedIn, authMethod, apiKeySource } = filterAuthStatus(auth.stdout, auth.exitCode);
     claude.loggedIn = loggedIn;
     claude.authMethod = authMethod;
     if (loggedIn === false) findings.push('Claude Code ist nicht angemeldet. Abhilfe: claude auth login ausführen.');
@@ -202,7 +205,29 @@ async function probeClaudeCli(ctx: WorkspaceContext, env: NodeJS.ProcessEnv): Pr
         `Pflichtoptionen nicht erkannt: ${missingFlags.join(', ')}. Ohne sie ruft ipa Claude nicht auf; ein Update von Claude Code wird empfohlen (O-02).`,
       );
     }
-    return { claude, missingFlags, findings };
+    return { claude, apiKeySource, missingFlags, findings };
+  } finally {
+    await workdir.remove();
+  }
+}
+
+/**
+ * Only `claude auth status`, without a model call: the login and provider state right before a run
+ * (spec.md §13.1). `null` if Claude does not start or answers without JSON.
+ */
+export async function freshAuthStatus(ctx: WorkspaceContext, env: NodeJS.ProcessEnv): Promise<AuthStatus | null> {
+  const workdir = await createClaudeWorkdir(ctx, LIVE_SYSTEM_PROMPT);
+  try {
+    const result = await runProcess({
+      command: ctx.config.claude.command,
+      args: ['auth', 'status'],
+      cwd: workdir.dir,
+      env: claudeProcessEnv(env),
+      input: '',
+      timeoutMs: FLAG_TIMEOUT_MS,
+    });
+    if (result.spawnError !== null || result.timedOut) return null;
+    return filterAuthStatus(result.stdout, result.exitCode);
   } finally {
     await workdir.remove();
   }
@@ -305,8 +330,11 @@ export async function probeClaude(ctx: WorkspaceContext, opts: ProbeOptions): Pr
   const probe = await probeClaudeCli(ctx, env);
   findings.push(...probe.findings);
   const { claude, missingFlags } = probe;
-  const billing = checkBilling(claudeProcessEnv(env), ctx.config, claude.authMethod);
+  const billing = await checkBilling(claudeProcessEnv(env), ctx.config, { authMethod: claude.authMethod, apiKeySource: probe.apiKeySource });
   if (billing.blocked) findings.push(paidUsageMessage(billing));
+  for (const location of billing.unreadableSettings) {
+    findings.push(`Claude-Einstellungen nicht auswertbar (${location}); der Kostenschutz konnte sie nicht prüfen.`);
+  }
 
   let live: DoctorRecord['live'] = null;
   let settingSourcesAuthOk: boolean | null = null;
@@ -357,17 +385,21 @@ export async function probeClaude(ctx: WorkspaceContext, opts: ProbeOptions): Pr
 
 /**
  * For packages 06 and 07 before the first Claude call of a run: without a `doctor.json` that reports
- * all mandatory options, the check runs once without `--live`. If Claude is still not usable or paid
- * usage is not allowed, an `IpaError` with exit code 6 follows.
+ * all mandatory options, the check runs once without `--live`. The billing guard never relies on
+ * `doctor.json`: environment and settings first, without starting a process, then a fresh
+ * `claude auth status`. If Claude is not usable or paid usage is not allowed, an `IpaError` with exit
+ * code 6 follows.
  */
 export async function ensureClaudeReady(ctx: WorkspaceContext, opts: { env?: NodeJS.ProcessEnv } = {}): Promise<void> {
   const env = opts.env ?? process.env;
-  let record = await readDoctorRecord(ctx.workspaceDir);
+  await assertPaidUsageAllowed(claudeProcessEnv(env), ctx.config);
+  const record = await readDoctorRecord(ctx.workspaceDir);
   if (record === null || !claudeUsable(record, ctx.config)) {
-    record = (await probeClaude(ctx, { live: false, env })).record;
-    if (!claudeUsable(record, ctx.config)) {
-      const reason = record.claude.found
-        ? `Pflichtoptionen nicht erkannt: ${missingRequiredFlags(record, ctx.config).join(', ')}`
+    const report = await probeClaude(ctx, { live: false, env });
+    if (!claudeUsable(report.record, ctx.config)) {
+      const { record: probed } = report;
+      const reason = probed.claude.found
+        ? `Pflichtoptionen nicht erkannt: ${missingRequiredFlags(probed, ctx.config).join(', ')}`
         : 'Claude Code wurde nicht gefunden';
       throw new IpaError(
         'claude_not_ready',
@@ -376,6 +408,8 @@ export async function ensureClaudeReady(ctx: WorkspaceContext, opts: { env?: Nod
           `Details mit ipa doctor; Ergebnis in ${doctorPath(ctx.workspaceDir)}.`,
       );
     }
+    if (report.billing.blocked) throw paidUsageError(report.billing);
+    return;
   }
-  assertPaidUsageAllowed(claudeProcessEnv(env), ctx.config, record.claude.authMethod);
+  await assertPaidUsageAllowed(claudeProcessEnv(env), ctx.config, await freshAuthStatus(ctx, env));
 }

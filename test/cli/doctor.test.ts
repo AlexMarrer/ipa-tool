@@ -8,7 +8,7 @@ import type { AiUsageRecord } from '../../src/claude/usage.js';
 import { readJsonl } from '../../src/core/jsonl.js';
 import { isSameOrInside } from '../../src/core/paths.js';
 import { validate } from '../../src/core/schemas.js';
-import { FAKE_API_KEY, FAKE_AUTH_TOKEN, fakeClaudeEnv, SESSION_ENV, useFakeClaude } from '../helpers/claude.js';
+import { FAKE_API_KEY, FAKE_AUTH_TOKEN, FAKE_KEY_HELPER, fakeClaudeEnv, SESSION_ENV, useFakeClaude, writeClaudeSettings } from '../helpers/claude.js';
 import { createTempRepo, type TempRepo } from '../helpers/git-repo.js';
 import { expectRepoUnchanged, fingerprintRepo } from '../helpers/repo-fingerprint.js';
 import { filesContaining } from '../helpers/secrets.js';
@@ -31,8 +31,9 @@ async function prepare(workspaceArgs: string[] = []): Promise<Prepared> {
   return { repo, dataDir, workspace };
 }
 
-async function doctor(p: Prepared, args: string[] = [], mode = 'ok', extra: Record<string, string | undefined> = {}) {
+async function doctor(p: Prepared, args: string[] = [], mode = 'ok', extra: Record<string, string | undefined> = {}, settings?: Record<string, unknown>) {
   const fake = await fakeClaudeEnv(mode, extra);
+  if (settings !== undefined) await writeClaudeSettings(fake.configDir, settings);
   const result = await runCli(['doctor', ...args], { dataDir: p.dataDir, repo: p.repo.root, env: fake.env });
   const record = await readJsonFile<DoctorRecord>(`${p.workspace}/doctor.json`);
   expect(validate('doctor', record)).toEqual({ ok: true });
@@ -192,7 +193,7 @@ describe('ipa doctor: Kostenschutz (spec.md §13.1)', () => {
       const result = await doctor(p, ['--live'], 'ok', { [name]: value });
       expect(result.exitCode, name).toBe(7);
       expect(result.record.ok, name).toBe(false);
-      expect(result.stdout).toMatch(new RegExp(`API-Schlüssel:\\s+erkannt: ${name} \\(hat Vorrang vor der Anmeldung\\)`));
+      expect(result.stdout).toMatch(new RegExp(`API-Schlüssel:\\s+erkannt: ${name}\\n`));
       expect(result.stdout).toMatch(/Kostenpflichtige Nutzung:\s+nicht erlaubt \(claude\.allowPaidUsage: false\), Modellaufrufe sind gesperrt/);
       expect(result.stdout).toMatch(/Ergebnis:\s+nicht bereit/);
       expect(result.stderr).toContain(`Befund: Kostenpflichtige Claude-Nutzung erkannt (${name})`);
@@ -206,16 +207,37 @@ describe('ipa doctor: Kostenschutz (spec.md §13.1)', () => {
 
   it('sperrt Bedrock, Vertex AI und Foundry, auch als Anbieter aus den Claude-Einstellungen', async () => {
     const p = await prepare();
-    for (const name of ['CLAUDE_CODE_USE_BEDROCK', 'CLAUDE_CODE_USE_VERTEX', 'CLAUDE_CODE_USE_FOUNDRY']) {
+    for (const name of ['CLAUDE_CODE_USE_BEDROCK', 'CLAUDE_CODE_USE_VERTEX', 'CLAUDE_CODE_USE_FOUNDRY', 'CLAUDE_CODE_USE_ANTHROPIC_AWS', 'CLAUDE_CODE_USE_MANTLE']) {
       const result = await doctor(p, [], 'ok', { [name]: '1' });
       expect(result.exitCode, name).toBe(7);
       expect(result.record.claude.authMethod).toBe('third_party');
-      expect(result.stdout).toMatch(new RegExp(`Externer Anbieter:\\s+erkannt: ${name}, Anmeldeart third_party`));
+      expect(result.stdout).toMatch(new RegExp(`Externer Anbieter:\\s+erkannt: ${name}\\n`));
       expect(result.stdout).toMatch(/API-Schlüssel:\s+nicht erkannt/);
     }
     const settings = await doctor(p, [], 'ok', { FAKE_CLAUDE_AUTH_METHOD: 'third_party' });
     expect(settings.exitCode).toBe(7);
     expect(settings.stdout).toMatch(/Externer Anbieter:\s+erkannt: Anmeldeart third_party/);
+  });
+
+  it('zeigt apiKeyHelper und Variablen aus den Claude-Einstellungen ohne Werte und meldet ungültige Einstellungen', async () => {
+    const p = await prepare();
+    const settings = { apiKeyHelper: FAKE_KEY_HELPER, env: { CLAUDE_CODE_USE_VERTEX: '1', ANTHROPIC_AUTH_TOKEN: FAKE_AUTH_TOKEN } };
+    const result = await doctor(p, ['--live'], 'ok', {}, settings);
+    expect(result.exitCode).toBe(7);
+    expect(result.stdout).toMatch(/API-Schlüssel:\s+erkannt: apiKeyHelper \(Benutzereinstellungen\), env\.ANTHROPIC_AUTH_TOKEN \(Benutzereinstellungen\)\n/);
+    expect(result.stdout).toMatch(/Externer Anbieter:\s+erkannt: env\.CLAUDE_CODE_USE_VERTEX \(Benutzereinstellungen\)\n/);
+    expect(result.stderr).toContain('Live-Prüfung übersprungen: kostenpflichtige Nutzung ist nicht freigegeben');
+    expect(result.calls.some((call) => call.kind === 'model-call')).toBe(false);
+    for (const secret of [FAKE_KEY_HELPER, FAKE_AUTH_TOKEN]) {
+      expect(result.stdout + result.stderr).not.toContain(secret);
+      expect(await filesContaining(p.dataDir, secret)).toEqual([]);
+    }
+
+    const fake = await fakeClaudeEnv('ok');
+    await writeFile(path.join(fake.configDir, 'settings.json'), '{ kaputt');
+    const broken = await runCli(['doctor'], { dataDir: p.dataDir, repo: p.repo.root, env: fake.env });
+    expect(broken.exitCode).toBe(0);
+    expect(broken.stderr).toContain('Claude-Einstellungen nicht auswertbar (Benutzereinstellungen:');
   });
 
   it('lässt API-Schlüssel und Anbieter mit allowPaidUsage: true zu und meldet die Abrechnung', async () => {

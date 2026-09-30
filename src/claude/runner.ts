@@ -68,7 +68,7 @@ function assertSubject(purpose: ClaudePurpose, subjectId: string | null): void {
 export async function callClaude(ctx: WorkspaceContext, spec: CallSpec): Promise<CallDetails> {
   assertSubject(spec.purpose, spec.subjectId);
   const env = claudeProcessEnv(spec.env);
-  assertPaidUsageAllowed(env, ctx.config);
+  await assertPaidUsageAllowed(env, ctx.config);
   const { command, maxTurns, model } = ctx.config.claude;
   const workdir = await createClaudeWorkdir(ctx, spec.promptText);
   const startedAt = ctx.clock.now();

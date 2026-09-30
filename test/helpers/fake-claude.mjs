@@ -11,11 +11,13 @@
  *   FAKE_CLAUDE_UNSUPPORTED  comma-separated options reported as unknown, for example "--safe-mode" like 2.1.114
  *   FAKE_CLAUDE_VERSION      output of --version, default 9.9.9
  *   FAKE_CLAUDE_OUTPUT       JSON text for structured_output, default {"ok":true}
- *   FAKE_CLAUDE_AUTH_METHOD  authMethod of auth status, for example third_party for a provider set in the settings
+ *   FAKE_CLAUDE_AUTH_METHOD  authMethod of auth status, for example third_party for a provider in managed settings
+ *   FAKE_CLAUDE_API_KEY_SOURCE  apiKeySource of auth status, for example "/login managed key" after a Console login
  *   FAKE_CLAUDE_LOG          file that receives one JSON line per call
  *
- * Like Claude Code 2.1.114, auth status reports third_party with CLAUDE_CODE_USE_BEDROCK, _VERTEX or _FOUNDRY,
- * oauth_token with ANTHROPIC_AUTH_TOKEN and still claude.ai with ANTHROPIC_API_KEY.
+ * Like Claude Code 2.1.114, auth status applies `env` and `apiKeyHelper` of $CLAUDE_CONFIG_DIR/settings.json and
+ * reports third_party with a provider variable, oauth_token with ANTHROPIC_AUTH_TOKEN or CLAUDE_CODE_OAUTH_TOKEN,
+ * api_key_helper with apiKeyHelper and still claude.ai with ANTHROPIC_API_KEY, plus apiKeySource.
  */
 import { createHash } from 'node:crypto';
 import { appendFileSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -83,14 +85,26 @@ if (args[0] === 'auth' && args[1] === 'status') {
     process.exit(1);
   }
   const loggedIn = mode !== 'logged-out';
-  const provider = ['BEDROCK', 'VERTEX', 'FOUNDRY'].find((name) => process.env[`CLAUDE_CODE_USE_${name}`]);
-  const authMethod =
-    process.env['FAKE_CLAUDE_AUTH_METHOD'] ?? (provider ? 'third_party' : process.env['ANTHROPIC_AUTH_TOKEN'] ? 'oauth_token' : 'claude.ai');
+  /** @type {{ env?: Record<string, string>, apiKeyHelper?: string }} */
+  let settings = {};
+  try {
+    settings = JSON.parse(readFileSync(path.join(process.env['CLAUDE_CONFIG_DIR'] ?? '', 'settings.json'), 'utf8'));
+  } catch {
+    // no user settings
+  }
+  const effective = { ...process.env, ...(settings.env ?? {}) };
+  const helper = typeof settings.apiKeyHelper === 'string' && settings.apiKeyHelper !== '';
+  const provider = ['BEDROCK', 'VERTEX', 'FOUNDRY', 'ANTHROPIC_AWS', 'MANTLE'].find((name) => effective[`CLAUDE_CODE_USE_${name}`]);
+  const token = effective['ANTHROPIC_AUTH_TOKEN'] || effective['CLAUDE_CODE_OAUTH_TOKEN'] ? 'oauth_token' : helper ? 'api_key_helper' : 'claude.ai';
+  const authMethod = process.env['FAKE_CLAUDE_AUTH_METHOD'] ?? (provider ? 'third_party' : token);
+  const apiKeySource =
+    process.env['FAKE_CLAUDE_API_KEY_SOURCE'] ?? (effective['ANTHROPIC_API_KEY'] ? 'ANTHROPIC_API_KEY' : helper ? 'apiKeyHelper' : undefined);
   // Personal fields that the tool must drop (AK-05-06).
   print({
     loggedIn,
     authMethod: loggedIn ? authMethod : 'none',
     apiProvider: provider ? provider.toLowerCase() : 'firstParty',
+    ...(loggedIn && apiKeySource !== undefined ? { apiKeySource } : {}),
     email: 'person@example.com',
     orgId: '5f3c0000-1111-2222-3333-444455556666',
     orgName: 'Geheime Firma AG',

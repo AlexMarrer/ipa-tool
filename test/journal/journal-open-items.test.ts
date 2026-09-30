@@ -267,6 +267,17 @@ describe('ipa journal: Tageszuordnung, offene Punkte und Ausgangslage (Paket 07)
     expect(await filesContaining(env.dataDir, FAKE_API_KEY)).toEqual([]);
   });
 
+  it('prüft die Anmeldung vor dem Journal frisch: ein Anbieter nach der letzten Prüfung sperrt ohne Modellaufruf (spec.md §13.1)', async () => {
+    // doctor.json of journalRepo reports claude.ai; the fresh claude auth status reports a provider.
+    const env = await journalRepo(`${DAY}T08:00:00+02:00`);
+    await noteAt(env, `${DAY}T09:00:00+02:00`, { type: 'activity', text: 'Recherche' });
+    const run = await journalAt(env, `${DAY}T18:00:00+02:00`, { extra: { FAKE_CLAUDE_AUTH_METHOD: 'third_party' } });
+    expect(run.exitCode).toBe(6);
+    expect(run.stderr).toContain('Kostenpflichtige Claude-Nutzung erkannt (Anmeldeart third_party)');
+    expect(run.calls.map((call) => call.kind)).toEqual(['auth']);
+    expect(await namesIn(`${env.workspace}/journal/runs`)).toEqual([]);
+  });
+
   it('endet mit Exit-Code 6 ohne Laufordner, wenn Claude nicht einsatzbereit ist', async () => {
     const env = await journalRepo(`${DAY}T08:00:00+02:00`, { ready: false, claude: { command: [`${process.cwd()}/gibt-es-nicht/claude.exe`] } });
     await noteAt(env, `${DAY}T09:00:00+02:00`, { type: 'activity', text: 'Recherche' });

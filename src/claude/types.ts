@@ -105,15 +105,18 @@ export interface DoctorRecord {
   ok: boolean;
 }
 
-/** Billing guard (spec.md §13.1): only names of variables, never their values. */
+/** Billing guard (spec.md §13.1): only names of variables and settings keys, never their values. */
 export interface BillingCheck {
-  /** Set variables that bill per request through the Anthropic API, for example `ANTHROPIC_API_KEY`. */
-  apiKeyVariables: string[];
-  /** Set variables that route Claude Code to Bedrock, Vertex AI or Foundry. */
-  providerVariables: string[];
-  /** `claude auth status` reports `authMethod: third_party`, also for a provider set in the Claude Code settings. */
-  thirdPartyLogin: boolean;
-  /** Any of the three above. */
+  /**
+   * Paid access through the Anthropic API, for example `ANTHROPIC_API_KEY`, `apiKeyHelper (Benutzereinstellungen)`
+   * or `API-Schlüsselquelle /login managed key` from `claude auth status`.
+   */
+  apiKeySources: string[];
+  /** Bedrock, Vertex AI, Foundry and other providers, for example `env.CLAUDE_CODE_USE_BEDROCK (Richtlinie HKLM)`. */
+  providerSources: string[];
+  /** Settings documents that exist but could not be evaluated: label and location. */
+  unreadableSettings: string[];
+  /** Any paid source. */
   detected: boolean;
   /** `claude.allowPaidUsage` is `true`; a missing field counts as `false`. */
   allowPaidUsage: boolean;

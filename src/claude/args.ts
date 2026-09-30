@@ -139,12 +139,21 @@ export function parseGitVersion(stdout: string): string | null {
 }
 
 const AUTH_METHOD = /^[A-Za-z0-9._-]{1,40}$/;
+/** `apiKeySource` values of Claude Code 2.1.114; anything else could be a key and becomes `unbekannt`. */
+const API_KEY_SOURCES: ReadonlySet<string> = new Set(['ANTHROPIC_API_KEY', 'apiKeyHelper', '/login managed key']);
+
+export interface AuthStatus {
+  loggedIn: boolean | null;
+  authMethod: string | null;
+  /** Where Claude Code would take an API key from; `null` without one (spec.md §13.1). */
+  apiKeySource: string | null;
+}
 
 /**
- * Keeps only `loggedIn` and `authMethod` of `claude auth status`; email, organisation, token and
- * everything else are dropped. An `authMethod` that looks unusual becomes `unbekannt`.
+ * Keeps only `loggedIn`, `authMethod` and `apiKeySource` of `claude auth status`; email, organisation,
+ * token and everything else are dropped. A value that looks unusual becomes `unbekannt`.
  */
-export function filterAuthStatus(stdout: string, exitCode: number | null): { loggedIn: boolean | null; authMethod: string | null } {
+export function filterAuthStatus(stdout: string, exitCode: number | null): AuthStatus {
   let value: unknown = null;
   try {
     value = JSON.parse(stdout);
@@ -157,5 +166,7 @@ export function filterAuthStatus(stdout: string, exitCode: number | null): { log
   const loggedIn = typeof rawLoggedIn === 'boolean' ? rawLoggedIn : exitCode === 1 ? false : null;
   const rawMethod = record['authMethod'];
   const authMethod = typeof rawMethod === 'string' ? (AUTH_METHOD.test(rawMethod) ? rawMethod : 'unbekannt') : null;
-  return { loggedIn, authMethod };
+  const rawSource = record['apiKeySource'];
+  const apiKeySource = typeof rawSource === 'string' ? (API_KEY_SOURCES.has(rawSource) ? rawSource : 'unbekannt') : null;
+  return { loggedIn, authMethod, apiKeySource };
 }

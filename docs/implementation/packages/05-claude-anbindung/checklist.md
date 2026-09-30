@@ -45,6 +45,8 @@ Einen Punkt erst abhaken, wenn die Arbeit umgesetzt und geprüft ist. Hinter den
 - [x] Fake-CLI bildet `claude auth status` von 2.1.114 nach (`third_party` bei Anbietervariable, `oauth_token` bei `ANTHROPIC_AUTH_TOKEN`, `claude.ai` bei `ANTHROPIC_API_KEY`, `FAKE_CLAUDE_AUTH_METHOD`); `fakeClaudeEnv` entfernt API-Schlüssel des Rechners. Nachweis: `test/helpers/fake-claude.mjs`, `test/helpers/claude.ts`; Verhalten der echten CLI am 30.09.2026 ohne Modellaufruf geprüft (spec.md §18).
 - [x] `npm run typecheck`, `npm test` und `npm run build` sind grün. Nachweis: 30.09.2026, Windows 11, Node.js 24.19.0: 65 Testdateien, 543 bestanden, 2 übersprungen (881 s); Typecheck und Build fehlerfrei.
 - [x] README, spec.md (D-25, §6.3, §7.1, §7.2, §9.11, §10, §13.1, §18) und Paketspezifikation (§4, §5, AK-05-12, §8) aktualisiert.
+- [x] Erweiterung (30.09.2026): Claude-Einstellungen (`apiKeyHelper`, bezahlte Variablen in `env`, `forceLoginMethod` console/gateway, `forceLoginGatewayUrl`; Benutzer-, Server-Cache-, verwaltete Einstellungen, `managed-settings.d`, Registry HKLM/HKCU), frisches `claude auth status` vor jedem Lauf statt `doctor.json`, `apiKeySource` und Liste der Abo-Anmeldearten, zusätzlich `ANTHROPIC_PROFILE`, `ANTHROPIC_FEDERATION_RULE_ID`, `CLAUDE_CODE_USE_ANTHROPIC_AWS`, `…_MANTLE`. Nachweis: `src/claude/claude-settings.ts`, `billing.ts`, `doctor.ts`; `test/claude/claude-settings.test.ts`, `test/claude/billing.test.ts`, `test/claude/doctor.test.ts`, `test/claude/runner.test.ts`, `test/cli/doctor.test.ts`, `test/journal/journal-open-items.test.ts`; Typecheck und Build fehlerfrei.
+- [ ] `npm test` nach der Erweiterung grün (vom Benutzer auszuführen).
 
 ## Dokumentation und Status
 

@@ -4,7 +4,7 @@
  */
 import type { Command } from 'commander';
 import { requiredFlags } from '../../claude/args.js';
-import { paidUsageSources, THIRD_PARTY_AUTH_METHOD } from '../../claude/billing.js';
+import { paidUsageSources } from '../../claude/billing.js';
 import { probeClaude, STRUCTURED_OUTPUT_TOOL } from '../../claude/doctor.js';
 import { usesSafeMode, usesSettingSources } from '../../claude/doctor-record.js';
 import type { BillingCheck, DoctorRecord, DoctorReport, ProbedFlag } from '../../claude/types.js';
@@ -32,13 +32,7 @@ function describeSettingSources(record: DoctorRecord): string {
   return 'wird nicht verwendet, bis ipa doctor --live die Anmeldung damit bestätigt (A-08)';
 }
 
-function describeApiKey(billing: BillingCheck): string {
-  // `claude auth status` keeps reporting claude.ai although the key takes precedence.
-  return billing.apiKeyVariables.length === 0 ? 'nicht erkannt' : `erkannt: ${billing.apiKeyVariables.join(', ')} (hat Vorrang vor der Anmeldung)`;
-}
-
-function describeProvider(billing: BillingCheck): string {
-  const sources = [...billing.providerVariables, ...(billing.thirdPartyLogin ? [`Anmeldeart ${THIRD_PARTY_AUTH_METHOD}`] : [])];
+function describeSources(sources: string[]): string {
   return sources.length === 0 ? 'nicht erkannt' : `erkannt: ${sources.join(', ')}`;
 }
 
@@ -81,14 +75,18 @@ export function formatDoctorReport(report: DoctorReport, ctx: WorkspaceContext, 
     );
   }
   rows.push(
-    ['API-Schlüssel', describeApiKey(report.billing)],
-    ['Externer Anbieter', describeProvider(report.billing)],
+    ['API-Schlüssel', describeSources(report.billing.apiKeySources)],
+    ['Externer Anbieter', describeSources(report.billing.providerSources)],
     ['Kostenpflichtige Nutzung', describePaidUsage(report.billing)],
     ['Live-Prüfung', describeLive(record, report, live)],
     ['Ergebnis', record.ok ? 'bereit' : 'nicht bereit'],
   );
 
   const hints: string[] = [];
+  if (report.billing.apiKeySources.length > 0 && record.claude.authMethod === 'claude.ai') {
+    // `claude auth status` keeps reporting claude.ai while `claude -p` uses the key.
+    hints.push('Hinweis: Ein API-Schlüssel hat bei claude -p Vorrang vor der Abo-Anmeldung, auch wenn die Anmeldeart claude.ai lautet.');
+  }
   if (record.claude.loggedIn === true) {
     hints.push('Hinweis: Ob diese Anmeldung der zugelassene geschäftliche Zugang ist, lässt sich technisch nicht prüfen und ist organisatorisch zu bestätigen (O-02).');
   }

@@ -15,7 +15,17 @@ import { IpaError } from '../../src/core/errors.js';
 import { readJsonl } from '../../src/core/jsonl.js';
 import { isProcessAlive } from '../../src/core/lock.js';
 import { isSameOrInside } from '../../src/core/paths.js';
-import { FAKE_API_KEY, FAKE_AUTH_TOKEN, type FakeCall, fakeClaudeEnv, mergedEnv, SESSION_ENV, useFakeClaude } from '../helpers/claude.js';
+import {
+  FAKE_API_KEY,
+  FAKE_AUTH_TOKEN,
+  FAKE_KEY_HELPER,
+  type FakeCall,
+  fakeClaudeEnv,
+  mergedEnv,
+  SESSION_ENV,
+  useFakeClaude,
+  writeClaudeSettings,
+} from '../helpers/claude.js';
 import { createTempRepo, type TempRepo } from '../helpers/git-repo.js';
 import { expectRepoUnchanged, fingerprintRepo } from '../helpers/repo-fingerprint.js';
 import { initRepo } from '../helpers/snapshots.js';
@@ -357,6 +367,22 @@ describe('ClaudeRunner: Kostenschutz (spec.md §13.1)', () => {
       expect((error as Error).message, name).not.toContain(FAKE_API_KEY);
       expect((error as Error).message, name).not.toContain(FAKE_AUTH_TOKEN);
       expect(await fake.calls(), name).toEqual([]);
+    }
+    expect(await aiUsage(p.workspace)).toEqual([]);
+  });
+
+  it('startet ohne Freigabe keinen Prozess, wenn die Claude-Einstellungen apiKeyHelper oder einen Anbieter setzen', async () => {
+    const p = await prepare();
+    for (const settings of [{ apiKeyHelper: FAKE_KEY_HELPER }, { env: { CLAUDE_CODE_USE_MANTLE: '1' } }]) {
+      const fake = await fakeClaudeEnv('ok');
+      await writeClaudeSettings(fake.configDir, settings);
+      const ctx = await resolveContext({ repo: p.repo.root, dataDir: p.dataDir, requireInit: true });
+      const error = await createClaudeRunner({ env: mergedEnv(fake.env) })
+        .run(ctx, request(p.promptFile))
+        .catch((caught: unknown) => caught);
+      expect(error).toMatchObject({ code: 'paid_usage_blocked', exitCode: 6 });
+      expect((error as Error).message).not.toContain(FAKE_KEY_HELPER);
+      expect(await fake.calls()).toEqual([]);
     }
     expect(await aiUsage(p.workspace)).toEqual([]);
   });
