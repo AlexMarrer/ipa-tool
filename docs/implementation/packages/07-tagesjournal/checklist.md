@@ -4,34 +4,34 @@ Einen Punkt erst abhaken, wenn er umgesetzt und geprüft ist. Den Nachweis (Test
 
 ## Voraussetzungen
 
-- [ ] Die Pakete 04, 05 und 06 sind im Code vorhanden, ihre Tests sind grün.
-- [ ] Der Git-Status ist geprüft, keine fremden Änderungen wurden überschrieben.
+- [x] Die Pakete 04, 05 und 06 sind im Code vorhanden, ihre Tests sind grün. Nachweis: 30.09.2026 vor den Änderungen (Windows 11, Node.js 24.19.0, Git 2.51.0.windows.1): 05 und 06 in Paket- und zentraler Checkliste `abgeschlossen`, 04 `technisch abgeschlossen` (offen nur die manuelle Prüfung der interaktiven Eingabe in der Windows-Konsole); im Code `readNotes` (`src/notes/store.ts`), `ClaudeRunner` und `ensureClaudeReady` (`src/claude/`), `analysisStatus`, `analysis.json`, Work-Logs und `complete.json` (`src/analysis/`); ein Rauchtest mit `ipa capture` und Fake-CLI erzeugte `analysis.json`, `logs/S000002.md` und `complete.json`; `npm run typecheck` fehlerfrei, `npm test` 57 Testdateien, 469 bestanden, 2 übersprungen.
+- [x] Der Git-Status ist geprüft, keine fremden Änderungen wurden überschrieben. Nachweis: `git status` sauber auf `feature/create-diary` (letzter Commit `32dedad`). Bestehende Dateien wurden nur für die Anbindung erweitert: `src/analysis/files.ts` (`readAnalysisRecord`), `src/analysis/input.ts` (Exporte `readContext`, `readSnapshotText`, `emptySummary`), `src/analysis/validate.ts` (`timeFieldPaths`), `src/core/schemas.ts`, `src/cli/main.ts`, `test/helpers/fake-claude.mjs` (Modus `journal`), `test/cli/main.test.ts` und `test/core/schemas.test.ts` (neue Befehle und Schemas), dazu README, spec.md und die Checklisten.
 
 ## Implementierung
 
-- [ ] Tageszuordnung und `timeSummary` gemäss spec.md §15 (AK-07-02, AK-07-05)
-- [ ] Journal-Eingabe gemäss spec.md §9.10, ohne frühere Entwürfe (AK-07-04)
-- [ ] `openItems`: Analysestatus, Lücken, Fehlerläufe, Tage ohne Aufnahme (AK-07-06)
-- [ ] Prompt `prompts/journal.md` (AK-07-12)
-- [ ] Schemas `journal-input`, `journal-output`, `journal-record`
-- [ ] Validator für R-01, R-03, R-04, R-06 und R-07 (AK-07-08)
-- [ ] Markdown-Renderer mit fester Abschnittsreihenfolge (AK-07-01, AK-07-09, AK-07-10)
-- [ ] Modus `--no-ai` und automatischer Rückfall ohne Daten (AK-07-07)
-- [ ] Exklusives Schreiben der Entwürfe, kein Zugriff auf `journal/final/` (AK-07-03)
+- [x] Tageszuordnung und `timeSummary` gemäss spec.md §15 (AK-07-02, AK-07-05). Nachweis: `src/journal/day.ts`, `src/journal/time-summary.ts`; `test/journal/day.test.ts` (6 Tests, u. a. Zeitzone statt UTC und Winterzeit), `test/journal/time-summary.test.ts`; `journal.test.ts` › „erzeugt an einem Tag nur mit Notizen einen Entwurf …“ (AK-07-02); `journal-open-items.test.ts` › „führt einen Snapshot über zwei Tage an beiden Tagen nur unter „Unklare Tageszuordnung““ (AK-07-05).
+- [x] Journal-Eingabe gemäss spec.md §9.10, ohne frühere Entwürfe (AK-07-04). Nachweis: `src/journal/input.ts`, `schemas/journal-input.schema.json`; `journal.test.ts` › „liest weder frühere Entwürfe noch die Endfassung; allowedEvidenceIds sind nur Original-Belege, Notizen und Kontext (AK-07-04, I-10)“; erneute Prüfung von Commit-Nachrichten und Analyseaussagen: `journal-open-items.test.ts` › „hält Notizen, Commit-Nachrichten und Analyseaussagen mit Secret-Treffer zurück …“.
+- [x] `openItems`: Analysestatus, Lücken, Fehlerläufe, Tage ohne Aufnahme (AK-07-06). Nachweis: `journal-open-items.test.ts` › „zeigt offene, blockierte, erschöpfte, übersprungene Analysen, Lücken nach baseline, Fehlerläufe, beschädigte Notizzeilen und Tage ohne Aufnahme (AK-07-06)“.
+- [x] Prompt `prompts/journal.md` (AK-07-12). Nachweis: `test/journal/prompt.test.ts` › „enthält die Zusatzregeln aus spec.md §13.5 …“ (Schlüsselsätze) und „verwendet ein Ausgabeschema, das die Prüfung aus spec.md §8.4 besteht“.
+- [x] Schemas `journal-input`, `journal-output`, `journal-record`. Nachweis: `schemas/journal-*.schema.json`, im Register (`src/core/schemas.ts`); `test/core/schemas.test.ts` › „kompiliert alle Schemas im strikten draft-07-Modus“; `journal-output` kompakt 3643 Zeichen (unter 8000).
+- [x] Validator für R-01, R-03, R-04, R-06 und R-07 (AK-07-08). Nachweis: `src/journal/validate.ts`; `test/journal/validate.test.ts` (jede Regel positiv und negativ); `journal.test.ts` › „lehnt Antworten mit unbekannter Referenz, passed ohne frischen Bericht, Begründung ohne Beleg oder done ohne passenden Beleg ab (AK-07-08)“.
+- [x] Markdown-Renderer mit fester Abschnittsreihenfolge (AK-07-01, AK-07-09, AK-07-10). Nachweis: `src/journal/render.ts`; `test/journal/render.test.ts` mit den Snapshot-Dateien `__snapshots__/journal-ai.md` und `journal-no-ai.md`; `journal-open-items.test.ts` › AK-07-09 und AK-07-10.
+- [x] Modus `--no-ai` und automatischer Rückfall ohne Daten (AK-07-07). Nachweis: `journal.test.ts` › „endet bei einem Fehler der Fake-CLI mit Exit-Code 6 ohne Entwurf; --no-ai erzeugt dann ohne Claude einen Entwurf (AK-07-07)“ (über den echten CLI-Einstieg, kein Prozessstart der Fake-CLI); `journal-open-items.test.ts` › AK-07-06 (Tag ohne Snapshots und Notizen: `reason: no_data`, „keine Belege erfasst“, kein Aufruf).
+- [x] Exklusives Schreiben der Entwürfe, kein Zugriff auf `journal/final/` (AK-07-03). Nachweis: `journal.test.ts` › „lässt frühere Entwürfe und die persönliche Endfassung byte-gleich; zwei Läufe in derselben Sekunde ergeben zwei Entwürfe (AK-07-03)“ und „greift in src/journal nie auf journal/final/ zu (I-09)“.
 
 ## Integration
 
-- [ ] `ipa journal [--day] [--no-ai]` angebunden, ohne Lock (AK-07-11)
+- [x] `ipa journal [--day] [--no-ai]` angebunden, ohne Lock (AK-07-11). Nachweis: `src/cli/commands/journal.ts`, registriert in `src/cli/main.ts`; `test/cli/main.test.ts` › „ipa --help listet … note und journal …“; `journal.test.ts` › „nimmt ohne --day den heutigen Tag der Zeitzone (Uhr 23:30 UTC); ein ungültiges --day ergibt Exit-Code 2 (AK-07-11)“ und „läuft ohne Lock, auch wenn ein anderer Lauf ihn hält (D-16)“.
 
 ## Tests
 
-- [ ] Unit-Tests: Tageszuordnung, Zeitübersicht, Validator, Renderer als Snapshot-Test
-- [ ] Integrationstests AK-07-01 bis AK-07-12 mit Fake-CLI und injizierter Uhr grün
+- [x] Unit-Tests: Tageszuordnung, Zeitübersicht, Validator, Renderer als Snapshot-Test. Nachweis: `test/journal/day.test.ts`, `time-summary.test.ts`, `validate.test.ts`, `render.test.ts`, `prompt.test.ts`.
+- [x] Integrationstests AK-07-01 bis AK-07-12 mit Fake-CLI und injizierter Uhr grün. Nachweis: `test/journal/journal.test.ts` (AK-07-01, -02, -03, -04, -07, -08, -11, -12, Lock, `.ipa` im Repository) und `test/journal/journal-open-items.test.ts` (AK-07-05, -06, -09, -10, Secrets, Eingabe zu gross, Claude nicht bereit); alle Schritte mit Fingerprint-Prüfung des Repositorys.
 - [ ] `npm run typecheck`, `npm test` und `npm run build` grün
-- [ ] Manuell nach Freigabe: Live-Journal eines künstlichen Tages, Stichprobe der Belege (Ergebnis notieren)
+- [ ] Manuell nach Freigabe: Live-Journal eines künstlichen Tages, Stichprobe der Belege (Ergebnis notieren). Vorbereitet: `test/live/journal.live.ts`, ein Modellaufruf, `npm run test:live -- test/live/journal.live.ts` mit `IPA_LIVE_CLAUDE=1`. In dieser Sitzung nicht ausgeführt.
 
 ## Dokumentation und Status
 
-- [ ] README: Tagesabschluss, manuelle Übernahme nach `journal/final/`, Sicherung
-- [ ] Abweichungen in spec.md §18 eingetragen oder „keine“ bestätigt
+- [x] README: Tagesabschluss, manuelle Übernahme nach `journal/final/`, Sicherung. Nachweis: `README.md`, Abschnitte „`ipa journal [--day <YYYY-MM-DD>] [--no-ai]`“ und „Tagesjournal“ (Eingabe eines Tages, Prüfung der Antwort, Aufbau des Entwurfs, Tagesabschluss mit Übernahme nach `journal/final/`, Sicherung), dazu Stand, Aufbau des Arbeitsbereichs, Exit-Codes, Entwicklung und Aufbau des Quellcodes. Stand 30.09.2026.
+- [x] Abweichungen in spec.md §18 eingetragen oder „keine“ bestätigt. Nachweis: acht Einträge vom 30.09.2026 zu Paket 07 (Umgebung, §9.10, unklare Tageszuordnung und R-06, Zeitübersicht, `runs.jsonl`, Signatur von `generateJournal`, Rückfall ohne KI und erneute Prüfung, Tests); eingearbeitet in §6.3, §9.10, §9.11, §10 und §15. Paketspezifikation §9 ergänzt.
 - [ ] Zentrale Checkliste `docs/implementation/checklist.md` aktualisiert

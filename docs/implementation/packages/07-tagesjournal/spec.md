@@ -172,3 +172,7 @@ Weitere Regeln:
 ## 9. Offene Annahmen
 
 - Das Journalformat ist neutral gewählt (O-04). Eine spätere Anpassung betrifft nur Renderer und Prompt, nicht die Datenmodelle.
+- Zeiten von Planungsnotizen gelten als geplanter Aufwand und zählen nicht zu den Summen der Zeitübersicht (spec.md §15, §18). Sollen sie anders erscheinen, betrifft das nur `buildTimeSummary` und den Renderer.
+- Ein Snapshot mit unklarer Tageszuordnung ist für Claude nicht zitierbar; das Tool zeigt ihn selbst unter „Unklare Tageszuordnung“ mit seinen übernommenen Aussagen und Commits (spec.md §9.10, §18). Die Zuordnung zu einem Tag trifft der Benutzer beim Überarbeiten.
+- Kontext-IDs in abgeleiteten Aussagen gelten nur, solange die Kontextdatei unverändert ist; sonst fehlen sie im Journal (spec.md §18). Bei täglich geänderten Planungsdateien zeigt der Entwurf deshalb weniger Kontextbelege aus früheren Analysen.
+- `journal` liest `analysis.json`, `complete.json` und die Versuchsdateien ohne Lock. Schreibt ein gleichzeitiger `capture` eine Markierung gerade exklusiv, kann `journal` sie unvollständig lesen und mit Exit-Code 2 abbrechen; ein erneuter Aufruf genügt. Nicht beobachtet, nur aus dem Schreibverfahren abgeleitet.

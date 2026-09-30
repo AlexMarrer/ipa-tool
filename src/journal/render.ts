@@ -146,6 +146,8 @@ function noAiContent(input: JournalInput, c: Citations): { sections: string[][];
   const noteLine = (text: string, note: { id: string; type: NoteType }) => `${text} – ${NOTE_LABELS[note.type]} ${c.cite([note.id])}`;
   const derived = input.analyses.filter((entry): entry is JournalAnalysis & { derived: DerivedAnalysis } => entry.dayAttribution === 'day' && entry.derived !== null);
 
+  // Built in the order of the sections, so the references keep the order in which they appear.
+  const planned = notesOf('plan').map((note) => noteLine(inline(note.text), note));
   const done = [
     ...notesOf('activity', 'general').map((note) => noteLine(inline(note.text), note)),
     ...derived.flatMap(({ snapshotId, derived: analysis }) => [
@@ -196,19 +198,20 @@ function noAiContent(input: JournalInput, c: Citations): { sections: string[][];
   const tests = derived.flatMap(({ snapshotId, derived: analysis }) =>
     analysis.tests.map((item) => `${inline(item.description)} – ${TEST_RESULTS[item.result]}; ${TESTED_STATE_UNPROVEN} – ${fromLog(snapshotId)} ${c.cite(item.evidence)}`),
   );
+  const insights = notesOf('insight').map((note) => noteLine(inline(note.text), note));
   const unknowns = derived.flatMap(({ snapshotId, derived: analysis }) => [
     ...analysis.contradictions.map((item) => `Widerspruch: ${inline(item.description)} – ${fromLog(snapshotId)} ${c.cite(item.evidence)}`),
     ...analysis.unknowns.map((text) => `${inline(text)} – ${fromLog(snapshotId)}`),
   ]);
   return {
     sections: [
-      list(notesOf('plan').map((note) => noteLine(inline(note.text), note))),
+      list(planned),
       list(done),
       list(problems),
       list(decisions),
       list(tests),
       [WITHOUT_AI],
-      list(notesOf('insight').map((note) => noteLine(inline(note.text), note))),
+      list(insights),
       [WITHOUT_AI],
     ],
     unknowns: list(unknowns),

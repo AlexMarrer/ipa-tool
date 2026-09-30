@@ -4,14 +4,14 @@ Lokales Kommandozeilenwerkzeug für die IPA. Es soll den Arbeitsstand eines beli
 
 Die Umsetzung erfolgt in Paketen, geplant in [`docs/implementation/`](docs/implementation/README.md).
 
-**Stand: Paket 06 (Analyse-Pipeline).** Verfügbar sind `ipa init` mit Ausgangs-Snapshot, `ipa capture` mit Zuordnung der Änderungen zum Vorgänger-Snapshot und anschliessender Analyse durch Claude Code zu belegten Work-Logs, `ipa skip`, `ipa baseline`, `ipa note`, `ipa status` und `ipa doctor`, das Git und Claude Code prüft. Noch nicht umgesetzt sind Journal und Zeitsteuerung.
+**Stand: Paket 07 (Tagesjournal).** Verfügbar sind `ipa init` mit Ausgangs-Snapshot, `ipa capture` mit Zuordnung der Änderungen zum Vorgänger-Snapshot und anschliessender Analyse durch Claude Code zu belegten Work-Logs, `ipa skip`, `ipa baseline`, `ipa note`, `ipa journal` für belegte Journal-Entwürfe eines Tages, `ipa status` und `ipa doctor`, das Git und Claude Code prüft. Noch nicht umgesetzt ist die Zeitsteuerung.
 
 ## Voraussetzungen
 
 - Windows 11. Das ist die einzige geprüfte Plattform. Linux und macOS sind nicht geprüft.
 - Node.js 24 oder neuer
 - Git 2.31 oder neuer (geprüft mit 2.51)
-- Für `ipa doctor` und die Analyse: eine installierte und angemeldete Claude-Code-CLI. Geprüft mit Version 2.1.201 unter Windows 11, einschliesslich [`ipa doctor --live`](#ipa-doctor---live). Ein Update auf mindestens 2.1.205 wird empfohlen: Ältere Versionen ignorieren ein ungültiges Ausgabeschema still (das Tool prüft seine Schemas deshalb selbst).
+- Für `ipa doctor`, die Analyse und `ipa journal` ohne `--no-ai`: eine installierte und angemeldete Claude-Code-CLI. Geprüft mit Version 2.1.201 unter Windows 11, einschliesslich [`ipa doctor --live`](#ipa-doctor---live). Ein Update auf mindestens 2.1.205 wird empfohlen: Ältere Versionen ignorieren ein ungültiges Ausgabeschema still (das Tool prüft seine Schemas deshalb selbst).
 
 ## Installation
 
@@ -72,7 +72,11 @@ analyses/S000002/attempt-1/              ein Analyseversuch: input.json, prompt.
 analyses/S000002/analysis.json           geprüfter Analyse-Datensatz
 analyses/S000002/complete.json           Abschlussmarkierung; skip.json nach ipa skip, retry-<n>.json nach --retry
 logs/S000002.md                          Work-Log eines Snapshots
-journal/{runs,drafts,final}/  context/  tmp/
+journal/runs/R20261014T160500Z-a3f9/     ein Journal-Lauf mit Claude: input.json, prompt.md, schema.json, response.json, stderr.txt, outcome.json
+journal/drafts/2026-10-14-R….md und .json Journal-Entwürfe; jeder Lauf legt neue Dateien an, nichts wird überschrieben
+journal/final/                           nur für die eigenen Endfassungen: das Tool legt den Ordner an, liest und schreibt dort aber nie
+context/                                 optionale Ablage für Kontextdateien (Anforderungen, Planung)
+tmp/                                     Hilfsdateien, zu Beginn jedes Laufs mit Lock geleert
 ```
 
 Das Tool sichert den Arbeitsbereich nicht selbst. Wo eine Sicherung liegt, entscheidet der Benutzer.
@@ -214,6 +218,26 @@ Analyse-Cursor: S000004
 
 Erfasst eine Notiz: eine Tätigkeit, ein Problem, eine Entscheidung, eine Erkenntnis oder eine Planung, auf Wunsch mit gemessenem oder geschätztem Zeitaufwand. Ohne Text fragt der Befehl im Terminal nach. `note` braucht keinen Snapshot und nimmt keinen Lock, es funktioniert also direkt nach `ipa init` und auch während eines laufenden `capture`. Einzelheiten und Beispiele stehen unter [Notizen](#notizen). Ein Verweis mit `--ref` muss auf einen gespeicherten Beleg zeigen, und bei einem möglichen Zugangsdatum warnt `note`, ohne den Wert zu nennen.
 
+### `ipa journal [--day <YYYY-MM-DD>] [--no-ai]`
+
+Erzeugt einen belegten Journal-Entwurf für einen Tag aus den Analysen, Commits, Notizen und Kontextdateien dieses Tages. Einzelheiten stehen unter [Tagesjournal](#tagesjournal).
+
+- `--day`: Tag des Journals, Standard ist heute in der Zeitzone aus `config.json`. Ein ungültiger Tag (zum Beispiel `2026-02-30` oder `14.10.2026`) ergibt Exit-Code 2.
+- `--no-ai`: Der Entwurf entsteht deterministisch ohne Claude, aus den Notizen und den Aussagen der Work-Logs. Das ist der Rückweg, wenn Claude nicht verfügbar ist oder das Limit erreicht ist. Gibt es für den Tag weder Snapshots noch verwendbare Notizen, arbeitet `journal` auch ohne `--no-ai` so.
+- Jeder Lauf legt einen neuen Entwurf `journal/drafts/<Tag>-<runId>.md` mit Datensatz `.json` an. Frühere Entwürfe und `journal/final/` bleiben unverändert.
+- `journal` nimmt keinen Lock, läuft also auch während eines `capture`, und schreibt keinen Eintrag in `runs.jsonl`. Nachweis eines Laufs sind der Entwurf, bei Claude zusätzlich `journal/runs/<runId>/` und die Zeile in `ai-usage.jsonl`.
+- Scheitert Claude, ist die Antwort ungültig oder die Eingabe grösser als `limits.maxJournalInputBytes` (Standard 512 KiB), entsteht kein Entwurf: Exit-Code 6, die Meldung nennt `ipa journal --day <Tag> --no-ai`. Die Eingabe wird nie gekürzt.
+
+```text
+> ipa journal
+Journal-Entwurf für 2026-10-14 gespeichert: KI-Entwurf mit Claude.
+Entwurf:              C:/Users/…/workspaces/mein-projekt-3fa9c1/journal/drafts/2026-10-14-R20261014T160500Z-a3f9.md
+Datensatz:            C:/Users/…/workspaces/mein-projekt-3fa9c1/journal/drafts/2026-10-14-R20261014T160500Z-a3f9.json
+Offene Analysen:      keine
+Lücken und Prüfungen: 1
+Bitte persönlich prüfen, korrigieren und die Endfassung manuell nach journal/final/ übernehmen.
+```
+
 ### `ipa doctor [--live]`
 
 Prüft, ob Git und Claude Code für die Analyse bereit sind. Ohne `--live` findet **kein Modellaufruf** statt.
@@ -280,11 +304,11 @@ Mit `--json` erscheint ein JSON-Objekt. Dieses Format ist ein stabiler Vertrag. 
 | --- | --- |
 | 0 | Erfolg, auch wenn `capture` keine neue Arbeit findet |
 | 1 | Unerwarteter interner Fehler. Mit `IPA_DEBUG=1` wird der Stacktrace ausgegeben. |
-| 2 | Bedienungs- oder Konfigurationsfehler: ungültige Argumente oder Konfiguration, kein Git-Repository, nicht initialisiert, kein Ausgangs-Snapshot, unzulässige oder nicht beschreibbare Datenwurzel, unbekannte Schemaversion, `ipa note` ohne Text und ohne Terminal oder mit abgebrochener Eingabe, ein Temp-Verzeichnis im Repository oder im Arbeitsbereich |
+| 2 | Bedienungs- oder Konfigurationsfehler: ungültige Argumente oder Konfiguration (auch ein ungültiger Tag bei `ipa journal --day`), kein Git-Repository, nicht initialisiert, kein Ausgangs-Snapshot, unzulässige oder nicht beschreibbare Datenwurzel, unbekannte Schemaversion, `ipa note` ohne Text und ohne Terminal oder mit abgebrochener Eingabe, ein Temp-Verzeichnis im Repository oder im Arbeitsbereich |
 | 3 | Ein anderer Lauf hält den Lock. |
 | 4 | Die Zuordnung ist wegen Branchwechsel oder umgeschriebener Historie angehalten. `ipa baseline` ist erforderlich. |
 | 5 | Der Arbeitsstand hat sich während der Aufnahme wiederholt verändert. Es wurde kein Snapshot gespeichert. |
-| 6 | Der KI-Schritt ist nicht abgeschlossen: Claude ist nicht einsatzbereit oder meldet einen Fehler, die Antwort ist ungültig, das Eingabepaket ist zu gross (`blocked`) oder die Versuche sind erschöpft (`exhausted`). Gesicherte Daten bleiben offen. |
+| 6 | Der KI-Schritt ist nicht abgeschlossen: Claude ist nicht einsatzbereit oder meldet einen Fehler, die Antwort ist ungültig, das Eingabepaket ist zu gross (`blocked`) oder die Versuche sind erschöpft (`exhausted`). Gesicherte Daten bleiben offen. Bei `ipa journal` entsteht dann kein Entwurf; `--no-ai` erzeugt ihn ohne Claude. |
 | 7 | `ipa doctor`: Die Voraussetzungen sind nicht erfüllt. |
 
 Treffen mehrere Fälle zu, gilt der höchste Code. Ausnahmen: Code 1 hat immer Vorrang, und bei `capture` geht ein Halt (4) einer nicht abgeschlossenen Analyse (6) vor, weil erst `ipa baseline` die Aufnahme wieder ermöglicht.
@@ -369,6 +393,70 @@ Jede Aussage endet mit ihren Beleg-IDs, zum Beispiel `[E003, N20261014T081500Z-0
 - Bricht ein Lauf nach `complete.json`, aber vor dem Cursor ab, führt der nächste Lauf den Cursor ohne Aufruf von Claude und ohne zweiten Log nach.
 - Bricht er vorher ab, zählt der Versuch als `interrupted`. Der nächste Lauf analysiert den Snapshot erneut und überschreibt `analysis.json` und den Log unter denselben Pfaden.
 - Scheitert das Speichern, etwa bei voller Platte, bleibt der Snapshot offen und der Cursor unverändert; `outcome.json` nennt den Grund.
+
+## Tagesjournal
+
+`ipa journal` fasst einen Tag als Entwurf für das persönliche Journal zusammen. Der Entwurf stützt jede Aussage auf Belege und ersetzt die persönliche Prüfung nicht. Das Format ist neutral gewählt; ein von Schule oder Betrieb verlangtes Format ist noch offen (O-04).
+
+### Eingabe eines Tages
+
+- **Snapshots:** alle Arbeits-Snapshots, deren Beobachtungszeitraum den Tag berührt. Liegen Beginn und Ende am selben Tag, gehört der Snapshot zu diesem Tag. Überspannt er mehrere Tage, zum Beispiel von 16:00 bis 09:00 am Folgetag, erscheint er an jedem dieser Tage nur unter „Unklare Tageszuordnung“ und nie als ausgeführte Arbeit. Ausgangs-Snapshots zählen nie als Arbeit.
+- **Analysen:** Die Aussagen abgeschlossener Analysen gehen als abgeleitete Aussagen ein, mit qualifizierten Beleg-IDs wie `S000004:E003`. Sie sind keine eigenständigen Belege: Claude darf nur die Original-Belege zitieren.
+- **Belege und Commits:** nur Beschreibungen der Belege (Art, Pfad, Commit, Snapshot, ob ausgelassen), keine Diffs. Commit-Nachrichten werden erneut geprüft; eine zurückgehaltene Nachricht erscheint nur als Referenz.
+- **Notizen:** alle Notizen mit diesem Tätigkeitstag. Notizen vom Typ `plan` sind die Tagesplanung. Eine Notiz mit möglichem Zugangsdatum wird zurückgehalten und als offene Prüfung ausgewiesen, ihr Zeitaufwand zählt trotzdem.
+- **Kontext:** die Kontextdateien aus `context.files`, geprüft wie bei der Analyse.
+- **Offene Punkte:** offene, blockierte, erschöpfte und übersprungene Analysen, Lücken aus den Manifesten (neuer Ausgangspunkt, Halt, fehlender Vorgängerstand), Läufe des Tages mit Exit-Code ungleich 0 aus `runs.jsonl`, ein aktiver Halt, beschädigte Notizzeilen, zurückgehaltene Inhalte und „keine Aufnahme“, wenn kein Snapshot den Tag berührt.
+
+Frühere Journal-Entwürfe und `journal/final/` liest das Tool nie. Zitierbar sind nur die IDs in `allowedEvidenceIds`: Belege der Snapshots des Tages, die Notizen des Tages und die Kontextdateien.
+
+### Prüfung der Antwort
+
+Claude erhält die Eingabe über stdin wie bei der Analyse, mit dem Prompt `prompts/journal.md` (Version `journal@1`). Das Tool übernimmt nur eine Antwort, die dem Schema `schemas/journal-output.schema.json` entspricht und diese Regeln erfüllt:
+
+| Regel | Inhalt |
+| --- | --- |
+| R-01 | Jede Referenz steht in `allowedEvidenceIds`. Eine Notiz eines anderen Tages oder ein Beleg eines Snapshots mit unklarer Tageszuordnung ist nicht zitierbar. |
+| R-03 | Ein Test „bestanden“ oder „fehlgeschlagen“ zitiert einen aktuellen Testbericht (`fresh: true`) mit Inhalt. |
+| R-04 | Eine Begründung zitiert eine Notiz oder eine Commit-Nachricht mit Inhalt. |
+| R-06 | Eine ausgeführte Arbeit zitiert einen Beleg eines Snapshots des Tages mit Inhalt oder eine Notiz vom Typ `activity`, `general` oder `problem`. |
+| R-07 | Die Antwort enthält keine Zeitfelder. |
+
+Bei einem Fehler bleiben `outcome.json` und `response.json` in `journal/runs/<runId>/`, und es entsteht kein Entwurf.
+
+### Aufbau des Entwurfs
+
+Der Entwurf beginnt mit dem Hinweis „KI-generierter Entwurf – persönlich prüfen, korrigieren und manuell nach journal/final/ übernehmen.“ (ohne Claude: „Automatisch erzeugter Entwurf ohne KI – …“). Der Kopf nennt Tag, Erstellzeit, Lauf, Modus, Modelle und Prompt-Version. Danach folgen immer diese Abschnitte:
+
+1. Geplante Arbeiten
+2. Ausgeführte Arbeiten
+3. Probleme und Lösungen
+4. Entscheidungen
+5. Tests: jedes Ergebnis mit dem Zusatz „getesteter Codezustand nicht nachgewiesen“; ohne aktuellen Bericht „Ergebnis unbekannt“
+6. Abweichungen von der Planung
+7. Erkenntnisse
+8. Nächste Schritte
+9. Zeitaufwand (vom Tool, nicht von Claude)
+10. Unklare Tageszuordnung
+11. Offene Analysen und Erfassungslücken
+12. Unbekannt/offen
+13. Quellen: jede zitierte Referenz mit Art, Pfad, Snapshot und SHA-256
+
+Aussagen enden mit ihren Referenzen in eckigen Klammern. Ein leerer Abschnitt erscheint als „nicht erfasst“: Er bedeutet nicht, dass es nichts gab. Ohne Claude (`--no-ai`) zeigen die Abschnitte die Notizen nach Typ und die Aussagen der Work-Logs des Tages, gekennzeichnet als „aus Work-Log übernommen“; Abweichungen und nächste Schritte bleiben dann „nicht erfasst (ohne KI)“.
+
+**Zeitaufwand:** Zeiten stammen nur aus Notizen, nie aus Beobachtungszeiträumen oder Commit-Zeitpunkten. Die Tabelle hat eine Zeile pro Notiz mit Zeit. Summen gibt es getrennt für gemessene und geschätzte Zeiten, eine Gesamtsumme gibt es nicht. Verzögerungen stehen separat und werden nicht zusätzlich summiert. Zeiten von Planungsnotizen sind geplanter Aufwand und zählen nicht zu den Summen. Notizen ohne Zeit erscheinen als „Zeit unbekannt“.
+
+### Tagesabschluss
+
+1. Letzten `ipa capture` ausführen, damit die Arbeit des Tages gesichert und analysiert ist.
+2. Mit `ipa status` offene Analysen, zurückgehaltene Inhalte und Lücken prüfen.
+3. `ipa journal` ausführen, bei Problemen mit Claude `ipa journal --no-ai`.
+4. Den Entwurf lesen und mit dem tatsächlichen Tagesablauf vergleichen. Die Referenzen im Abschnitt „Quellen“ führen zu Notizen, Work-Logs und gespeicherten Belegen.
+5. Fehlende persönliche Begründungen und Zeitabweichungen ergänzen, falsche Aussagen korrigieren.
+6. Die überarbeitete Endfassung **von Hand** nach `journal/final/`, zum Beispiel `journal/final/2026-10-14.md`, kopieren und dort weiterbearbeiten. Das Tool schreibt nie in diesen Ordner und liest ihn nie.
+
+Ein weiterer Lauf am selben Tag legt einen neuen Entwurf an. Welche Fassung gilt, entscheidet der Benutzer; einen Freigabebefehl oder eine Versionsverwaltung für Journale gibt es in V1 nicht.
+
+**Sicherung:** Das Tool sichert weder Entwürfe noch Endfassungen. `journal/final/` und am besten der ganze Arbeitsbereich gehören in die zugelassene Sicherung des Betriebs (O-07). Liegt der Arbeitsbereich ausserhalb des Repositorys, erfasst eine Sicherung des Repositorys ihn nicht.
 
 ## Zuordnung von Änderungen
 
@@ -568,7 +656,7 @@ Jede Auslassung steht mit Grund im Manifest, in `filterDecisions` und beim betro
 
 ## Claude Code: Aufruf, Schutzwirkung und Grenzen
 
-Claude Code analysiert neue Snapshots (siehe [Analyse und Work-Logs](#analyse-und-work-logs)). Der Aufruf lässt sich mit `ipa doctor` prüfen. Jeder Aufruf:
+Claude Code analysiert neue Snapshots (siehe [Analyse und Work-Logs](#analyse-und-work-logs)) und schreibt Journal-Entwürfe (siehe [Tagesjournal](#tagesjournal)). Der Aufruf lässt sich mit `ipa doctor` prüfen. Jeder Aufruf:
 
 - startet das Programm aus `claude.command` in `config.json` ohne Shell. Standard ist `["claude"]`. Ist Claude Code über npm installiert (`claude.cmd`), startet es ohne Shell nicht; dann gehört der absolute Pfad der `claude.exe` oder `["<pfad zu node.exe>", "<pfad zur cli.js von Claude Code>"]` in `claude.command`.
 - läuft in einem neuen, leeren Ordner `<Temp>/ipa-assistant/claude/<repositoryId>/<runId>-<n>/`, der nur `prompt.md` enthält und danach gelöscht wird. Er liegt immer ausserhalb von Repository und Arbeitsbereich, auch bei `--workspace .ipa`. Zeigt das Temp-Verzeichnis (unter Windows `TEMP` oder `TMP`, sonst `TMPDIR`) in das Repository oder den Arbeitsbereich, bricht der Aufruf vor dem Start mit Exit-Code 2 ab. Verwaiste Ordner älter als 24 Stunden entfernt der nächste Aufruf.
@@ -615,15 +703,16 @@ Die Claude-Vorabprüfung aus Paket 01 ist durch `ipa doctor --live` ersetzt. Ihr
 | `npm run build` | TypeScript nach `dist/` übersetzen |
 | `npm run typecheck` | Typprüfung von Quellcode, Tests und Skripten |
 | `npm test` | alle automatischen Tests (Vitest) |
-| `npm run test:live` | Live-Test mit dem installierten Claude Code (`ipa doctor --live`, zwei kleine Modellaufrufe). Läuft nur mit `IPA_LIVE_CLAUDE=1` und ist nicht Teil von `npm test`. |
+| `npm run test:live` | Live-Tests mit dem installierten Claude Code: `ipa doctor --live` (zwei kleine Modellaufrufe), eine Analyse (ein Aufruf) und ein Journal (ein Aufruf). Einzeln etwa mit `npm run test:live -- test/live/journal.live.ts`. Läuft nur mit `IPA_LIVE_CLAUDE=1` und ist nicht Teil von `npm test`. |
 
 Zu den Tests:
 
 - `npm test` baut zuerst `dist/`, weil Integrationstests den echten CLI-Einstieg starten.
 - Jeder Test arbeitet mit temporären Git-Repositories und einer eigenen temporären Datenwurzel. Das globale Setup setzt `IPA_ASSISTANT_HOME`, `LOCALAPPDATA` und `XDG_DATA_HOME` auf ein Temp-Verzeichnis, blendet die Git-Konfiguration des Rechners aus und prüft am Ende, dass die echte Datenwurzel unverändert ist.
 - Die Tests prüfen die Unversehrtheit der Test-Repositories über einen Fingerprint.
-- Automatische Tests rufen Claude nie echt auf. Sie verwenden die Fake-CLI `test/helpers/fake-claude.mjs` über `claude.command`; im Modus `analysis` leitet sie eine gültige Analyse aus dem Eingabepaket ab. Das globale Setup nimmt `claude` zusätzlich aus dem PATH der Testprozesse und legt ihr Temp-Verzeichnis in den Test-Ordner.
-- Der Live-Test verbraucht Claude-Kontingent und läuft nur auf ausdrücklichen Wunsch, in PowerShell mit `$env:IPA_LIVE_CLAUDE = '1'; npm run test:live`.
+- Automatische Tests rufen Claude nie echt auf. Sie verwenden die Fake-CLI `test/helpers/fake-claude.mjs` über `claude.command`; im Modus `analysis` leitet sie eine gültige Analyse aus dem Eingabepaket ab, im Modus `journal` einen gültigen Journal-Entwurf aus der Journal-Eingabe. Das globale Setup nimmt `claude` zusätzlich aus dem PATH der Testprozesse und legt ihr Temp-Verzeichnis in den Test-Ordner.
+- Die Journal-Tests setzen eine feste Uhr ein, damit Snapshots, Notizen und Läufe auf bestimmten Tagen liegen.
+- Die Live-Tests verbrauchen Claude-Kontingent und laufen nur auf ausdrücklichen Wunsch, in PowerShell mit `$env:IPA_LIVE_CLAUDE = '1'; npm run test:live`.
 
 Aufbau:
 
@@ -637,7 +726,8 @@ src/collector/      Aufnahme, Konsistenzprüfung, Manifest, atomare Ablage, Wied
 src/notes/          Notizen: Regeln der Eingabe, Ablage und Lesen (hängt nur von src/core/ ab)
 src/claude/         Claude-Aufruf ohne Werkzeuge und ohne Shell, Auswertung, ipa doctor, KI-Nutzungsprotokoll
 src/analysis/       Status, Eingabepaket, Prüfung der Antwort, Work-Log, Warteschlange, Cursor, ipa skip
-prompts/            Prompt der Analyse (analyze-work.md)
+src/journal/        Tageseingabe, Tageszuordnung, Zeitübersicht, Prüfung der Antwort, Markdown-Entwurf, ipa journal
+prompts/            Prompts der Analyse (analyze-work.md) und des Journals (journal.md)
 schemas/            JSON Schemas (draft-07)
 test/               Tests und Test-Helfer, test/live/ für den Live-Test
 ```

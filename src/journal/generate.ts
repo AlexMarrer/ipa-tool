@@ -86,22 +86,37 @@ function resolveSources(refs: readonly string[], known: ReadonlyMap<string, Jour
   });
 }
 
-type RecordContent = { mode: 'ai'; journal: JournalOutput; provenance: AiJournalProvenance } | { mode: 'no_ai'; journal: null; provenance: { deterministic: true; reason: NoAiReason } };
+export type RecordContent =
+  | { mode: 'ai'; journal: JournalOutput; provenance: AiJournalProvenance }
+  | { mode: 'no_ai'; journal: null; provenance: { deterministic: true; reason: NoAiReason } };
+
+export interface RecordArgs {
+  input: JournalInput;
+  sources: ReadonlyMap<string, JournalSource>;
+  runId: string;
+  generatedAt: string;
+  content: RecordContent;
+}
+
+/** `sources` holds exactly the references the draft shows, in order of first appearance. */
+export function buildJournalRecord(args: RecordArgs): JournalRecord {
+  const { input } = args;
+  return {
+    schemaVersion: 1,
+    day: input.day,
+    runId: args.runId,
+    generatedAt: args.generatedAt,
+    ...args.content,
+    timeSummary: input.timeSummary,
+    openItems: input.openItems,
+    sources: resolveSources(draftBody(input, args.content.journal).refs, args.sources),
+  };
+}
 
 /** JSON record first, then the Markdown draft; both exclusively, so no existing draft is ever replaced. */
 async function writeDraft(ctx: WorkspaceContext, build: JournalInputBuild, content: RecordContent): Promise<{ draftPath: string; recordPath: string }> {
   const { input } = build;
-  const body = draftBody(input, content.journal);
-  const record = {
-    schemaVersion: 1,
-    day: input.day,
-    runId: ctx.runId,
-    generatedAt: now(ctx),
-    ...content,
-    timeSummary: input.timeSummary,
-    openItems: input.openItems,
-    sources: resolveSources(body.refs, build.sources),
-  } as JournalRecord;
+  const record = buildJournalRecord({ input, sources: build.sources, runId: ctx.runId, generatedAt: now(ctx), content });
   const dir = path.join(ctx.workspaceDir, DRAFTS_FOLDER);
   await mkdir(dir, { recursive: true });
   const base = path.join(dir, `${input.day}-${ctx.runId}`);
