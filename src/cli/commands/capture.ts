@@ -1,9 +1,10 @@
 /**
- * `ipa capture [--no-analysis] [--retry <snapshotId>]` (spec.md §4.4, §6.3): capture, then the analysis
- * queue (package 06), also after a halt or an unstable worktree.
+ * `ipa capture [--no-analysis] [--retry <snapshotId>] [--scheduled]` (spec.md §4.4, §6.3): capture, then
+ * the analysis queue (package 06), also after a halt or an unstable worktree. `--scheduled` checks the
+ * working-time window first (package 08).
  */
 import type { Command } from 'commander';
-import { NO_DEADLINE, processQueue } from '../../analysis/queue.js';
+import { processQueue } from '../../analysis/queue.js';
 import { requestRetry } from '../../analysis/skip.js';
 import type { QueueHooks, QueueResult } from '../../analysis/types.js';
 import { createClaudeRunner } from '../../claude/runner.js';
@@ -19,13 +20,12 @@ import { withLock } from '../../core/lock.js';
 import { appendLockHeldRecord, appendRunRecord, createRunRecord, type RunError, runErrorOf, shortRunError } from '../../core/run-log.js';
 import { readState, writeState } from '../../core/state.js';
 import { formatZoned } from '../../core/time.js';
+import { checkScheduleWindow, describeOutsideWindow, type WindowCheck } from '../../schedule/window.js';
 import { formatFields } from '../format.js';
 import type { CliIo, CliState, GlobalOptions } from '../io.js';
 
 export interface CaptureAnalysisOptions {
   runner: ClaudeRunner;
-  /** Default: no limit until package 08 (spec.md §12.2). */
-  deadline?: Date;
   hooks?: QueueHooks;
   /** Environment for the readiness check of Claude. */
   env?: NodeJS.ProcessEnv;
@@ -38,6 +38,8 @@ export interface CaptureRunOptions {
   analysis?: CaptureAnalysisOptions;
   /** `--retry <snapshotId>`: releases further attempts before the capture (spec.md §12.1). */
   retry?: string;
+  /** `--scheduled`: outside the working-time window the run ends before the lock (spec.md §11.1). */
+  scheduled?: boolean;
 }
 
 export interface CaptureRunResult {
@@ -50,6 +52,8 @@ export interface CaptureRunResult {
   recovered: string[];
   queue: QueueResult | null;
   retry: { snapshotId: string; afterAttempt: number } | null;
+  /** Set if `--scheduled` found the run outside the window; nothing else happened then. */
+  outsideWindow: WindowCheck | null;
 }
 
 /**
@@ -66,11 +70,40 @@ function queueErrors(queue: QueueResult | null): RunError[] {
 }
 
 /**
+ * `--scheduled` outside the window: exit code 0 and one `outside_window` entry, appended without the lock
+ * like a `lock_held` entry. No snapshot, no queue, and `state.json` stays unchanged, so
+ * `lastSuccessfulRun` still names the last real capture (spec.md §18).
+ */
+async function skipOutsideWindow(ctx: WorkspaceContext, startedAt: Date, window: WindowCheck): Promise<CaptureRunResult> {
+  await appendRunRecord(
+    ctx.workspaceDir,
+    createRunRecord({
+      runId: ctx.runId,
+      command: 'capture',
+      startedAt,
+      endedAt: ctx.clock.now(),
+      timezone: ctx.config.timezone,
+      exitCode: EXIT.ok,
+      outcome: 'outside_window',
+      lockBroken: false,
+    }),
+  );
+  return { exitCode: EXIT.ok, snapshotId: null, outcome: null, captureError: null, recovered: [], queue: null, retry: null, outsideWindow: window };
+}
+
+/**
  * Lock, recovery (spec.md §11.6), capture, analysis queue and run log for one `capture` run. Errors
  * that end the run are logged in `runs.jsonl` and then rethrown.
  */
 export async function runCapture(ctx: WorkspaceContext, options: CaptureRunOptions = {}): Promise<CaptureRunResult> {
   const startedAt = ctx.clock.now();
+  if (options.scheduled === true) {
+    // Before any other step, including the lock (package 08 §4).
+    const window = checkScheduleWindow(startedAt, ctx.config.timezone, ctx.config.schedule);
+    if (!window.inside) return skipOutsideWindow(ctx, startedAt, window);
+  }
+  // No new Claude call starts after `limits.maxRunSeconds` from the start of the run (spec.md §12.2).
+  const deadline = new Date(startedAt.getTime() + ctx.config.limits.maxRunSeconds * 1000);
   try {
     return await withLock(ctx, 'capture', async ({ lockBroken }) => {
       let recovered: string[] = [];
@@ -104,7 +137,7 @@ export async function runCapture(ctx: WorkspaceContext, options: CaptureRunOptio
         if (outcome?.type === 'created') snapshotId = outcome.snapshotId;
         if (options.analysis !== undefined) {
           queue = await processQueue(ctx, options.analysis.runner, {
-            deadline: options.analysis.deadline ?? NO_DEADLINE,
+            deadline,
             ...(options.analysis.hooks === undefined ? {} : { hooks: options.analysis.hooks }),
             ...(options.analysis.env === undefined ? {} : { env: options.analysis.env }),
           });
@@ -140,7 +173,7 @@ export async function runCapture(ctx: WorkspaceContext, options: CaptureRunOptio
         }),
       );
       if (failure !== null) throw failure;
-      return { exitCode, snapshotId, outcome, captureError, recovered, queue, retry };
+      return { exitCode, snapshotId, outcome, captureError, recovered, queue, retry, outsideWindow: null };
     });
   } catch (error) {
     if (error instanceof LockHeldError) await appendLockHeldRecord(ctx, 'capture', startedAt, error);
@@ -206,6 +239,8 @@ export function reportQueue(io: CliIo, queue: QueueResult): void {
     if (hint !== undefined) io.stderr(`${hint(first.snapshotId)}\n`);
     else if (queue.stoppedBy?.reason === 'run_limit') {
       io.stderr(`Hinweis: Grenze claude.maxAnalysesPerRun erreicht; ${first.snapshotId} folgt im nächsten Lauf.\n`);
+    } else if (queue.stoppedBy?.reason === 'deadline') {
+      io.stderr(`Hinweis: Laufzeitgrenze limits.maxRunSeconds erreicht, kein weiterer Claude-Aufruf; ${first.snapshotId} folgt im nächsten Lauf.\n`);
     }
   }
   const openIds = queue.open.map((entry) => entry.snapshotId);
@@ -215,6 +250,7 @@ export function reportQueue(io: CliIo, queue: QueueResult): void {
 interface CaptureCommandOptions extends GlobalOptions {
   analysis?: boolean;
   retry?: string;
+  scheduled?: boolean;
 }
 
 export function registerCaptureCommand(program: Command, io: CliIo, state: CliState): void {
@@ -224,14 +260,22 @@ export function registerCaptureCommand(program: Command, io: CliIo, state: CliSt
     .description('Snapshot des Arbeitsstands aufnehmen und offene Analysen verarbeiten')
     .option('--no-analysis', 'nur aufnehmen, offene Analysen nicht verarbeiten')
     .option('--retry <snapshotId>', 'weitere Versuche für einen Snapshot im Status exhausted freigeben')
+    .option('--scheduled', 'geplanter Lauf: ausserhalb des Zeitfensters aus config.json ohne Aufnahme beenden (Exit-Code 0)')
     .action(async (_options: unknown, command: Command) => {
       const options = command.optsWithGlobals<CaptureCommandOptions>();
       const ctx = await resolveContext({ repo: options.repo, dataDir: options.dataDir, requireInit: true });
       const result = await runCapture(ctx, {
         onWarning: (message) => io.stderr(`${message}\n`),
         ...(options.retry === undefined ? {} : { retry: options.retry }),
+        ...(options.scheduled === true ? { scheduled: true } : {}),
         ...(options.analysis === false ? {} : { analysis: { runner: createClaudeRunner({ env: io.env }), env: io.env } }),
       });
+      if (result.outsideWindow !== null) {
+        // Nothing on stdout (package 08 §4); the hint helps when the command is started by hand.
+        io.stderr(`${describeOutsideWindow(result.outsideWindow, ctx.config.timezone, ctx.config.schedule)}\n`);
+        state.exitCode = result.exitCode;
+        return;
+      }
       for (const id of result.recovered) {
         io.stderr(`Hinweis: Snapshot ${id} aus einem abgebrochenen Lauf übernommen.\n`);
       }

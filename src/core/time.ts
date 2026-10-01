@@ -94,6 +94,18 @@ export function dayOf(date: Date, timeZone: string): string {
   return `${pad(p.year, 4)}-${pad(p.month)}-${pad(p.day)}`;
 }
 
+/** Index 0 is Sunday, as in `Date.prototype.getUTCDay`. */
+export const WEEKDAY_NAMES = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
+export type WeekdayName = (typeof WEEKDAY_NAMES)[number];
+
+/** Weekday and wall-clock time `HH:MM` in the given zone, independent of the process time zone. */
+export function zonedWeekdayAndTime(date: Date, timeZone: string): { weekday: WeekdayName; time: string } {
+  assertValidDate(date);
+  const p = zonedParts(date, timeZone);
+  const weekday = WEEKDAY_NAMES[new Date(Date.UTC(p.year, p.month - 1, p.day)).getUTCDay()]!;
+  return { weekday, time: `${pad(p.hour)}:${pad(p.minute)}` };
+}
+
 const DAY_PATTERN = /^([0-9]{4})-([0-9]{2})-([0-9]{2})$/;
 
 /** `YYYY-MM-DD` that names an existing calendar day, for example not `2026-02-30`. */
