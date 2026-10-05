@@ -4,7 +4,7 @@ Lokales Kommandozeilenwerkzeug für die IPA. Es soll den Arbeitsstand eines beli
 
 Die Umsetzung erfolgt in Paketen, geplant in [`docs/implementation/`](docs/implementation/README.md).
 
-**Stand: Paket 07 (Tagesjournal).** Verfügbar sind `ipa init` mit Ausgangs-Snapshot, `ipa capture` mit Zuordnung der Änderungen zum Vorgänger-Snapshot und anschliessender Analyse durch Claude Code zu belegten Work-Logs, `ipa skip`, `ipa baseline`, `ipa note`, `ipa journal` für belegte Journal-Entwürfe eines Tages, `ipa status` und `ipa doctor`, das Git und Claude Code prüft. Noch nicht umgesetzt ist die Zeitsteuerung.
+**Stand: Paket 08 (Zeitsteuerung und Abnahme), alle Befehle von Version 1.** Verfügbar sind `ipa init` mit Ausgangs-Snapshot, `ipa capture` mit Zuordnung der Änderungen zum Vorgänger-Snapshot und anschliessender Analyse durch Claude Code zu belegten Work-Logs, auch als geplanter Lauf mit `--scheduled`, `ipa skip`, `ipa baseline`, `ipa note`, `ipa journal` für belegte Journal-Entwürfe eines Tages, `ipa schedule` für eine Vorlage der Windows-Aufgabenplanung, `ipa status` und `ipa doctor`, das Git und Claude Code prüft. Offen sind die Live-Abnahme mit echtem Claude und die manuelle Prüfung der Aufgabenplanung, siehe [Abnahmeprotokoll](docs/abnahme/v1-abnahmeprotokoll.md).
 
 ## Voraussetzungen
 
@@ -28,6 +28,18 @@ npm install --global .
 Danach steht `ipa` im PATH zur Verfügung. Prüfen lässt sich das mit `ipa --version`.
 
 `npm install --global .` verknüpft den globalen Befehl mit diesem Ordner. Nach einer Aktualisierung des Tools genügt `npm ci` und `npm run build`. Deinstallieren lässt es sich mit `npm uninstall --global ipa-assistant`.
+
+### Mehrere Repositories
+
+Eine Installation genügt für beliebig viele Repositories. Jedes Repository wird einmal mit `ipa init` eingerichtet und erhält einen eigenen Arbeitsbereich (siehe [Speicherort der Daten](#speicherort-der-daten)). Jeder Befehl arbeitet mit genau einem Repository: mit dem aktuellen Verzeichnis oder dem mit `--repo <pfad>` genannten.
+
+```bash
+ipa --repo C:/GIT/projekt-a init
+ipa --repo C:/GIT/projekt-b init --workspace .ipa
+ipa --repo C:/GIT/projekt-a capture
+```
+
+Für geplante Läufe erzeugt `ipa schedule` je Repository eine eigene Aufgabe `ipa-assistant-<repositoryId>`.
 
 ## Speicherort der Daten
 
@@ -79,7 +91,20 @@ context/                                 optionale Ablage für Kontextdateien (A
 tmp/                                     Hilfsdateien, zu Beginn jedes Laufs mit Lock geleert
 ```
 
-Das Tool sichert den Arbeitsbereich nicht selbst. Wo eine Sicherung liegt, entscheidet der Benutzer.
+### Getrennt vom Claude-Arbeitsverzeichnis
+
+Claude Code läuft nie im Repository und nie im Arbeitsbereich, sondern in einem neuen, leeren Ordner unter `<Temp>/ipa-assistant/claude/<repositoryId>/`, der nach dem Aufruf gelöscht wird. Das gilt auch mit `--workspace .ipa`. Einzelheiten stehen unter [Claude Code](#claude-code-aufruf-schutzwirkung-und-grenzen).
+
+### Sicherung
+
+Das Tool sichert weder den Arbeitsbereich noch die Registry. Wo die Sicherung liegt, entscheidet der Benutzer beziehungsweise der Betrieb (offene Entscheidung O-07). Empfohlen:
+
+- den ganzen Arbeitsbereich sichern, mindestens `snapshots/`, `analyses/`, `logs/`, `notes/`, `journal/` und `config.json`, dazu `registry.json` der Datenwurzel
+- nur eine zugelassene Sicherung verwenden: Der Arbeitsbereich enthält Auszüge aus dem Quellcode (Diffs, Kopien geänderter Dateien)
+- nicht während eines Laufs mit Lock sichern, oder die Sicherung danach wiederholen
+- Liegt der Arbeitsbereich ausserhalb des Repositorys (Standard), erfasst eine Sicherung des Repositorys ihn nicht. Liegt er im Repository (`.ipa/`), gehört er trotzdem nicht ins Git-Repository, siehe den Hinweis zu `.gitignore` oben.
+
+Wiederherstellen lässt sich ein Arbeitsbereich am gleichen Ort; die Registry verweist über den Pfad auf ihn.
 
 ### Nicht beschreibbarer Speicherort
 
@@ -134,12 +159,15 @@ Ausgangs-Snapshot: S000001
 Claude-Prüfung: bereit (Claude Code 2.1.201, ohne Modellaufruf). Einen echten Aufruf prüft ipa doctor --live.
 ```
 
-### `ipa capture [--no-analysis] [--retry <snapshotId>]`
+### `ipa capture [--no-analysis] [--retry <snapshotId>] [--scheduled]`
 
 Nimmt einen Arbeits-Snapshot auf, sofern seit dem letzten Snapshot neue Arbeit vorliegt (siehe [Zuordnung von Änderungen](#zuordnung-von-änderungen)). Danach verarbeitet `capture` die offenen Analysen, siehe [Analyse und Work-Logs](#analyse-und-work-logs).
 
 - `--no-analysis`: nur aufnehmen. Offene Analysen bleiben offen und folgen im nächsten Lauf.
 - `--retry <snapshotId>`: gibt für einen Snapshot im Status `exhausted` weitere Versuche frei (Datei `retry-<n>.json`) und verarbeitet danach die offenen Analysen. Für einen Snapshot in einem anderen Status endet der Befehl mit Exit-Code 2.
+- `--scheduled`: für geplante Läufe, siehe [Zeitsteuerung](#zeitsteuerung). Vor allem anderen, auch vor dem Lock, prüft `capture` das Zeitfenster aus `schedule` in `config.json` in der konfigurierten Zeitzone. Ausserhalb endet der Lauf mit Exit-Code 0, ohne Aufnahme, ohne Claude und ohne Ausgabe auf stdout; auf stderr steht ein Hinweis, und `runs.jsonl` erhält einen Eintrag mit `outcome: outside_window`. Ohne `--scheduled` gibt es keine Fensterprüfung.
+
+**Laufzeitgrenze:** Nach `limits.maxRunSeconds` (Standard 1800 s) seit dem Start des Laufs beginnt `capture` keinen neuen Claude-Aufruf mehr. Ein laufender Aufruf endet regulär oder mit seinem Timeout (`claude.timeoutSeconds`). Die übrigen Snapshots bleiben offen und folgen im nächsten Lauf; Snapshots ohne Analysepflicht schliesst `capture` weiterhin ohne Claude ab. Die Grenze allein ergibt keinen Fehler: Der Exit-Code ist 0, solange kein Snapshot `failed`, `blocked` oder `exhausted` ist, und stderr nennt den nächsten offenen Snapshot.
 
 Erfasst werden getrennt:
 
@@ -159,7 +187,7 @@ Ablauf und Schutz:
 - Ohne neue Arbeit wird kein Snapshot gespeichert: Exit-Code 0, Meldung „Keine neue Arbeit …“ und in `runs.jsonl` das Ergebnis `unchanged`.
 - Nach einem Branchwechsel oder bei umgeschriebener Historie hält `capture` an: Exit-Code 4, siehe [`ipa baseline`](#ipa-baseline---reason-text---force).
 - Die offenen Analysen laufen auch nach einem Halt, ohne neue Arbeit und nach einem unruhigen Stand, damit gesicherte Snapshots nicht warten.
-- Exit-Code: 0, wenn Aufnahme und Analysen ohne offene Fehler enden; 6, wenn danach ein Snapshot `failed`, `blocked` oder `exhausted` ist oder Claude nicht einsatzbereit ist; 4 bei einem Halt, auch wenn zusätzlich eine Analyse scheitert; 5 bei unruhigem Stand, ausser eine Analyse ist nicht abgeschlossen (dann 6).
+- Exit-Code: 0, wenn Aufnahme und Analysen ohne offene Fehler enden, auch ausserhalb des Zeitfensters mit `--scheduled`; 6, wenn danach ein Snapshot `failed`, `blocked` oder `exhausted` ist oder Claude nicht einsatzbereit ist; 4 bei einem Halt, auch wenn zusätzlich eine Analyse scheitert; 5 bei unruhigem Stand, ausser eine Analyse ist nicht abgeschlossen (dann 6).
 
 ```text
 > ipa capture
@@ -236,6 +264,26 @@ Datensatz:            C:/Users/…/workspaces/mein-projekt-3fa9c1/journal/drafts
 Offene Analysen:      keine
 Lücken und Prüfungen: 1
 Bitte persönlich prüfen, korrigieren und die Endfassung manuell nach journal/final/ übernehmen.
+```
+
+### `ipa schedule --os <windows|cron> [--output <datei>]`
+
+Gibt eine Vorlage für den Scheduler des Betriebssystems aus. Der Befehl **installiert nichts** und ändert keine Systemeinstellung; die Einrichtung erfolgt von Hand, siehe [Zeitsteuerung](#zeitsteuerung).
+
+- `--os windows`: XML für die Windows-Aufgabenplanung (Aufgabenschema 1.2) mit der Aufgabe `ipa-assistant-<repositoryId>`.
+- `--os cron`: crontab-Zeilen mit `CRON_TZ`, gekennzeichnet als „nicht geprüft – Plattform in V1 nicht getestet“.
+- Ohne `--output` erscheint die Vorlage auf stdout. `--output <datei>` legt eine **neue** Datei an; existiert sie, endet der Befehl mit Exit-Code 2 und ändert nichts. Die Windows-Vorlage wird dabei als UTF-16 mit BOM geschrieben, wie sie die Aufgabenplanung selbst exportiert.
+- Die Ausgabedatei darf nicht im untersuchten Repository liegen, sonst erfasste der nächste Lauf die Vorlage als Entwicklungsarbeit (Exit-Code 2). Erlaubt ist ein Ort ausserhalb oder der eigene Arbeitsbereich, nicht aber `journal/final/`.
+- Die Vorlage ruft Node.js und `dist/cli.js` dieser Installation mit absoluten Pfaden auf: `"<node.exe>" "<…/dist/cli.js>" capture --scheduled --repo "<repository>"`. Stammt die Datenwurzel aus `--data-dir` oder `IPA_ASSISTANT_HOME`, kommt `--data-dir "<datenwurzel>"` dazu, weil eine geplante Aufgabe eine nur in der Sitzung gesetzte Variable nicht sieht.
+- Warnungen auf stderr, die Vorlage entsteht trotzdem: ein Zusatzlauf aus `schedule.extraRunTimes` ausserhalb des Zeitfensters (`--scheduled` würde ihn überspringen), ein `intervalMinutes` länger als das Fenster, ein `claude.timeoutSeconds` über 10 Minuten (siehe unten), eine fehlende `dist/cli.js`.
+- Ist `schedule.workdays` leer, endet der Befehl mit Exit-Code 2.
+- `schedule` braucht ein initialisiertes Repository, nimmt keinen Lock und schreibt keinen Eintrag in `runs.jsonl`.
+
+```text
+> ipa schedule --os windows --output C:\Users\anna\ipa-projekt.xml
+Vorlage für die Windows-Aufgabenplanung geschrieben: C:/Users/anna/ipa-projekt.xml
+Aufgabe: ipa-assistant-mein-projekt-3fa9c1
+Import von Hand (ändert die Aufgabenplanung, ipa installiert nichts): schtasks /Create /XML "C:\Users\anna\ipa-projekt.xml" /TN ipa-assistant-mein-projekt-3fa9c1
 ```
 
 ### `ipa doctor [--live]`
@@ -317,9 +365,9 @@ Mit `--json` erscheint ein JSON-Objekt. Dieses Format ist ein stabiler Vertrag. 
 
 | Code | Bedeutung |
 | --- | --- |
-| 0 | Erfolg, auch wenn `capture` keine neue Arbeit findet |
+| 0 | Erfolg, auch wenn `capture` keine neue Arbeit findet oder mit `--scheduled` ausserhalb des Zeitfensters startet |
 | 1 | Unerwarteter interner Fehler. Mit `IPA_DEBUG=1` wird der Stacktrace ausgegeben. |
-| 2 | Bedienungs- oder Konfigurationsfehler: ungültige Argumente oder Konfiguration (auch ein ungültiger Tag bei `ipa journal --day`), kein Git-Repository, nicht initialisiert, kein Ausgangs-Snapshot, unzulässige oder nicht beschreibbare Datenwurzel, unbekannte Schemaversion, `ipa note` ohne Text und ohne Terminal oder mit abgebrochener Eingabe, ein Temp-Verzeichnis im Repository oder im Arbeitsbereich |
+| 2 | Bedienungs- oder Konfigurationsfehler: ungültige Argumente oder Konfiguration (auch ein ungültiger Tag bei `ipa journal --day`), kein Git-Repository, nicht initialisiert, kein Ausgangs-Snapshot, unzulässige oder nicht beschreibbare Datenwurzel, unbekannte Schemaversion, `ipa note` ohne Text und ohne Terminal oder mit abgebrochener Eingabe, ein Temp-Verzeichnis im Repository oder im Arbeitsbereich, bei `ipa schedule` ein unbekanntes `--os`, eine vorhandene Ausgabedatei, eine Ausgabedatei im Repository oder keine Arbeitstage |
 | 3 | Ein anderer Lauf hält den Lock. |
 | 4 | Die Zuordnung ist wegen Branchwechsel oder umgeschriebener Historie angehalten. `ipa baseline` ist erforderlich. |
 | 5 | Der Arbeitsstand hat sich während der Aufnahme wiederholt verändert. Es wurde kein Snapshot gespeichert. |
@@ -340,7 +388,7 @@ Nach jeder Aufnahme verarbeitet `ipa capture` die offenen Snapshots der Reihe na
 4. Nur eine gültige Antwort wird übernommen: zuerst `analysis.json`, dann `logs/<snapshotId>.md`, dann `complete.json`. Erst danach rückt der Cursor vor.
 5. Die Verarbeitung hält beim ersten Snapshot an, der offen bleibt. Der Cursor springt nie über einen offenen Snapshot.
 
-Grenzen pro Lauf: höchstens `claude.maxAnalysesPerRun` (Standard 5) Aufrufe von Claude, weitere Snapshots folgen im nächsten Lauf. Ist nichts offen, ruft `capture` Claude nicht auf, auch nicht für die Prüfung der Voraussetzungen.
+Grenzen pro Lauf: höchstens `claude.maxAnalysesPerRun` (Standard 5) Aufrufe von Claude, und nach `limits.maxRunSeconds` (Standard 1800 s) seit dem Start des Laufs beginnt kein neuer Aufruf mehr (siehe [`ipa capture`](#ipa-capture---no-analysis---retry-snapshotid---scheduled)). Weitere Snapshots folgen im nächsten Lauf. Ist nichts offen, ruft `capture` Claude nicht auf, auch nicht für die Prüfung der Voraussetzungen.
 
 ### Eingabepaket
 
@@ -471,7 +519,73 @@ Aussagen enden mit ihren Referenzen in eckigen Klammern. Ein leerer Abschnitt er
 
 Ein weiterer Lauf am selben Tag legt einen neuen Entwurf an. Welche Fassung gilt, entscheidet der Benutzer; einen Freigabebefehl oder eine Versionsverwaltung für Journale gibt es in V1 nicht.
 
-**Sicherung:** Das Tool sichert weder Entwürfe noch Endfassungen. `journal/final/` und am besten der ganze Arbeitsbereich gehören in die zugelassene Sicherung des Betriebs (O-07). Liegt der Arbeitsbereich ausserhalb des Repositorys, erfasst eine Sicherung des Repositorys ihn nicht.
+**Sicherung:** Das Tool sichert weder Entwürfe noch Endfassungen. `journal/final/` und am besten der ganze Arbeitsbereich gehören in die zugelassene Sicherung des Betriebs (O-07), siehe [Sicherung](#sicherung). Liegt der Arbeitsbereich ausserhalb des Repositorys, erfasst eine Sicherung des Repositorys ihn nicht.
+
+## Zeitsteuerung
+
+Der Scheduler des Betriebssystems kann `ipa capture --scheduled` regelmässig starten, zum Beispiel alle zwei Stunden während der Arbeitszeit. Er startet nur; Zustand, Wiederanlauf und Fehlerbehandlung bleiben im Tool. Ein geplanter Lauf erzeugt keine Arbeitszeit, und das Journal bleibt bewusst ein manueller Schritt (`ipa journal`). `ipa capture` lässt sich weiterhin jederzeit von Hand ausführen, etwa vor einer Pause.
+
+### Zeitfenster
+
+Das Zeitfenster steht unter `schedule` in `config.json`:
+
+```json
+"schedule": {
+  "workdays": ["mon", "tue", "wed", "thu", "fri"],
+  "windowStart": "08:00",
+  "windowEnd": "18:00",
+  "intervalMinutes": 120,
+  "extraRunTimes": ["17:45"]
+}
+```
+
+- `workdays`: Arbeitstage, `mon` bis `sun`
+- `windowStart`, `windowEnd`: Zeitfenster im Format `HH:MM`, Beginn vor Ende. Beide Grenzen gehören dazu. Verglichen wird minutengenau, ein um 18:00 ausgelöster Lauf zählt also noch.
+- `intervalMinutes`: Abstand der geplanten Läufe im Fenster
+- `extraRunTimes`: zusätzliche Läufe, zum Beispiel 17:45 zum Abschluss des Tages
+- Massgebend ist die Zeitzone aus `config.json` (`timezone`), nicht die des Betriebssystems. Sommer- und Winterzeit werden berücksichtigt.
+- Die Werte sind Vorschläge und vor Ort anzupassen (offene Entscheidung O-05).
+
+### Einrichtung unter Windows
+
+1. In einem normalen Terminal `ipa doctor` ausführen: Claude Code muss gefunden und angemeldet sein. Die Aufgabe läuft mit der dauerhaften Umgebung des Benutzers; nur in der Sitzung gesetzte Variablen und PATH-Einträge fehlen dort.
+2. Vorlage erzeugen, mit einer Ausgabedatei ausserhalb des Repositorys:
+
+   ```text
+   ipa schedule --os windows --output C:\Users\<name>\ipa-<projekt>.xml
+   ```
+
+3. Die Vorlage lesen und bei Bedarf anpassen. Ihr Kommentarblock nennt den Import-Befehl.
+4. Importieren. Das ändert die Aufgabenplanung und ist ein bewusster Schritt des Benutzers:
+
+   ```text
+   schtasks /Create /XML "C:\Users\<name>\ipa-<projekt>.xml" /TN ipa-assistant-<repositoryId>
+   ```
+
+5. Einmal von Hand auslösen, mit `schtasks /Run /TN ipa-assistant-<repositoryId>` oder in der Aufgabenplanung. Danach steht der Lauf in `runs.jsonl`, und `ipa status` zeigt ihn unter „Letzter Lauf“. Ausserhalb des Zeitfensters lautet das Ergebnis `outside_window`.
+6. Entfernen mit `schtasks /Delete /TN ipa-assistant-<repositoryId> /F`.
+
+Eigenschaften der Vorlage:
+
+| Einstellung | Wert |
+| --- | --- |
+| Trigger | pro Arbeitstag ein wöchentlicher Trigger ab `windowStart`, alle `intervalMinutes` wiederholt bis `windowEnd`; pro Eintrag in `extraRunTimes` ein wöchentlicher Trigger an allen Arbeitstagen |
+| Aktion | `node.exe` mit `dist/cli.js capture --scheduled --repo …`, beide mit absolutem Pfad |
+| Mehrere Instanzen | `IgnoreNew`: Solange die Aufgabe läuft, startet keine zweite. Zusätzlich verhindert der Lock überschneidende Läufe (Exit-Code 3). |
+| Verpasste Läufe | `StartWhenAvailable`: Ein verpasster Lauf, etwa bei ausgeschaltetem Rechner, wird nachgeholt. Die Lücke bleibt im Beobachtungszeitraum des nächsten Snapshots sichtbar. |
+| Laufzeit | `ExecutionTimeLimit` = `limits.maxRunSeconds` + 10 Minuten. Ein Claude-Aufruf, der kurz vor der Laufzeitgrenze beginnt, kann bis `claude.timeoutSeconds` dauern; ist dieser Wert grösser als 10 Minuten, warnt `ipa schedule`. Bricht die Aufgabenplanung einen Lauf ab, bleibt der Snapshot offen, und der nächste Lauf holt ihn nach. |
+| Akkubetrieb | Start und Weiterlaufen auch im Akkubetrieb |
+| Benutzer | nur bei angemeldetem Benutzer (`InteractiveToken`), ohne höchste Rechte und ohne gespeichertes Passwort |
+
+Hinweise:
+
+- Die Trigger verwenden die Systemzeit des Rechners. Weicht dessen Zeitzone von `config.json` ab, starten die Läufe zu anderen Uhrzeiten; `--scheduled` beendet Läufe ausserhalb des Fensters ohne Aufnahme.
+- Beim Start kann kurz ein Konsolenfenster erscheinen (O-05). Eine Ausführung unabhängig von der Anmeldung verlangt ein gespeichertes Passwort und gehört nicht zur Vorlage.
+- Stand der Prüfung: Die Vorlage besteht die Prüfung der Windows-Aufgabenplanung ohne Registrierung (`TASK_VALIDATE_ONLY`, Windows 11, 30.09.2026). Import, Auslösung und Überschneidungsschutz sind noch nicht manuell geprüft, siehe [Abnahmeprotokoll](docs/abnahme/v1-abnahmeprotokoll.md) (AK-08-07).
+
+### cron (nicht geprüft)
+
+`ipa schedule --os cron` gibt crontab-Zeilen mit `CRON_TZ=<zeitzone>` und absoluten Pfaden aus, eine Zeile je Minute der Startzeiten. Linux und macOS sind in V1 nicht geprüft. `CRON_TZ` kennt nicht jede cron-Variante, und cron hat einen knappen PATH, sodass Git und Claude Code dort gefunden werden müssen. Für `launchd` und `systemd` gibt es keine Vorlage; eine automatische Installation von Aufgaben gibt es nicht.
 
 ## Zuordnung von Änderungen
 
@@ -667,7 +781,12 @@ Jede Auslassung steht mit Grund im Manifest, in `filterDecisions` und beim betro
 - **Arbeitsbereich gelöscht:** Verweist die Registry auf einen fehlenden Arbeitsbereich, melden alle Befehle Exit-Code 2. Es gibt keine automatische Neuanlage. Entweder wird der Ordner wiederhergestellt, oder der Eintrag wird aus `registry.json` entfernt und `ipa init` erneut ausgeführt.
 - **Lock:** Ein Lock eines beendeten Prozesses auf demselben Rechner wird automatisch entfernt und protokolliert. Ein Lock eines anderen Rechners wird nie automatisch entfernt.
 - **Git-Konfiguration:** Git wendet beim Berechnen der Blob-IDs konfigurierte Clean-Filter an, wie es auch `git status` tut. SHA-256-Repositories sind nicht geprüft.
-- Geprüft ist nur Windows 11 mit Node.js 24.
+- **Erfassungslücken:** Erfasst wird, was bei einer Aufnahme im Working Tree, im Index oder in neuen Commits steht. Zwischenstände, die zwischen zwei Aufnahmen entstehen und wieder verschwinden, fehlen. Arbeit vor `ipa init` erscheint nur als Ausgangslage, Arbeit zwischen einem Halt und `ipa baseline` nur als Lücke. Ausgeschlossene und zurückgehaltene Inhalte fehlen im KI-Paket; sie stehen ohne Werte im Manifest und als offene Prüfung in `ipa status`. Ein leerer Abschnitt in Work-Log oder Journal heisst „nicht erfasst“, nicht „gab es nicht“.
+- **Zeiten:** Arbeitszeiten stammen nur aus Notizen. Beobachtungszeiträume, Commit-Zeitpunkte und geplante Läufe sind keine Arbeitszeit.
+- **Secret-Erkennung:** Sie beruht auf regulären Ausdrücken und ist nie vollständig, siehe [Secret-Prüfung](#secret-prüfung).
+- **Schutzwirkung:** Die Optionen des Claude-Aufrufs sind keine Sandbox und kein garantierter Schreibschutz, siehe [Claude Code](#claude-code-aufruf-schutzwirkung-und-grenzen).
+- **Zeitsteuerung:** Die Windows-Vorlage ist validiert, Import und Ausführung sind noch nicht manuell geprüft. cron ist nicht geprüft, für `launchd` und `systemd` gibt es keine Vorlage.
+- **Plattformen:** Geprüft ist nur Windows 11 mit Node.js 24. Linux und macOS sind nicht geprüft; einzelne automatische Tests liefen während der Entwicklung auch unter Linux, das ist keine Freigabe dieser Plattform.
 
 ## Claude Code: Aufruf, Schutzwirkung und Grenzen
 
@@ -723,7 +842,7 @@ Die Claude-Vorabprüfung aus Paket 01 ist durch `ipa doctor --live` ersetzt. Ihr
 | in den Claude-Einstellungen: `apiKeyHelper`, eine der Variablen oben im Block `env`, `forceLoginMethod` `console` oder `gateway`, `forceLoginGatewayUrl` | wie oben |
 | `claude auth status` meldet eine andere Anmeldeart als `claude.ai` oder `oauth_token` (etwa `third_party`, `api_key`, `api_key_helper`) oder eine `apiKeySource` (etwa `/login managed key` nach einem Console-Login) | API-Schlüssel, Console-Login oder Anbieter |
 
-Geprüfte Claude-Einstellungen (Orte wie in Claude Code 2.1.114): die Benutzereinstellungen `settings.json` und der Cache der Server-Einstellungen `remote-settings.json` in `CLAUDE_CONFIG_DIR` oder `%USERPROFILE%.claude`, die verwalteten Einstellungen `C:Program FilesClaudeCodemanaged-settings.json` mit `managed-settings.d*.json` sowie unter Windows der Wert `Settings` in `HKLMSOFTWAREPoliciesClaudeCode` und `HKCUSOFTWAREPoliciesClaudeCode`. Projekteinstellungen spielen keine Rolle, weil `claude` in einem leeren Ordner läuft.
+Geprüfte Claude-Einstellungen (Orte wie in Claude Code 2.1.114): die Benutzereinstellungen `settings.json` und der Cache der Server-Einstellungen `remote-settings.json` in `CLAUDE_CONFIG_DIR` oder `%USERPROFILE%\.claude`, die verwalteten Einstellungen `C:\Program Files\ClaudeCode\managed-settings.json` mit `managed-settings.d\*.json` sowie unter Windows der Wert `Settings` in `HKLM\SOFTWARE\Policies\ClaudeCode` und `HKCU\SOFTWARE\Policies\ClaudeCode`. Projekteinstellungen spielen keine Rolle, weil `claude` in einem leeren Ordner läuft.
 
 - Eine Variable gilt als gesetzt, sobald sie einen nicht leeren Wert hat, auch `0` oder `false`. Gross- und Kleinschreibung des Namens spielen keine Rolle.
 - Vor jedem Modellaufruf prüft `ipa` die Umgebung, die `claude` erhalten würde, und die Claude-Einstellungen, ohne `claude` zu starten. Vor dem ersten Modellaufruf eines Laufs (Analyse, Journal) fragt es zusätzlich `claude auth status` frisch ab, ohne Modellaufruf; ein älteres Ergebnis in `doctor.json` zählt dafür nicht. `ipa doctor` prüft alles bei jedem Aufruf. Greift der Schutz, startet kein Modellaufruf, und in `ai-usage.jsonl` entsteht keine Zeile. `capture` und `journal` enden mit Exit-Code 6 und dem Fehlercode `paid_usage_blocked`; gesicherte Daten bleiben offen, `ipa journal --no-ai` bleibt möglich. `ipa doctor` meldet den Befund, überspringt `--live` und endet mit Exit-Code 7.
@@ -747,7 +866,7 @@ Grenzen des Schutzes (keine Garantie):
 
 - **Kontoseitige Einstellungen sind lokal nicht prüfbar.** Ob im Claude- oder Anthropic-Konto zusätzliche kostenpflichtige Nutzung (etwa Usage Credits über das Abo-Kontingent hinaus) aktiviert ist, sieht `ipa` nicht. Das ist im Konto selbst zu prüfen.
 - Geprüft wird, was lokal sichtbar ist. Nicht gelesen werden macOS-Profile (`com.anthropic.claudecode`), Einstellungen, die eine einbettende Anwendung übergibt, und Server-Einstellungen, die noch nicht im Cache liegen. Diese deckt nur `claude auth status` ab, und dort ist `ANTHROPIC_AUTH_TOKEN` von einem Abo-Token nicht zu unterscheiden (beides `oauth_token`).
-- Ein aktives Anthropic-Profil ohne `ANTHROPIC_PROFILE` (Datei `active_config` unter `%APPDATA%Anthropic`) liest `ipa` nicht.
+- Ein aktives Anthropic-Profil ohne `ANTHROPIC_PROFILE` (Datei `active_config` unter `%APPDATA%\Anthropic`) liest `ipa` nicht.
 - Die Werte von `authMethod` und `apiKeySource` stammen aus Claude Code 2.1.114. Eine unbekannte Anmeldeart sperrt vorsichtshalber; neue Quellen, die eine spätere Version als `claude.ai` meldet, erkennt `ipa` nicht.
 - `ipa` prüft die Benutzereinstellungen auch dann, wenn `--setting-sources project,local` sie für den Aufruf ausklammert. Das kann vorsichtshalber sperren.
 - Zwischen der Prüfung und dem Modellaufruf vergehen Sekunden bis Minuten; eine Änderung genau dazwischen bleibt unbemerkt.
@@ -759,15 +878,16 @@ Grenzen des Schutzes (keine Garantie):
 | `npm run build` | TypeScript nach `dist/` übersetzen |
 | `npm run typecheck` | Typprüfung von Quellcode, Tests und Skripten |
 | `npm test` | alle automatischen Tests (Vitest) |
-| `npm run test:live` | Live-Tests mit dem installierten Claude Code: `ipa doctor --live` (zwei kleine Modellaufrufe), eine Analyse (ein Aufruf) und ein Journal (ein Aufruf). Einzeln etwa mit `npm run test:live -- test/live/journal.live.ts`. Läuft nur mit `IPA_LIVE_CLAUDE=1` und ist nicht Teil von `npm test`. |
+| `npm run test:live` | Live-Tests mit dem installierten Claude Code: `ipa doctor --live` (zwei kleine Modellaufrufe), eine Analyse (ein Aufruf), ein Journal (ein Aufruf) und die Abnahme von V1 (`test/live/acceptance.live.ts`, etwa zehn Aufrufe, siehe [Abnahmeprotokoll](docs/abnahme/v1-abnahmeprotokoll.md)). Einzeln etwa mit `npm run test:live -- test/live/acceptance.live.ts`. Läuft nur mit `IPA_LIVE_CLAUDE=1` und ist nicht Teil von `npm test`. |
 
 Zu den Tests:
 
 - `npm test` baut zuerst `dist/`, weil Integrationstests den echten CLI-Einstieg starten.
 - Jeder Test arbeitet mit temporären Git-Repositories und einer eigenen temporären Datenwurzel. Das globale Setup setzt `IPA_ASSISTANT_HOME`, `LOCALAPPDATA` und `XDG_DATA_HOME` auf ein Temp-Verzeichnis, blendet die Git-Konfiguration des Rechners aus und prüft am Ende, dass die echte Datenwurzel unverändert ist.
 - Die Tests prüfen die Unversehrtheit der Test-Repositories über einen Fingerprint.
-- Automatische Tests rufen Claude nie echt auf. Sie verwenden die Fake-CLI `test/helpers/fake-claude.mjs` über `claude.command`; im Modus `analysis` leitet sie eine gültige Analyse aus dem Eingabepaket ab, im Modus `journal` einen gültigen Journal-Entwurf aus der Journal-Eingabe. Das globale Setup nimmt `claude` zusätzlich aus dem PATH der Testprozesse und legt ihr Temp-Verzeichnis in den Test-Ordner. API-Schlüssel des Rechners erhält die Fake-CLI nicht, und `CLAUDE_CONFIG_DIR` zeigt auf einen leeren Test-Ordner; die Tests des Kostenschutzes setzen künstliche Werte. Verwaltete Claude-Einstellungen des Rechners (`C:Program FilesClaudeCode`, Registry) wirken auch in den Tests.
-- Die Journal-Tests setzen eine feste Uhr ein, damit Snapshots, Notizen und Läufe auf bestimmten Tagen liegen.
+- Automatische Tests rufen Claude nie echt auf. Sie verwenden die Fake-CLI `test/helpers/fake-claude.mjs` über `claude.command`; im Modus `analysis` leitet sie eine gültige Analyse aus dem Eingabepaket ab, im Modus `journal` einen gültigen Journal-Entwurf aus der Journal-Eingabe. Das globale Setup nimmt `claude` zusätzlich aus dem PATH der Testprozesse und legt ihr Temp-Verzeichnis in den Test-Ordner. API-Schlüssel des Rechners erhält die Fake-CLI nicht, und `CLAUDE_CONFIG_DIR` zeigt auf einen leeren Test-Ordner; die Tests des Kostenschutzes setzen künstliche Werte. Verwaltete Claude-Einstellungen des Rechners (`C:\Program Files\ClaudeCode`, Registry) wirken auch in den Tests.
+- Die Journal-Tests und die Tests der Zeitsteuerung setzen eine feste Uhr ein, damit Snapshots, Notizen und Läufe auf bestimmten Tagen und Uhrzeiten liegen. Die Fensterprüfung wird zusätzlich mit umgestellter Prozesszeitzone (`TZ=UTC`, `TZ=America/New_York`) geprüft.
+- `test/acceptance/` führt alle Abnahmefälle aus Konzept §17 mit der Fake-CLI an einem künstlichen Repository durch; `test/live/acceptance.live.ts` führt dasselbe Szenario mit dem installierten Claude Code aus und legt Bericht und Arbeitsbereich in `IPA_ACCEPTANCE_OUT` oder im Temp-Verzeichnis ab.
 - Die Live-Tests verbrauchen Claude-Kontingent und laufen nur auf ausdrücklichen Wunsch, in PowerShell mit `$env:IPA_LIVE_CLAUDE = '1'; npm run test:live`.
 
 Aufbau:
@@ -783,7 +903,9 @@ src/notes/          Notizen: Regeln der Eingabe, Ablage und Lesen (hängt nur vo
 src/claude/         Claude-Aufruf ohne Werkzeuge und ohne Shell, Kostenschutz, Auswertung, ipa doctor, KI-Nutzungsprotokoll
 src/analysis/       Status, Eingabepaket, Prüfung der Antwort, Work-Log, Warteschlange, Cursor, ipa skip
 src/journal/        Tageseingabe, Tageszuordnung, Zeitübersicht, Prüfung der Antwort, Markdown-Entwurf, ipa journal
+src/schedule/       Fensterprüfung für capture --scheduled, Vorlagen für die Windows-Aufgabenplanung und cron
 prompts/            Prompts der Analyse (analyze-work.md) und des Journals (journal.md)
 schemas/            JSON Schemas (draft-07)
-test/               Tests und Test-Helfer, test/live/ für den Live-Test
+test/               Tests und Test-Helfer, test/acceptance/ für das Abnahmeszenario, test/live/ für die Live-Tests
+docs/abnahme/       Abnahmeprotokoll von V1
 ```
