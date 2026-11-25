@@ -1,0 +1,256 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "IPA Assistant – ipa schedule --json (Paket 09 §4.1)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "command",
+    "runId",
+    "ok",
+    "exitCode",
+    "outcome",
+    "errors",
+    "warnings",
+    "result"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "command": {
+      "type": "string",
+      "const": "schedule"
+    },
+    "runId": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^R[0-9]{8}T[0-9]{6}Z-[0-9a-f]{4}$"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "exitCode": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 7
+    },
+    "outcome": {
+      "type": "string",
+      "enum": [
+        "ok",
+        "unchanged",
+        "halted",
+        "unstable",
+        "lock_held",
+        "analysis_failed",
+        "outside_window",
+        "usage_error",
+        "error"
+      ]
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/runError"
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "result": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/definitions/result"
+        }
+      ]
+    }
+  },
+  "definitions": {
+    "runError": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "message"
+      ],
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "action",
+        "taskName",
+        "changed",
+        "state",
+        "enabled",
+        "differences",
+        "detail",
+        "nextRun",
+        "lastRun",
+        "lastResult",
+        "running",
+        "insideWindow",
+        "plan"
+      ],
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "install",
+            "status",
+            "pause",
+            "resume",
+            "remove",
+            "run"
+          ]
+        },
+        "taskName": {
+          "type": "string"
+        },
+        "changed": {
+          "type": "boolean"
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "not_installed",
+            "active",
+            "paused",
+            "stale",
+            "error"
+          ]
+        },
+        "enabled": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "differences": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "node_path",
+              "cli_path",
+              "arguments",
+              "triggers",
+              "execution_time_limit"
+            ]
+          }
+        },
+        "detail": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "nextRun": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "lastRun": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "lastResult": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "running": {
+          "type": "boolean"
+        },
+        "insideWindow": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "plan": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "workdays",
+            "runTimes",
+            "skippedRunTimes",
+            "runsPerDay",
+            "includesWindowEndRun",
+            "maxAnalysesPerRun",
+            "maxClaudeCallsPerDay"
+          ],
+          "properties": {
+            "workdays": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "mon",
+                  "tue",
+                  "wed",
+                  "thu",
+                  "fri",
+                  "sat",
+                  "sun"
+                ]
+              }
+            },
+            "runTimes": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+              }
+            },
+            "skippedRunTimes": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+              }
+            },
+            "runsPerDay": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "includesWindowEndRun": {
+              "type": "boolean"
+            },
+            "maxAnalysesPerRun": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "maxClaudeCallsPerDay": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      }
+    }
+  }
+}

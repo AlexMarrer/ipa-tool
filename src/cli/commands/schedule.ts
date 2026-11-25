@@ -11,8 +11,6 @@ import { dataRootCandidate, describeFsError } from '../../core/data-root.js';
 import { errnoCode, EXIT, type ExitCode, FileExistsError, IpaError } from '../../core/errors.js';
 import { createFileExclusive } from '../../core/fs-write.js';
 import { canonicalizePath, isSameOrInside } from '../../core/paths.js';
-import { dayOf } from '../../core/time.js';
-import { TOOL_ROOT } from '../../core/tool.js';
 import {
   importCommand,
   renderCron,
@@ -23,10 +21,11 @@ import {
   scheduleWarnings,
   taskName,
 } from '../../schedule/templates.js';
+import type { CliDeps } from '../deps.js';
 import type { CliIo, CliState, GlobalOptions } from '../io.js';
+import { CLI_ENTRY, registerScheduleTaskCommands, templateInput } from './schedule-task.js';
 
-/** The built entry point that the scheduler starts with Node.js. */
-export const CLI_ENTRY = path.join(TOOL_ROOT, 'dist', 'cli.js');
+export { CLI_ENTRY };
 
 export interface ScheduleCommandOptions {
   os: string;
@@ -109,18 +108,7 @@ export async function runScheduleCommand(ctx: WorkspaceContext, io: CliIo, optio
     throw new IpaError('schedule_os_invalid', EXIT.usage, `--os "${options.os}" ist unbekannt. Erlaubt sind windows und cron.`);
   }
   const target = options.os;
-  const input: ScheduleTemplateInput = {
-    repositoryId: ctx.repositoryId,
-    repoPath: ctx.repoRoot,
-    timezone: ctx.config.timezone,
-    schedule: ctx.config.schedule,
-    maxRunSeconds: ctx.config.limits.maxRunSeconds,
-    claudeTimeoutSeconds: ctx.config.claude.timeoutSeconds,
-    nodePath: options.nodePath ?? process.execPath,
-    cliPath: options.cliPath ?? CLI_ENTRY,
-    dataDir: options.pinDataRoot ? ctx.dataRoot : null,
-    startDay: dayOf(ctx.clock.now(), ctx.config.timezone),
-  };
+  const input: ScheduleTemplateInput = templateInput(ctx, { pinDataRoot: options.pinDataRoot, nodePath: options.nodePath, cliPath: options.cliPath ?? CLI_ENTRY });
   const outputPath = options.output === undefined ? null : path.resolve(options.cwd ?? process.cwd(), options.output);
   const text =
     target === 'windows'
@@ -152,20 +140,22 @@ export async function runScheduleCommand(ctx: WorkspaceContext, io: CliIo, optio
 }
 
 interface ScheduleCliOptions extends GlobalOptions {
-  os: string;
+  os?: string;
   output?: string;
 }
 
-export function registerScheduleCommand(program: Command, io: CliIo, state: CliState): void {
-  program
+export function registerScheduleCommand(program: Command, io: CliIo, state: CliState, deps: CliDeps = {}): void {
+  const schedule = program
     .command('schedule')
-    .usage('--os <windows|cron> [optionen]')
-    .description('Vorlage für den Scheduler des Betriebssystems ausgeben; installiert nichts')
-    // Checked in the action instead of with choices(), whose help and messages Commander prints in English.
-    .requiredOption('--os <windows|cron>', 'windows: XML für die Aufgabenplanung; cron: crontab-Zeilen (nicht geprüft)')
+    .usage('--os <windows|cron> [optionen] | <unterbefehl>')
+    .description('Scheduler-Vorlage ausgeben (--os) oder die Aufgabe in der Windows-Aufgabenplanung verwalten (install, status, pause, resume, remove, run)')
+    // Checked in the action instead of with choices() or requiredOption(): Commander checks the required option of
+    // a parent command also for its subcommands, and prints its help and messages in English.
+    .option('--os <windows|cron>', 'windows: XML für die Aufgabenplanung; cron: crontab-Zeilen (nicht geprüft)')
     .option('--output <datei>', 'Vorlage in eine neue Datei schreiben statt auf stdout; eine vorhandene Datei wird nicht überschrieben')
     .action(async (_options: unknown, command: Command) => {
       const options = command.optsWithGlobals<ScheduleCliOptions>();
+      if (options.os === undefined) throw new IpaError('schedule_os_missing', EXIT.usage, "Die Option '--os <windows|cron>' ist erforderlich");
       const ctx = await resolveContext({ repo: options.repo, dataDir: options.dataDir, requireInit: true });
       state.exitCode = await runScheduleCommand(ctx, io, {
         os: options.os,
@@ -174,4 +164,5 @@ export function registerScheduleCommand(program: Command, io: CliIo, state: CliS
         pinDataRoot: dataRootCandidate({ dataDir: options.dataDir }).source !== 'default',
       });
     });
+  registerScheduleTaskCommands(schedule, io, state, deps);
 }

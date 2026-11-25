@@ -1,10 +1,12 @@
 /**
  * `ipa baseline --reason <text> [--force]`: new starting point after a halt (spec.md §6.3, §11.5).
  */
+import path from 'node:path';
 import type { Command } from 'commander';
 import { captureSnapshot } from '../../collector/capture.js';
 import { describeHalt } from '../../collector/halt.js';
 import { recoverWorkspace } from '../../collector/recovery.js';
+import { MANIFEST_FILE, snapshotDir } from '../../collector/snapshots.js';
 import type { CaptureHooks } from '../../collector/types.js';
 import { resolveContext, type WorkspaceContext } from '../../core/context.js';
 import { EXIT, type ExitCode, exitCodeOf, IpaError, LockHeldError } from '../../core/errors.js';
@@ -12,6 +14,7 @@ import { withLock } from '../../core/lock.js';
 import { appendLockHeldRecord, appendRunRecord, createRunRecord, runErrorOf } from '../../core/run-log.js';
 import { type Halt, readState } from '../../core/state.js';
 import { createSecretScanner } from '../../filter/secret-scanner.js';
+import { jsonPath, runAction } from '../action.js';
 import type { CliIo, CliState, GlobalOptions } from '../io.js';
 
 export interface BaselineRunOptions {
@@ -98,6 +101,7 @@ export async function runBaseline(ctx: WorkspaceContext, options: BaselineRunOpt
 interface BaselineCommandOptions extends GlobalOptions {
   reason: string;
   force?: boolean;
+  json?: boolean;
 }
 
 export function registerBaselineCommand(program: Command, io: CliIo, state: CliState): void {
@@ -107,14 +111,29 @@ export function registerBaselineCommand(program: Command, io: CliIo, state: CliS
     .description('Neuen Ausgangspunkt nach einem Halt setzen (Branchwechsel, umgeschriebene Historie)')
     .requiredOption('--reason <text>', 'Grund für den neuen Ausgangspunkt (Pflicht)')
     .option('--force', 'auch ohne Halt einen neuen Ausgangspunkt setzen, zum Beispiel nach einer langen Pause')
+    .option('--json', 'Ergebnis als JSON-Objekt auf stdout')
     .action(async (_options: unknown, command: Command) => {
       const options = command.optsWithGlobals<BaselineCommandOptions>();
-      const ctx = await resolveContext({ repo: options.repo, dataDir: options.dataDir, requireInit: true });
-      const result = await runBaseline(ctx, { reason: options.reason, force: options.force, onWarning: (message) => io.stderr(`${message}\n`) });
-      for (const id of result.recovered) io.stderr(`Hinweis: Snapshot ${id} aus einem abgebrochenen Lauf übernommen.\n`);
-      io.stdout(`Ausgangs-Snapshot ${result.snapshotId} gespeichert. Die Zuordnung beginnt dort neu.\n`);
-      if (result.endedHalt !== null) io.stdout(`Aufgehobener Halt: ${describeHalt(result.endedHalt)}\n`);
-      io.stdout('Arbeit zwischen dem letzten Snapshot und diesem Ausgangspunkt bleibt als Lücke sichtbar.\n');
-      state.exitCode = result.exitCode;
+      await runAction({ command: 'baseline', json: options.json === true, io, state }, async (out) => {
+        const ctx = await resolveContext({ repo: options.repo, dataDir: options.dataDir, requireInit: true });
+        out.runId = ctx.runId;
+        const result = await runBaseline(ctx, { reason: options.reason, force: options.force, onWarning: (message) => out.warn(message) });
+        return {
+          exitCode: result.exitCode,
+          result: {
+            snapshotId: result.snapshotId,
+            manifestPath: jsonPath(path.join(snapshotDir(ctx.workspaceDir, result.snapshotId), MANIFEST_FILE)),
+            forced: options.force === true,
+            endedHalt: result.endedHalt,
+            recovered: result.recovered,
+          },
+          print: () => {
+            for (const id of result.recovered) out.warn(`Hinweis: Snapshot ${id} aus einem abgebrochenen Lauf übernommen.`);
+            out.stdout(`Ausgangs-Snapshot ${result.snapshotId} gespeichert. Die Zuordnung beginnt dort neu.\n`);
+            if (result.endedHalt !== null) out.stdout(`Aufgehobener Halt: ${describeHalt(result.endedHalt)}\n`);
+            out.stdout('Arbeit zwischen dem letzten Snapshot und diesem Ausgangspunkt bleibt als Lücke sichtbar.\n');
+          },
+        };
+      });
     });
 }

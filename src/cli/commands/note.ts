@@ -4,20 +4,23 @@
  * adds the existence check of `--ref` and a secret warning (D-23); `src/notes/` stays independent of both.
  */
 import type { Command } from 'commander';
-import { noteSecretHits } from '../../analysis/note-secrets.js';
+import { type NoteSecretHit, noteSecretHits } from '../../analysis/note-secrets.js';
 import { listSnapshots, readManifest } from '../../collector/snapshots.js';
 import { resolveContext, type WorkspaceContext } from '../../core/context.js';
 import { EXIT, IpaError } from '../../core/errors.js';
 import { dayOf } from '../../core/time.js';
 import { createSecretScanner } from '../../filter/secret-scanner.js';
 import { parseNoteOptions, precheckNoteOptions, type RawNoteOptions, toNoteInput } from '../../notes/input.js';
-import { addNote } from '../../notes/store.js';
+import { addNote, notesFilePath } from '../../notes/store.js';
 import { NOTE_TYPES, type Note, type TimeBasis } from '../../notes/types.js';
+import { jsonPath, runAction } from '../action.js';
 import { formatFields } from '../format.js';
 import type { CliIo, CliState, GlobalOptions } from '../io.js';
 import { askNote } from '../note-dialog.js';
 
-interface NoteCommandOptions extends GlobalOptions, RawNoteOptions {}
+interface NoteCommandOptions extends GlobalOptions, RawNoteOptions {
+  json?: boolean;
+}
 
 const BASIS_LABELS: Record<TimeBasis, string> = { measured: 'gemessen', estimated: 'geschätzt' };
 
@@ -58,9 +61,14 @@ export async function checkRefsExist(ctx: WorkspaceContext, refs: readonly strin
   }
 }
 
+/** Fields and detectors with a secret hit, never the value (I-12). */
+export function noteSecretFindings(ctx: WorkspaceContext, note: Note): NoteSecretHit[] {
+  return noteSecretHits(createSecretScanner(ctx.config.secrets), note);
+}
+
 /** Warning without the value (I-12); the note stays local and never reaches Claude (spec.md §12.2). */
 export function secretWarning(ctx: WorkspaceContext, note: Note): string | null {
-  const hits = noteSecretHits(createSecretScanner(ctx.config.secrets), note);
+  const hits = noteSecretFindings(ctx, note);
   if (hits.length === 0) return null;
   const found = hits.map((hit) => `${hit.detector} in ${hit.field}`).join(', ');
   return (
@@ -89,30 +97,56 @@ export function registerNoteCommand(program: Command, io: CliIo, state: CliState
     .option('--cause <text>', 'Ursache des Problems (nur mit --type problem)')
     .option('--solution <text>', 'Lösung des Problems (nur mit --type problem)')
     .option('--ref <beleg>', 'Verweis auf einen Beleg wie S000001:E001, mehrfach möglich', collect)
+    .option('--json', 'Ergebnis als JSON-Objekt auf stdout; der Text ist dann Pflicht')
     .action(async (text: string | undefined, _options: unknown, command: Command) => {
       const options = command.optsWithGlobals<NoteCommandOptions>();
-      const ctx = await resolveContext({ repo: options.repo, dataDir: options.dataDir, requireInit: true });
-      let parsed = parseNoteOptions(options);
-      await checkRefsExist(ctx, parsed.refs);
-      let noteText = text;
-      if (noteText === undefined) {
-        const terminal = io.terminal?.();
-        if (terminal === undefined || !terminal.isTTY) {
-          throw new IpaError(
-            'note_needs_terminal',
-            EXIT.usage,
-            'Ohne Text fragt ipa note im Terminal nach, das geht nur mit einem Terminal (TTY) für Ein- und Ausgabe. ' +
-              'Bitte den Text direkt angeben, zum Beispiel: ipa note "Recherche zur Testkonfiguration"',
-          );
+      await runAction({ command: 'note', json: options.json === true, io, state }, async (out) => {
+        const ctx = await resolveContext({ repo: options.repo, dataDir: options.dataDir, requireInit: true });
+        out.runId = ctx.runId;
+        let parsed = parseNoteOptions(options);
+        await checkRefsExist(ctx, parsed.refs);
+        let noteText = text;
+        if (noteText === undefined) {
+          const terminal = io.terminal?.();
+          if (options.json === true) {
+            throw new IpaError(
+              'note_needs_text',
+              EXIT.usage,
+              'Mit --json ist der Text Pflicht, weil der Befehl nicht im Terminal nachfragen kann. Beginnt der Text mit -, steht -- vor ihm.',
+            );
+          }
+          if (terminal === undefined || !terminal.isTTY) {
+            throw new IpaError(
+              'note_needs_terminal',
+              EXIT.usage,
+              'Ohne Text fragt ipa note im Terminal nach, das geht nur mit einem Terminal (TTY) für Ein- und Ausgabe. ' +
+                'Bitte den Text direkt angeben, zum Beispiel: ipa note "Recherche zur Testkonfiguration"',
+            );
+          }
+          const today = dayOf(ctx.clock.now(), ctx.config.timezone);
+          precheckNoteOptions(parsed, today);
+          ({ options: parsed, text: noteText } = await askNote(terminal, parsed, { day: parsed.day ?? today, today }));
         }
-        const today = dayOf(ctx.clock.now(), ctx.config.timezone);
-        precheckNoteOptions(parsed, today);
-        ({ options: parsed, text: noteText } = await askNote(terminal, parsed, { day: parsed.day ?? today, today }));
-      }
-      const note = await addNote(ctx, toNoteInput(parsed, noteText));
-      io.stdout(formatSavedNote(note));
-      const warning = secretWarning(ctx, note);
-      if (warning !== null) io.stderr(`${warning}\n`);
-      state.exitCode = EXIT.ok;
+        const note = await addNote(ctx, toNoteInput(parsed, noteText));
+        return {
+          exitCode: EXIT.ok,
+          result: {
+            noteId: note.id,
+            type: note.type,
+            activityDay: note.activityDay,
+            recordedAt: note.recordedAt,
+            notePath: jsonPath(notesFilePath(ctx.workspaceDir, note.activityDay)),
+            time: note.time,
+            delay: note.delay,
+            refs: note.refs,
+            secretFindings: noteSecretFindings(ctx, note),
+          },
+          print: () => {
+            out.stdout(formatSavedNote(note));
+            const warning = secretWarning(ctx, note);
+            if (warning !== null) out.warn(warning);
+          },
+        };
+      });
     });
 }

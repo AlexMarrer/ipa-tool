@@ -3,24 +3,36 @@
  * the analysis queue (package 06), also after a halt or an unstable worktree. `--scheduled` checks the
  * working-time window first (package 08).
  */
+import path from 'node:path';
 import type { Command } from 'commander';
+import { logPath } from '../../analysis/files.js';
 import { processQueue } from '../../analysis/queue.js';
 import { requestRetry } from '../../analysis/skip.js';
+import { type AnalysesSummary, summarizeAnalyses } from '../../analysis/summary.js';
 import type { QueueHooks, QueueResult } from '../../analysis/types.js';
 import { createClaudeRunner } from '../../claude/runner.js';
 import type { ClaudeRunner } from '../../claude/types.js';
 import { captureSnapshot } from '../../collector/capture.js';
 import { BASELINE_HINT, describeHalt } from '../../collector/halt.js';
 import { recoverWorkspace } from '../../collector/recovery.js';
-import { readManifest } from '../../collector/snapshots.js';
+import { MANIFEST_FILE, readManifest, snapshotDir } from '../../collector/snapshots.js';
 import type { CaptureHooks, CaptureOutcome, Manifest } from '../../collector/types.js';
 import { resolveContext, type WorkspaceContext } from '../../core/context.js';
 import { EXIT, type ExitCode, exitCodeOf, IpaError, LockHeldError, mergeExitCodes } from '../../core/errors.js';
 import { withLock } from '../../core/lock.js';
-import { appendLockHeldRecord, appendRunRecord, createRunRecord, type RunError, runErrorOf, shortRunError } from '../../core/run-log.js';
+import {
+  appendLockHeldRecord,
+  appendRunRecord,
+  createRunRecord,
+  type RunError,
+  type RunOutcome,
+  runErrorOf,
+  shortRunError,
+} from '../../core/run-log.js';
 import { readState, writeState } from '../../core/state.js';
 import { formatZoned } from '../../core/time.js';
 import { checkScheduleWindow, describeOutsideWindow, type WindowCheck } from '../../schedule/window.js';
+import { type ActionReport, type Emitter, jsonPath, runAction } from '../action.js';
 import { formatFields } from '../format.js';
 import type { CliIo, CliState, GlobalOptions } from '../io.js';
 
@@ -221,11 +233,19 @@ const STATUS_HINTS: Record<string, (snapshotId: string) => string> = {
     `oder mit ipa skip ${id} --reason "<Grund>" auslassen.`,
 };
 
+/** Where `reportQueue` writes; `warn` also lists the line in the JSON result. */
+export interface QueueSink {
+  stdout(text: string): void;
+  stderr(text: string): void;
+  warn?(line: string): void;
+}
+
 /** Results to stdout, problems and hints to stderr (spec.md §6.5); never repository content. */
-export function reportQueue(io: CliIo, queue: QueueResult): void {
-  for (const warning of queue.warnings) io.stderr(`${warning}\n`);
+export function reportQueue(io: QueueSink, queue: QueueResult): void {
+  const warn = io.warn ?? ((line: string) => io.stderr(`${line}\n`));
+  for (const warning of queue.warnings) warn(warning);
   if (queue.caughtUp.length > 0) {
-    io.stderr(`Hinweis: Analyse-Cursor ohne neuen Aufruf nachgeführt über ${queue.caughtUp.join(', ')} (abgebrochener Lauf).\n`);
+    warn(`Hinweis: Analyse-Cursor ohne neuen Aufruf nachgeführt über ${queue.caughtUp.join(', ')} (abgebrochener Lauf).`);
   }
   for (const { snapshotId, mode } of queue.completed) {
     io.stdout(`Analyse ${snapshotId} abgeschlossen (${mode === 'ai' ? 'Claude' : 'ohne KI'}), Work-Log: logs/${snapshotId}.md\n`);
@@ -251,6 +271,113 @@ interface CaptureCommandOptions extends GlobalOptions {
   analysis?: boolean;
   retry?: string;
   scheduled?: boolean;
+  json?: boolean;
+}
+
+/** The run outcome as `runs.jsonl` records it for returned results (spec.md §9.11). */
+function captureOutcome(result: CaptureRunResult): RunOutcome | undefined {
+  if (result.outsideWindow !== null) return 'outside_window';
+  return result.exitCode === EXIT.ok && result.outcome?.type === 'unchanged' ? 'unchanged' : undefined;
+}
+
+function captureStep(result: CaptureRunResult): string {
+  if (result.outsideWindow !== null) return 'skipped';
+  return result.outcome === null ? 'unstable' : result.outcome.type;
+}
+
+function snapshotSummary(ctx: WorkspaceContext, manifest: Manifest): object {
+  const count = (decision: string) => manifest.filterDecisions.filter((entry) => entry.decision === decision).length;
+  const kinds = (kind: string) => manifest.evidence.filter((entry) => entry.kind === kind).length;
+  return {
+    id: manifest.snapshotId,
+    kind: manifest.kind,
+    manifestPath: jsonPath(path.join(snapshotDir(ctx.workspaceDir, manifest.snapshotId), MANIFEST_FILE)),
+    commits: manifest.commits.length,
+    fileStates: manifest.fileStates.length,
+    evidence: manifest.evidence.length,
+    stateDeltas: kinds('state_delta'),
+    statusChanges: manifest.statusChanges.length,
+    testReports: kinds('test_report'),
+    gaps: manifest.gaps.length,
+    excluded: count('excluded'),
+    withheld: count('withheld'),
+    omitted: count('omitted'),
+    analysisRequired: manifest.analysisRequired,
+  };
+}
+
+function queueSummary(ctx: WorkspaceContext, queue: QueueResult): object {
+  return {
+    claudeCalls: queue.claudeCalls,
+    completed: queue.completed.map((entry) => ({
+      snapshotId: entry.snapshotId,
+      mode: entry.mode,
+      workLogPath: jsonPath(logPath(ctx.workspaceDir, entry.snapshotId)),
+    })),
+    failed: queue.failed.map((problem) => ({ snapshotId: problem.snapshotId, code: problem.code, message: problem.message })),
+    caughtUp: queue.caughtUp,
+    stoppedBy: queue.stoppedBy,
+    cursor: queue.cursor,
+    open: queue.open,
+  };
+}
+
+/** The counts only complete the `--json` result: a failure to read them never replaces the outcome of a finished run. */
+async function analysesOrNull(ctx: WorkspaceContext, out: Emitter): Promise<AnalysesSummary | null> {
+  try {
+    return await summarizeAnalyses(ctx);
+  } catch (error) {
+    out.warn(`Hinweis: Der Stand der Analysen lässt sich nicht lesen (${runErrorOf(error).code}).`);
+    return null;
+  }
+}
+
+/** Describes a finished run for the output and for `--json`; the human-readable lines are those of package 02 to 08. */
+async function captureReport(ctx: WorkspaceContext, out: Emitter, result: CaptureRunResult, scheduled: boolean, json: boolean): Promise<ActionReport> {
+  const manifest = result.snapshotId === null ? null : await readManifest(ctx, result.snapshotId);
+  const lastSnapshotId = result.snapshotId === null && result.outcome?.type === 'unchanged' ? (await readState(ctx.workspaceDir)).lastSnapshotId : null;
+  const window = result.outsideWindow;
+  const errors: RunError[] = [...(result.captureError === null ? [] : [runErrorOf(result.captureError)]), ...queueErrors(result.queue)];
+  const outcome = captureOutcome(result);
+  return {
+    exitCode: result.exitCode,
+    ...(outcome === undefined ? {} : { outcome }),
+    errors,
+    result: {
+      scheduled,
+      outsideWindow: window === null ? null : { weekday: window.weekday, time: window.time, reason: window.reason },
+      capture: captureStep(result),
+      snapshot: manifest === null ? null : snapshotSummary(ctx, manifest),
+      halt: result.outcome?.type === 'halted' ? result.outcome.halt : null,
+      recovered: result.recovered,
+      retry: result.retry,
+      analysis: result.queue === null ? null : queueSummary(ctx, result.queue),
+      analyses: window === null && json ? await analysesOrNull(ctx, out) : null,
+    },
+    print: () => {
+      if (window !== null) {
+        // Nothing on stdout (package 08 §4); the hint helps when the command is started by hand.
+        out.stderr(`${describeOutsideWindow(window, ctx.config.timezone, ctx.config.schedule)}\n`);
+        return;
+      }
+      for (const id of result.recovered) out.warn(`Hinweis: Snapshot ${id} aus einem abgebrochenen Lauf übernommen.`);
+      if (result.retry !== null) {
+        out.stdout(`Weitere Versuche für ${result.retry.snapshotId} freigegeben (retry-${result.retry.afterAttempt}.json).\n`);
+      }
+      if (manifest !== null) {
+        out.stdout(summarize(manifest));
+        const notice = withheldNotice(manifest);
+        if (notice !== null) out.warn(notice);
+      } else if (result.outcome?.type === 'unchanged') {
+        out.stdout(`Keine neue Arbeit seit Snapshot ${lastSnapshotId ?? '–'}. Es wurde kein Snapshot gespeichert.\n`);
+      } else if (result.outcome?.type === 'halted') {
+        out.stderr(`Angehalten: ${describeHalt(result.outcome.halt)}\n${BASELINE_HINT}\n`);
+      }
+      if (result.captureError !== null) out.stderr(`Fehler: ${result.captureError.message}\n`);
+      if (result.queue === null) out.stdout('Analyse übersprungen (--no-analysis).\n');
+      else reportQueue(out, result.queue);
+    },
+  };
 }
 
 export function registerCaptureCommand(program: Command, io: CliIo, state: CliState): void {
@@ -261,41 +388,19 @@ export function registerCaptureCommand(program: Command, io: CliIo, state: CliSt
     .option('--no-analysis', 'nur aufnehmen, offene Analysen nicht verarbeiten')
     .option('--retry <snapshotId>', 'weitere Versuche für einen Snapshot im Status exhausted freigeben')
     .option('--scheduled', 'geplanter Lauf: ausserhalb des Zeitfensters aus config.json ohne Aufnahme beenden (Exit-Code 0)')
+    .option('--json', 'Ergebnis als JSON-Objekt auf stdout')
     .action(async (_options: unknown, command: Command) => {
       const options = command.optsWithGlobals<CaptureCommandOptions>();
-      const ctx = await resolveContext({ repo: options.repo, dataDir: options.dataDir, requireInit: true });
-      const result = await runCapture(ctx, {
-        onWarning: (message) => io.stderr(`${message}\n`),
-        ...(options.retry === undefined ? {} : { retry: options.retry }),
-        ...(options.scheduled === true ? { scheduled: true } : {}),
-        ...(options.analysis === false ? {} : { analysis: { runner: createClaudeRunner({ env: io.env }), env: io.env } }),
+      await runAction({ command: 'capture', json: options.json === true, io, state }, async (out) => {
+        const ctx = await resolveContext({ repo: options.repo, dataDir: options.dataDir, requireInit: true });
+        out.runId = ctx.runId;
+        const result = await runCapture(ctx, {
+          onWarning: (message) => out.warn(message),
+          ...(options.retry === undefined ? {} : { retry: options.retry }),
+          ...(options.scheduled === true ? { scheduled: true } : {}),
+          ...(options.analysis === false ? {} : { analysis: { runner: createClaudeRunner({ env: io.env }), env: io.env } }),
+        });
+        return captureReport(ctx, out, result, options.scheduled === true, options.json === true);
       });
-      if (result.outsideWindow !== null) {
-        // Nothing on stdout (package 08 §4); the hint helps when the command is started by hand.
-        io.stderr(`${describeOutsideWindow(result.outsideWindow, ctx.config.timezone, ctx.config.schedule)}\n`);
-        state.exitCode = result.exitCode;
-        return;
-      }
-      for (const id of result.recovered) {
-        io.stderr(`Hinweis: Snapshot ${id} aus einem abgebrochenen Lauf übernommen.\n`);
-      }
-      if (result.retry !== null) {
-        io.stdout(`Weitere Versuche für ${result.retry.snapshotId} freigegeben (retry-${result.retry.afterAttempt}.json).\n`);
-      }
-      if (result.snapshotId !== null) {
-        const manifest = await readManifest(ctx, result.snapshotId);
-        io.stdout(summarize(manifest));
-        const notice = withheldNotice(manifest);
-        if (notice !== null) io.stderr(`${notice}\n`);
-      } else if (result.outcome?.type === 'unchanged') {
-        const { lastSnapshotId } = await readState(ctx.workspaceDir);
-        io.stdout(`Keine neue Arbeit seit Snapshot ${lastSnapshotId ?? '–'}. Es wurde kein Snapshot gespeichert.\n`);
-      } else if (result.outcome?.type === 'halted') {
-        io.stderr(`Angehalten: ${describeHalt(result.outcome.halt)}\n${BASELINE_HINT}\n`);
-      }
-      if (result.captureError !== null) io.stderr(`Fehler: ${result.captureError.message}\n`);
-      if (result.queue === null) io.stdout('Analyse übersprungen (--no-analysis).\n');
-      else reportQueue(io, result.queue);
-      state.exitCode = result.exitCode;
     });
 }

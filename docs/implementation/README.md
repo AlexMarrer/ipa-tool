@@ -26,6 +26,7 @@ Gemeinsame Verträge stehen nur in `spec.md`. Die Pakete verweisen darauf (`spec
 | 06 | [Analyse-Pipeline](packages/06-analyse-pipeline/spec.md) | Eingabepaket, Validierung mit Belegregeln, Work-Logs, Warteschlange, Cursor, Wiederanlauf, `ipa skip`; Referenzprüfung und Secret-Warnung für `ipa note` | 02, 03, 04, 05 | Nach einem Abbruch nach der Abschlussmarkierung wird der Cursor ohne neuen Aufruf und ohne Doppel-Log nachgeführt (AK-06-06) |
 | 07 | [Tagesjournal](packages/07-tagesjournal/spec.md) | `ipa journal [--day] [--no-ai]` mit belegten Entwürfen, deterministischer Zeitübersicht und offenen Punkten | 04, 05, 06 | Frühere Entwürfe und die persönliche Endfassung bleiben byte-gleich (AK-07-03) |
 | 08 | [Zeitsteuerung und Abnahme](packages/08-zeitsteuerung-und-abnahme/spec.md) | `capture --scheduled`, Laufzeitgrenze, Vorlage für die Windows-Aufgabenplanung, V1-Abnahmeprotokoll mit echtem Claude | 06, 07 | Alle Fälle aus Konzept §17 sind live geprüft und protokolliert (AK-08-08) |
+| 09 | [App-Schnittstelle](packages/09-app-schnittstelle/spec.md) | Vorarbeit für eine Desktop-App: `--json` der Aktionsbefehle, `ipa config`, Zeitplan-Verwaltung für die Windows-Aufgabenplanung (`ipa schedule install|status|pause|resume|remove|run`) | 08 | Kein Test berührt die echte Aufgabenplanung (AK-09-16); `claude.allowPaidUsage` nur mit `--confirm-paid-usage` (AK-09-10) |
 
 ## Abhängigkeiten
 
@@ -43,6 +44,7 @@ graph LR
   P05 --> P07
   P06 --> P08[08 Zeitsteuerung und Abnahme]
   P07 --> P08
+  P08 --> P09[09 App-Schnittstelle]
 ```
 
 Der Graph ist zyklenfrei. Transitive Abhängigkeiten sind in der Tabelle nicht wiederholt. Paket 06 setzt zum Beispiel über Paket 02 auch Paket 01 voraus.
@@ -57,6 +59,7 @@ Der Graph ist zyklenfrei. Transitive Abhängigkeiten sind in der Tabelle nicht w
 6. **06 Analyse-Pipeline**: Danach funktioniert der vollständige manuelle Ablauf aus Konzept Etappe 2 und 3.
 7. **07 Tagesjournal**: entspricht Konzept Etappe 4
 8. **08 Zeitsteuerung und Abnahme**: entspricht Konzept Etappe 5, ohne die Messungen während der Probe-IPA
+9. **09 App-Schnittstelle**: gehört nicht zur Abnahme von Version 1 (Konzept §17), sondern bereitet die Desktop-App vor. Die App selbst ist nicht Teil der Planung.
 
 Nach jedem Paket liegt ein lauffähiger, getesteter Zwischenstand vor.
 

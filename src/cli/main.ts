@@ -3,6 +3,7 @@ import { EXIT, type ExitCode, IpaError } from '../core/errors.js';
 import { toolVersion } from '../core/tool.js';
 import { registerBaselineCommand } from './commands/baseline.js';
 import { registerCaptureCommand } from './commands/capture.js';
+import { registerConfigCommand } from './commands/config.js';
 import { registerDoctorCommand } from './commands/doctor.js';
 import { registerInitCommand } from './commands/init.js';
 import { registerJournalCommand } from './commands/journal.js';
@@ -10,6 +11,7 @@ import { registerNoteCommand } from './commands/note.js';
 import { registerScheduleCommand } from './commands/schedule.js';
 import { registerSkipCommand } from './commands/skip.js';
 import { registerStatusCommand } from './commands/status.js';
+import type { CliDeps } from './deps.js';
 import { type CliIo, type CliState, processIo } from './io.js';
 import { translateCommanderMessage, translateHelpTitle } from './messages.js';
 
@@ -24,7 +26,7 @@ function subcommandTerm(command: Command): string {
   return [command.name(), ...(command.options.length > 0 ? ['[optionen]'] : []), ...args].join(' ');
 }
 
-export function createProgram(io: CliIo, state: CliState): Command {
+export function createProgram(io: CliIo, state: CliState, deps: CliDeps = {}): Command {
   const program = new Command('ipa');
   program
     .description(
@@ -55,7 +57,8 @@ export function createProgram(io: CliIo, state: CliState): Command {
   registerSkipCommand(program, io, state);
   registerNoteCommand(program, io, state);
   registerJournalCommand(program, io, state);
-  registerScheduleCommand(program, io, state);
+  registerScheduleCommand(program, io, state, deps);
+  registerConfigCommand(program, io, state, deps);
   return program;
 }
 
@@ -95,10 +98,10 @@ export function reportError(error: unknown, io: CliIo): ExitCode {
   return EXIT.internal;
 }
 
-export async function main(argv: readonly string[], io: CliIo = processIo()): Promise<ExitCode> {
+export async function main(argv: readonly string[], io: CliIo = processIo(), deps: CliDeps = {}): Promise<ExitCode> {
   const state: CliState = { exitCode: EXIT.ok };
   try {
-    const program = createProgram(io, state);
+    const program = createProgram(io, state, deps);
     await program.parseAsync([...argv], { from: 'user' });
     return state.exitCode;
   } catch (error) {

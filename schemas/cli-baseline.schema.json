@@ -1,0 +1,201 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "IPA Assistant – ipa baseline --json (Paket 09 §4.1)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "command",
+    "runId",
+    "ok",
+    "exitCode",
+    "outcome",
+    "errors",
+    "warnings",
+    "result"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "command": {
+      "type": "string",
+      "const": "baseline"
+    },
+    "runId": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^R[0-9]{8}T[0-9]{6}Z-[0-9a-f]{4}$"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "exitCode": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 7
+    },
+    "outcome": {
+      "type": "string",
+      "enum": [
+        "ok",
+        "unchanged",
+        "halted",
+        "unstable",
+        "lock_held",
+        "analysis_failed",
+        "outside_window",
+        "usage_error",
+        "error"
+      ]
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/runError"
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "result": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/definitions/result"
+        }
+      ]
+    }
+  },
+  "definitions": {
+    "runError": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "message"
+      ],
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "snapshotId",
+        "manifestPath",
+        "forced",
+        "endedHalt",
+        "recovered"
+      ],
+      "properties": {
+        "snapshotId": {
+          "type": "string",
+          "pattern": "^S[0-9]{6}$"
+        },
+        "manifestPath": {
+          "type": "string"
+        },
+        "forced": {
+          "type": "boolean"
+        },
+        "endedHalt": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "reason",
+                "detectedAt",
+                "expected",
+                "observed"
+              ],
+              "properties": {
+                "reason": {
+                  "type": "string",
+                  "enum": [
+                    "branch_changed",
+                    "history_rewritten",
+                    "head_missing"
+                  ]
+                },
+                "detectedAt": {
+                  "type": "string"
+                },
+                "expected": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "branch",
+                    "head"
+                  ],
+                  "properties": {
+                    "branch": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "head": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  }
+                },
+                "observed": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "branch",
+                    "head"
+                  ],
+                  "properties": {
+                    "branch": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "head": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "recovered": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^S[0-9]{6}$"
+          }
+        }
+      }
+    }
+  }
+}

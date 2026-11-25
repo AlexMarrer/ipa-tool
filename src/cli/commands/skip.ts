@@ -2,13 +2,16 @@
  * `ipa skip <snapshotId> --reason <text>` (spec.md §6.2, §12.1): leaves an open analysis out on purpose
  * and keeps it visible as a gap.
  */
+import path from 'node:path';
 import type { Command } from 'commander';
+import { analysisDir, SKIP_FILE } from '../../analysis/files.js';
 import { type SkipResult, skipSnapshot } from '../../analysis/skip.js';
 import { recoverWorkspace } from '../../collector/recovery.js';
 import { resolveContext, type WorkspaceContext } from '../../core/context.js';
 import { EXIT, exitCodeOf, LockHeldError } from '../../core/errors.js';
 import { withLock } from '../../core/lock.js';
 import { appendLockHeldRecord, appendRunRecord, createRunRecord, runErrorOf } from '../../core/run-log.js';
+import { jsonPath, runAction } from '../action.js';
 import type { CliIo, CliState, GlobalOptions } from '../io.js';
 
 export interface SkipRunResult extends SkipResult {
@@ -54,6 +57,7 @@ export async function runSkip(ctx: WorkspaceContext, snapshotId: string, reason:
 
 interface SkipCommandOptions extends GlobalOptions {
   reason: string;
+  json?: boolean;
 }
 
 export function registerSkipCommand(program: Command, io: CliIo, state: CliState): void {
@@ -63,15 +67,30 @@ export function registerSkipCommand(program: Command, io: CliIo, state: CliState
     .description('Analyse eines offenen Snapshots bewusst auslassen und als Lücke sichtbar machen')
     .argument('<snapshotId>', 'Snapshot mit offener Analyse, zum Beispiel S000003')
     .requiredOption('--reason <text>', 'Grund für das Auslassen (Pflicht, wird gespeichert)')
+    .option('--json', 'Ergebnis als JSON-Objekt auf stdout')
     .action(async (snapshotId: string, _options: unknown, command: Command) => {
       const options = command.optsWithGlobals<SkipCommandOptions>();
-      const ctx = await resolveContext({ repo: options.repo, dataDir: options.dataDir, requireInit: true });
-      const result = await runSkip(ctx, snapshotId, options.reason);
-      for (const id of result.recovered) io.stderr(`Hinweis: Snapshot ${id} aus einem abgebrochenen Lauf übernommen.\n`);
-      io.stdout(
-        `Analyse ${snapshotId} übersprungen (vorher ${result.previousStatus}). Die Lücke bleibt in status und im Journal sichtbar.\n` +
-          `Analyse-Cursor: ${result.cursor ?? 'keiner'}\n`,
-      );
-      state.exitCode = EXIT.ok;
+      await runAction({ command: 'skip', json: options.json === true, io, state }, async (out) => {
+        const ctx = await resolveContext({ repo: options.repo, dataDir: options.dataDir, requireInit: true });
+        out.runId = ctx.runId;
+        const result = await runSkip(ctx, snapshotId, options.reason);
+        return {
+          exitCode: EXIT.ok,
+          result: {
+            snapshotId,
+            previousStatus: result.previousStatus,
+            cursor: result.cursor,
+            skipPath: jsonPath(path.join(analysisDir(ctx.workspaceDir, snapshotId), SKIP_FILE)),
+            recovered: result.recovered,
+          },
+          print: () => {
+            for (const id of result.recovered) out.warn(`Hinweis: Snapshot ${id} aus einem abgebrochenen Lauf übernommen.`);
+            out.stdout(
+              `Analyse ${snapshotId} übersprungen (vorher ${result.previousStatus}). Die Lücke bleibt in status und im Journal sichtbar.\n` +
+                `Analyse-Cursor: ${result.cursor ?? 'keiner'}\n`,
+            );
+          },
+        };
+      });
     });
 }
