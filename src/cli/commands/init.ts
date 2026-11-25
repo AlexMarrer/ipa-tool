@@ -58,7 +58,11 @@ export function registerInitCommand(program: Command, io: CliIo, state: CliState
           dataDir: options.dataDir,
           timezone: options.timezone,
           workspace: options.workspace,
-          baseline: (ctx) => takeInitialBaseline(ctx, { onWarning: (message) => out.warn(message) }),
+          baseline: (ctx) => {
+            // Set before the baseline starts, so a failed baseline still names the run of its log entry.
+            out.runId = ctx.runId;
+            return takeInitialBaseline(ctx, { onWarning: (message) => out.warn(message) });
+          },
         });
         out.runId = result.ctx.runId;
         out.stdout(formatInitResult(result));

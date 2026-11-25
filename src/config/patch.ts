@@ -26,11 +26,10 @@ export function parseAssignment(argument: string): Assignment {
   const separator = argument.indexOf('=');
   const path = separator < 0 ? argument : argument.slice(0, separator);
   if (separator < 0 || !PATH_PATTERN.test(path)) {
-    throw new IpaError(
-      'assignment_invalid',
-      EXIT.usage,
-      `"${argument.length > 60 ? `${argument.slice(0, 60)} …` : argument}" ist keine Zuweisung. Erwartet wird pfad=wert, zum Beispiel claude.maxTurns=5.`,
-    );
+    // The value is never echoed: it may be a credential that was typed into the wrong field.
+    const shown = path.length > 60 ? `${path.slice(0, 60)} …` : path;
+    const subject = separator < 0 ? 'Die Angabe' : `"${shown}"`;
+    throw new IpaError('assignment_invalid', EXIT.usage, `${subject} ist keine gültige Zuweisung. Erwartet wird pfad=wert, zum Beispiel claude.maxTurns=5.`);
   }
   const text = argument.slice(separator + 1);
   let value: unknown;
@@ -73,7 +72,12 @@ export function applyAssignments(config: unknown, assignments: readonly Assignme
     }
     const last = assignment.segments.at(-1)!;
     if (!isObject(parent)) throw unknownPath(assignment.path);
-    changes.push({ path: assignment.path, before: Object.hasOwn(parent, last) ? parent[last] : null, after: assignment.value });
+    // Copies: a later assignment inside the same object must not rewrite an earlier record.
+    changes.push({
+      path: assignment.path,
+      before: Object.hasOwn(parent, last) ? structuredClone(parent[last]) : null,
+      after: structuredClone(assignment.value),
+    });
     parent[last] = assignment.value;
   }
   return { candidate, changes };

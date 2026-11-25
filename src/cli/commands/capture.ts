@@ -8,7 +8,7 @@ import type { Command } from 'commander';
 import { logPath } from '../../analysis/files.js';
 import { processQueue } from '../../analysis/queue.js';
 import { requestRetry } from '../../analysis/skip.js';
-import { summarizeAnalyses } from '../../analysis/summary.js';
+import { type AnalysesSummary, summarizeAnalyses } from '../../analysis/summary.js';
 import type { QueueHooks, QueueResult } from '../../analysis/types.js';
 import { createClaudeRunner } from '../../claude/runner.js';
 import type { ClaudeRunner } from '../../claude/types.js';
@@ -322,8 +322,18 @@ function queueSummary(ctx: WorkspaceContext, queue: QueueResult): object {
   };
 }
 
+/** The counts only complete the `--json` result: a failure to read them never replaces the outcome of a finished run. */
+async function analysesOrNull(ctx: WorkspaceContext, out: Emitter): Promise<AnalysesSummary | null> {
+  try {
+    return await summarizeAnalyses(ctx);
+  } catch (error) {
+    out.warn(`Hinweis: Der Stand der Analysen lässt sich nicht lesen (${runErrorOf(error).code}).`);
+    return null;
+  }
+}
+
 /** Describes a finished run for the output and for `--json`; the human-readable lines are those of package 02 to 08. */
-async function captureReport(ctx: WorkspaceContext, out: Emitter, result: CaptureRunResult, scheduled: boolean): Promise<ActionReport> {
+async function captureReport(ctx: WorkspaceContext, out: Emitter, result: CaptureRunResult, scheduled: boolean, json: boolean): Promise<ActionReport> {
   const manifest = result.snapshotId === null ? null : await readManifest(ctx, result.snapshotId);
   const lastSnapshotId = result.snapshotId === null && result.outcome?.type === 'unchanged' ? (await readState(ctx.workspaceDir)).lastSnapshotId : null;
   const window = result.outsideWindow;
@@ -342,7 +352,7 @@ async function captureReport(ctx: WorkspaceContext, out: Emitter, result: Captur
       recovered: result.recovered,
       retry: result.retry,
       analysis: result.queue === null ? null : queueSummary(ctx, result.queue),
-      analyses: window === null ? await summarizeAnalyses(ctx) : null,
+      analyses: window === null && json ? await analysesOrNull(ctx, out) : null,
     },
     print: () => {
       if (window !== null) {
@@ -390,7 +400,7 @@ export function registerCaptureCommand(program: Command, io: CliIo, state: CliSt
           ...(options.scheduled === true ? { scheduled: true } : {}),
           ...(options.analysis === false ? {} : { analysis: { runner: createClaudeRunner({ env: io.env }), env: io.env } }),
         });
-        return captureReport(ctx, out, result, options.scheduled === true);
+        return captureReport(ctx, out, result, options.scheduled === true, options.json === true);
       });
     });
 }

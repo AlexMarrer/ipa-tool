@@ -14,7 +14,7 @@ import { createRunId } from '../../core/ids.js';
 import { describeJsonSyntaxError, stripBom } from '../../core/json.js';
 import { shortRunError } from '../../core/run-log.js';
 import { workspaceMissingError, workspacePresent } from '../../core/workspace.js';
-import { planSchedule, type SchedulePlan } from '../../schedule/plan.js';
+import { planSchedule, type SchedulePlan, zonesOf } from '../../schedule/plan.js';
 import { type ActionReport, type Emitter, jsonPath, runAction } from '../action.js';
 import type { CliDeps } from '../deps.js';
 import type { CliIo, CliState, GlobalOptions } from '../io.js';
@@ -33,7 +33,7 @@ function publicFinding(finding: ConfigFinding): object {
 
 function planOf(config: Config | null, findings: readonly ConfigFinding[]): SchedulePlan | null {
   if (config === null || findings.some((finding) => finding.code === 'window_order')) return null;
-  return planSchedule(config.schedule, config.claude.maxAnalysesPerRun);
+  return planSchedule(config.schedule, config.claude.maxAnalysesPerRun, zonesOf(config.timezone));
 }
 
 function describePlan(plan: SchedulePlan): string {

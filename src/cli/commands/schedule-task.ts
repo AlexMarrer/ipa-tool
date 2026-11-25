@@ -15,7 +15,7 @@ import { createFileExclusive } from '../../core/fs-write.js';
 import { canonicalizePath, isSameOrInside } from '../../core/paths.js';
 import { dayOf, formatZoned } from '../../core/time.js';
 import { TOOL_ROOT } from '../../core/tool.js';
-import { planSchedule, type SchedulePlan } from '../../schedule/plan.js';
+import { planSchedule, type SchedulePlan, zonesOf } from '../../schedule/plan.js';
 import { createSchtasksRunner, type SchtasksRunner } from '../../schedule/schtasks.js';
 import { changeTask, queryTask, type TaskDifference, type TaskState, type TaskStatus } from '../../schedule/task.js';
 import { renderWindowsTask, scheduleWarnings, type ScheduleTemplateInput } from '../../schedule/templates.js';
@@ -239,7 +239,7 @@ function registerTaskCommand(
       const before = await queryTask(runner, input, ctx.clock.now());
       const step = name === 'status' ? { changed: false, headline: '' } : await perform(env, before);
       const after = step.changed ? await queryTask(runner, input, ctx.clock.now()) : before;
-      const plan = planSchedule(ctx.config.schedule, ctx.config.claude.maxAnalysesPerRun);
+      const plan = planSchedule(ctx.config.schedule, ctx.config.claude.maxAnalysesPerRun, zonesOf(ctx.config.timezone));
       const iso = (date: Date | null): string | null => (date === null ? null : formatZoned(date, ctx.config.timezone));
       return {
         exitCode: EXIT.ok,

@@ -242,6 +242,25 @@ describe('--json der Aktionsbefehle (Paket 09 §4.1)', () => {
     expect(badDay).toMatchObject({ result: null, errors: [{ code: 'day_invalid' }] });
   });
 
+  it('journal nennt in den Lücken nie den Grund eines neuen Ausgangspunkts (Nacharbeit nach der Review)', async () => {
+    const env = await pipelineRepo();
+    await withChange(env);
+    await captureOnly(env);
+    await env.repo.git('checkout', '-q', '-b', 'anderer');
+    await ipa(env, ['capture', '--no-analysis']);
+    await ipa(env, ['baseline', '--reason', 'GRUND-NICHT-IM-JSON-3']);
+
+    const run = (await ipa(env, ['journal', '--no-ai', '--json'], 'journal')).result;
+    const envelope = envelopeOf('journal', run, 0);
+    expect(run.stdout).not.toContain('GRUND-NICHT-IM-JSON-3');
+    const gaps = (envelope.result as { openItems: { gaps: { type: string; detail: string }[] } }).openItems.gaps;
+    expect(gaps.some((gap) => gap.type === 'rebaseline')).toBe(true);
+
+    // The reason stays in the saved draft record and in the manifest.
+    const record = await readJsonFile((envelope.result as Record<string, string>)['recordPath']!);
+    expect(JSON.stringify(record)).toContain('GRUND-NICHT-IM-JSON-3');
+  });
+
   it('doctor liefert Version, Anmeldeart, Optionen und Kostenschutz, bei fehlendem Claude Exit-Code 7 (AK-09-02, AK-09-04)', async () => {
     const env = await pipelineRepo();
     const ready = envelopeOf('doctor', (await ipa(env, ['doctor', '--json'], 'ok')).result, 0);

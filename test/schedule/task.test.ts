@@ -3,6 +3,7 @@ import { createDefaultConfig } from '../../src/core/config.js';
 import type { SchtasksResult, SchtasksRunner } from '../../src/schedule/schtasks.js';
 import {
   compareTasks,
+  splitWindowsArguments,
   expectedTask,
   parseDurationSeconds,
   parseSchedulerDate,
@@ -304,5 +305,25 @@ describe('queryTask mit Ersatz-Runner (AK-09-13)', () => {
       NOW,
     );
     expect(running.running).toBe(true);
+  });
+});
+
+describe('Vergleich der Aufgabe: Pfade und Optionen (Nacharbeit nach der Review)', () => {
+  type Definition = Parameters<typeof compareTasks>[0];
+  const definition = (command: string, args: string): Definition => ({ enabled: true, command, arguments: args, executionTimeLimitSeconds: 2400, triggers: [] });
+  const wanted = definition('"C:\\Program Files\\nodejs\\node.exe"', '"C:\\Tool\\dist\\cli.js" capture --scheduled --repo "C:/GIT/my project"');
+
+  it('unterscheidet Pfade, die sich nur in der Zahl der Leerzeichen unterscheiden', () => {
+    expect(compareTasks(wanted, definition(wanted.command!, wanted.arguments!.replace('my project', 'my  project')))).toEqual(['arguments']);
+    expect(compareTasks(wanted, definition('"C:\\Program  Files\\nodejs\\node.exe"', wanted.arguments!))).toEqual(['node_path']);
+  });
+
+  it('unterscheidet Gross- und Kleinschreibung bei Optionen, nicht bei Pfaden', () => {
+    expect(compareTasks(wanted, definition(wanted.command!, wanted.arguments!.replace('--scheduled', '--SCHEDULED')))).toEqual(['arguments']);
+    expect(compareTasks(wanted, definition(wanted.command!, wanted.arguments!.replace('C:/GIT/my project', 'c:\\git\\MY PROJECT')))).toEqual([]);
+  });
+
+  it('liest Argumente nach den Regeln der C-Laufzeit', () => {
+    expect(splitWindowsArguments('"a b" c "d\\"e" f\\\\g "h\\\\"')).toEqual(['a b', 'c', 'd"e', 'f\\\\g', 'h\\']);
   });
 });

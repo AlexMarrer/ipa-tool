@@ -89,9 +89,9 @@ export function readTaskDefinition(xml: string): TaskDefinition {
   };
 }
 
-/** Comparison key for paths and arguments: ASCII only (OEM output), no case, `/` as separator. */
-function normalizeText(text: string): string {
-  return foldToAscii(text).replace(/\\/g, '/').replace(/\s+/g, ' ').trim().toLowerCase();
+/** Comparison key for a path: ASCII only (OEM output), no case, `/` as separator. Whitespace inside stays: it separates directories. */
+function normalizePath(text: string): string {
+  return foldToAscii(text).replace(/\\/g, '/').trim().toLowerCase();
 }
 
 function unquote(text: string): string {
@@ -99,25 +99,73 @@ function unquote(text: string): string {
   return trimmed.length >= 2 && trimmed.startsWith('"') && trimmed.endsWith('"') ? trimmed.slice(1, -1) : trimmed;
 }
 
-/** The first argument (path of `cli.js`) and the rest. */
-function splitFirstArgument(text: string): { first: string; rest: string } {
-  const trimmed = text.trim();
-  if (trimmed.startsWith('"')) {
-    const end = trimmed.indexOf('"', 1);
-    if (end > 0) return { first: trimmed.slice(1, end), rest: trimmed.slice(end + 1).trim() };
+/** Arguments as the Microsoft C runtime reads them (the rules `quoteWindowsArg` writes by). */
+export function splitWindowsArguments(text: string): string[] {
+  const args: string[] = [];
+  let current = '';
+  let inQuotes = false;
+  let started = false;
+  let index = 0;
+  while (index < text.length) {
+    const char = text[index]!;
+    if (char === '\\') {
+      let slashes = 0;
+      while (text[index] === '\\') {
+        slashes += 1;
+        index += 1;
+      }
+      started = true;
+      if (text[index] === '"') {
+        current += '\\'.repeat(Math.floor(slashes / 2));
+        // An odd number of backslashes makes the quote a literal; an even one leaves it to the next pass.
+        if (slashes % 2 === 1) {
+          current += '"';
+          index += 1;
+        }
+      } else {
+        current += '\\'.repeat(slashes);
+      }
+    } else if (char === '"') {
+      inQuotes = !inQuotes;
+      started = true;
+      index += 1;
+    } else if (!inQuotes && /\s/.test(char)) {
+      if (started) args.push(current);
+      current = '';
+      started = false;
+      index += 1;
+    } else {
+      current += char;
+      started = true;
+      index += 1;
+    }
   }
-  const space = trimmed.search(/\s/);
-  return space < 0 ? { first: trimmed, rest: '' } : { first: trimmed.slice(0, space), rest: trimmed.slice(space).trim() };
+  if (started) args.push(current);
+  return args;
+}
+
+/** Options whose value is a path; every other token has to match exactly (`--SCHEDULED` is not `--scheduled`). */
+const PATH_OPTIONS = new Set(['--repo', '--data-dir']);
+
+function compareArguments(expected: string, actual: string): { cliPath: boolean; rest: boolean } {
+  const wanted = splitWindowsArguments(expected);
+  const found = splitWindowsArguments(actual);
+  const cliPath = normalizePath(wanted[0] ?? '') !== normalizePath(found[0] ?? '');
+  let rest = wanted.length !== found.length;
+  for (let index = 1; !rest && index < wanted.length; index += 1) {
+    const isPath = PATH_OPTIONS.has(wanted[index - 1]!);
+    rest = isPath ? normalizePath(wanted[index]!) !== normalizePath(found[index]!) : wanted[index] !== found[index];
+  }
+  return { cliPath, rest };
 }
 
 /** Differences between the task that `install` would create and the registered one. */
 export function compareTasks(expected: TaskDefinition, actual: TaskDefinition): TaskDifference[] {
   const differences: TaskDifference[] = [];
-  if (normalizeText(unquote(expected.command ?? '')) !== normalizeText(unquote(actual.command ?? ''))) differences.push('node_path');
-  const wanted = splitFirstArgument(expected.arguments ?? '');
-  const found = splitFirstArgument(actual.arguments ?? '');
-  if (normalizeText(wanted.first) !== normalizeText(found.first)) differences.push('cli_path');
-  if (normalizeText(wanted.rest) !== normalizeText(found.rest)) differences.push('arguments');
+  if (normalizePath(unquote(expected.command ?? '')) !== normalizePath(unquote(actual.command ?? ''))) differences.push('node_path');
+  const args = compareArguments(expected.arguments ?? '', actual.arguments ?? '');
+  if (args.cliPath) differences.push('cli_path');
+  if (args.rest) differences.push('arguments');
   if (expected.triggers.join('|') !== actual.triggers.join('|')) differences.push('triggers');
   if (expected.executionTimeLimitSeconds !== actual.executionTimeLimitSeconds) differences.push('execution_time_limit');
   return differences;

@@ -47,15 +47,30 @@ export interface SchedulePlan {
   maxClaudeCallsPerDay: number;
 }
 
-export function planSchedule(schedule: ScheduleConfig, maxAnalysesPerRun: number): SchedulePlan {
+/** The trigger times are system time, the window check of `--scheduled` uses the configured time zone. */
+export interface TimeZones {
+  system: string;
+  configured: string;
+}
+
+export function zonesOf(configured: string): TimeZones {
+  return { system: Intl.DateTimeFormat().resolvedOptions().timeZone, configured };
+}
+
+/**
+ * With different time zones the clock times of the triggers and of the window do not line up, so every
+ * trigger counts as inside the window: the upper bound may be too high, never too low.
+ */
+export function planSchedule(schedule: ScheduleConfig, maxAnalysesPerRun: number, zones?: TimeZones): SchedulePlan {
   const workdays = sortedWorkdays(schedule);
   const all = runTimesOfDay(schedule);
-  const inside = all.filter((time) => time >= schedule.windowStart && time <= schedule.windowEnd);
+  const conservative = zones !== undefined && zones.system !== zones.configured;
+  const inside = conservative ? all : all.filter((time) => time >= schedule.windowStart && time <= schedule.windowEnd);
   const runsPerDay = workdays.length === 0 ? 0 : inside.length;
   return {
     workdays,
     runTimes: inside,
-    skippedRunTimes: all.filter((time) => time < schedule.windowStart || time > schedule.windowEnd),
+    skippedRunTimes: conservative ? [] : all.filter((time) => time < schedule.windowStart || time > schedule.windowEnd),
     runsPerDay,
     includesWindowEndRun: workdays.length > 0 && inside.includes(schedule.windowEnd),
     maxAnalysesPerRun,

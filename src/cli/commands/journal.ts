@@ -10,6 +10,7 @@ import { EXIT, type ExitCode, IpaError } from '../../core/errors.js';
 import { shortRunError } from '../../core/run-log.js';
 import { dayOf, isValidDay } from '../../core/time.js';
 import { generateJournal, type JournalResult } from '../../journal/generate.js';
+import type { OpenItems } from '../../journal/types.js';
 import { type ActionReport, type Emitter, jsonPathOrNull, runAction } from '../action.js';
 import { formatFields } from '../format.js';
 import type { CliIo, CliState, GlobalOptions } from '../io.js';
@@ -40,11 +41,18 @@ export interface JournalCommandOptions {
   env?: NodeJS.ProcessEnv;
 }
 
+/** The reason of a new starting point is private text of the user: the result names the gap without it. */
+const REBASELINE_DETAIL = 'Neuer Ausgangspunkt gesetzt. Der Grund steht im Manifest des Snapshots.';
+
+function publicOpenItems(items: OpenItems): OpenItems {
+  return { ...items, gaps: items.gaps.map((gap) => (gap.type === 'rebaseline' ? { ...gap, detail: REBASELINE_DETAIL } : gap)) };
+}
+
 /** Generates the journal of a day and describes the result for the output and for `--json`. */
 export async function journalReport(ctx: WorkspaceContext, out: Emitter, options: JournalCommandOptions): Promise<ActionReport> {
   const day = journalDay(ctx, options.day);
   const result = await generateJournal(ctx, options.runner, { day, noAi: options.noAi, ...(options.env === undefined ? {} : { env: options.env }) });
-  const { openItems } = result;
+  const openItems = publicOpenItems(result.openItems);
   const complete = result.failure === null && result.draftPath !== null && result.recordPath !== null;
   return {
     exitCode: result.exitCode,

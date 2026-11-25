@@ -151,3 +151,29 @@ describe('Schutz von Feldern (AK-09-09, AK-09-10)', () => {
     expect(scheduleSettingsChanged(base(), edit('paths.include=["src/**"]'))).toBe(false);
   });
 });
+
+describe('Zuweisungen: Nacharbeit nach der Review', () => {
+  const messageOf = (argument: string): string => {
+    try {
+      parseAssignment(argument);
+    } catch (error) {
+      return (error as Error).message;
+    }
+    return '';
+  };
+
+  it('nennt den Wert einer ungültigen Zuweisung nie in der Fehlermeldung', () => {
+    const withPath = messageOf('claude.api_key=sk-geheim-1234567890');
+    expect(withPath).toContain('"claude.api_key"');
+    expect(withPath).not.toContain('geheim');
+    const bare = messageOf('sk-geheim-1234567890');
+    expect(bare).not.toBe('');
+    expect(bare).not.toContain('geheim');
+  });
+
+  it('hält frühere Änderungsprotokolle frei von späteren Zuweisungen im selben Objekt', () => {
+    const { changes } = applyAssignments(base(), [parseAssignment('claude={"maxTurns":7}'), parseAssignment('claude.maxTurns=9')]);
+    expect(changes[0]!.after).toEqual({ maxTurns: 7 });
+    expect(changes[1]).toMatchObject({ before: 7, after: 9 });
+  });
+});

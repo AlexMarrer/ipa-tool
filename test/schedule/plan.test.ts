@@ -94,3 +94,21 @@ describe('planSchedule (AK-09-11)', () => {
     }
   });
 });
+
+describe('planSchedule bei abweichender Zeitzone (Nacharbeit nach der Review)', () => {
+  const narrow = () => schedule({ windowStart: '08:00', windowEnd: '09:00', intervalMinutes: 120, extraRunTimes: ['07:15', '07:30'] });
+
+  it('zählt alle Trigger, wenn Systemzeit und konfigurierte Zeitzone nicht übereinstimmen', () => {
+    const plan = planSchedule(narrow(), 5, { system: 'UTC', configured: 'Europe/Zurich' });
+    expect(plan.runTimes).toEqual(['07:15', '07:30', '08:00']);
+    expect(plan.skippedRunTimes).toEqual([]);
+    expect(plan.runsPerDay).toBe(3);
+    expect(plan.maxClaudeCallsPerDay).toBe(15);
+  });
+
+  it('filtert nach dem Fenster, wenn beide Zeitzonen gleich sind', () => {
+    const plan = planSchedule(narrow(), 5, { system: 'Europe/Zurich', configured: 'Europe/Zurich' });
+    expect(plan.runTimes).toEqual(['08:00']);
+    expect(plan.skippedRunTimes).toEqual(['07:15', '07:30']);
+  });
+});
