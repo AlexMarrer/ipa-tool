@@ -24,6 +24,11 @@ Nachfolgende Pakete dürfen beginnen, sobald ihre Voraussetzungen mindestens `te
 | 07 – Tagesjournal | technisch abgeschlossen | [checklist](packages/07-tagesjournal/checklist.md) | Offen: Live-Journal eines künstlichen Tages nach Freigabe (`test/live/journal.live.ts`, ein Modellaufruf) mit Stichprobe der Belege. Geprüft am 30.09.2026 unter Windows (Node.js 24.19.0, Git 2.51): 64 Testdateien, 519 bestanden, 2 übersprungen. `journal` nimmt keinen Lock und schreibt keinen Eintrag in `runs.jsonl`; Belege von Snapshots mit unklarer Tageszuordnung sind nicht zitierbar; Planungszeiten zählen nicht zu den Summen; Test-Timeout 300 s wegen Last auf langsamen Rechnern (spec.md §18). |
 | 08 – Zeitsteuerung und Abnahme | technisch abgeschlossen | [checklist](packages/08-zeitsteuerung-und-abnahme/checklist.md) | Offen, vom Benutzer auszuführen: Live-Abnahme aller Fälle mit echtem Claude samt Stichprobe „Beleg trägt Aussage“ (AK-08-08; `npm run test:live -- test/live/acceptance.live.ts`, rund zehn Modellaufrufe) und Import, Auslösung und Überschneidungsschutz der Aufgabe unter Windows 11 (AK-08-07); danach das Abnahmeprotokoll vervollständigen. Geprüft am 30.09.2026 unter Windows (Node.js 24.19.0, Git 2.51): 72 Testdateien, 620 bestanden, 2 übersprungen; alle vierzehn Abnahmefälle mit der Fake-CLI bestanden; Windows-Vorlage von der Aufgabenplanung mit `TASK_VALIDATE_ONLY` angenommen (ohne Registrierung). `schedule` schreibt keinen Eintrag in `runs.jsonl`, `outside_window` entsteht ohne Lock, die Frist gilt auch direkt vor dem Aufruf (spec.md §18). |
 | 09 – App-Schnittstelle | technisch abgeschlossen | [checklist](packages/09-app-schnittstelle/checklist.md) | Vorarbeit für eine Desktop-App, nicht Teil der V1-Abnahme. `--json` der Aktionsbefehle, `ipa config` und `ipa schedule install|status|pause|resume|remove|run`. Offen, vom Benutzer auszuführen: die Zeitplan-Verwaltung an der echten Windows-Aufgabenplanung (AK-09-17, zusammen mit AK-08-07; Anleitung in der Paketcheckliste). Geprüft am 25.11.2026 unter Windows (Node.js 24.19.0, Git 2.51): 79 Testdateien, 726 bestanden, 2 übersprungen; Typprüfung und Build fehlerfrei. Alle Tests mit der Fake-CLI und einer Nachbildung der Aufgabenplanung; kein Test berührt die echte Aufgabenplanung. `config set` und `--json` nehmen keinen Lock und schreiben keinen Eintrag in `runs.jsonl`; `claude.allowPaidUsage` lässt sich nur mit `--confirm-paid-usage` einschalten (spec.md §18). |
+| 10 – App-Gerüst | offen | [checklist](packages/10-app-geruest/checklist.md) | Nicht Teil der V1-Abnahme des CLI. Spezifikation: [docs/app/spec.md](../app/spec.md). Voraussetzung: Paket 09 (technisch abgeschlossen). |
+| 11 – App Lesen | offen | [checklist](packages/11-app-lesen/checklist.md) | Voraussetzung: Paket 10. |
+| 12 – App Aktionen | offen | [checklist](packages/12-app-aktionen/checklist.md) | Voraussetzung: Paket 11. Ein echter Lauf mit Claude aus der App ist vom Benutzer auszuführen. |
+| 13 – App Zeitplan und Konfiguration | offen | [checklist](packages/13-app-zeitplan-konfiguration/checklist.md) | Voraussetzung: Paket 12. Die manuelle Prüfung der echten Aufgabenplanung (AK-09-17, AK-08-07) liegt beim Benutzer. |
+| 14 – App Projekte, System, Installer | offen | [checklist](packages/14-app-projekte-system-installer/checklist.md) | Voraussetzung: Paket 13. Signierung des Installers offen (AO-01); manuelle Abnahme AK-10-80 liegt beim Benutzer. |
 
 - [x] Paket 01 abgeschlossen. Nachweis: 29.09.2026, alle Punkte der Paketcheckliste erledigt.
 - [x] Paket 02 abgeschlossen. Nachweis: 29.09.2026, alle Punkte der Paketcheckliste erledigt.
@@ -34,6 +39,11 @@ Nachfolgende Pakete dürfen beginnen, sobald ihre Voraussetzungen mindestens `te
 - [ ] Paket 07 abgeschlossen
 - [ ] Paket 08 abgeschlossen
 - [ ] Paket 09 abgeschlossen
+- [ ] Paket 10 abgeschlossen
+- [ ] Paket 11 abgeschlossen
+- [ ] Paket 12 abgeschlossen
+- [ ] Paket 13 abgeschlossen
+- [ ] Paket 14 abgeschlossen
 
 ## Abnahmematrix (Konzept §17)
 
@@ -65,3 +75,5 @@ Stand 30.09.2026: Alle vierzehn Fälle sind im Abnahmeszenario mit der Fake-CLI 
 - [x] README im Repository-Root vollständig, ohne ungeprüfte Plattform- oder Schutzzusagen (AK-08-09). Nachweis: 30.09.2026, Paketcheckliste 08 (Abschnitt „Dokumentation und Status“); Zeitsteuerung mit offen gelegtem Prüfstand, cron als nicht geprüft, Schutzwirkung gemäss spec.md §13.4.
 - [ ] Organisatorische Klärungen vor Einsatz in der echten IPA (O-03, Konzept §14) durch den Benutzer bestätigt
 - [ ] Zeitplan-Verwaltung aus Paket 09 (`ipa schedule install|status|pause|resume|run|remove`) an der echten Windows-Aufgabenplanung vom Benutzer geprüft (AK-09-17), zusammen mit AK-08-07; Anleitung in `packages/09-app-schnittstelle/checklist.md`
+- [ ] App (Pakete 10 bis 14, nicht Teil der V1-Abnahme): Alle Akzeptanzkriterien AK-10-01 bis AK-10-81 in `docs/app/spec.md` §16 erfüllt, offene Punkte AO-01 bis AO-18 in §18 entschieden oder bewusst belassen
+- [ ] App: manuelle Abnahme AK-10-80 (Aufgabenplanung an der echten Aufgabenplanung, Sichtprüfung der 72 Artboards in Hell und Dunkel, Bedienung per Tastatur, Installer auf sauberem Windows 11) vom Benutzer durchgeführt und im Abnahmeprotokoll `docs/abnahme/app-abnahmeprotokoll.md` festgehalten
