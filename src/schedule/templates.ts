@@ -4,6 +4,7 @@
  */
 import type { Weekday } from '../core/config.js';
 import { EXIT, IpaError } from '../core/errors.js';
+import { minutesOf, repeats, runTimesOfDay, windowMinutes } from './plan.js';
 import { describeWindow, type ScheduleConfig, sortedWorkdays } from './window.js';
 
 export const SCHEDULE_TARGETS = ['windows', 'cron'] as const;
@@ -79,6 +80,13 @@ export function quoteWindowsArg(arg: string): string {
   return `${result}${'\\'.repeat(backslashes * 2)}"`;
 }
 
+/** `Arguments` of the Windows task: the quoted path of `dist/cli.js`, then `capture --scheduled --repo …`. */
+export function windowsTaskArguments(input: ScheduleTemplateInput): string {
+  return captureArgs(input)
+    .map((arg) => (arg.path ? quoteWindowsArg(arg.text) : arg.text))
+    .join(' ');
+}
+
 /** Single quotes for `/bin/sh`; cron itself turns an unescaped `%` into a line break. */
 export function quotePosixArg(arg: string): string {
   return `'${arg.replace(/'/g, `'\\''`)}'`.replace(/%/g, '\\%');
@@ -112,15 +120,6 @@ function commentLine(text: string): string {
   return result.endsWith('-') ? `${result} ` : result;
 }
 
-function minutesOf(time: string): number {
-  const [hours, minutes] = time.split(':').map(Number);
-  return hours! * 60 + minutes!;
-}
-
-function timeOf(minutes: number): string {
-  return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
-}
-
 /** xs:duration such as `PT2H`, `PT1H30M` or `PT40M5S`. */
 export function formatDuration(totalSeconds: number): string {
   const hours = Math.floor(totalSeconds / 3600);
@@ -130,24 +129,7 @@ export function formatDuration(totalSeconds: number): string {
   return `PT${parts === '' ? '0S' : parts}`;
 }
 
-function windowMinutes(schedule: ScheduleConfig): number {
-  return minutesOf(schedule.windowEnd) - minutesOf(schedule.windowStart);
-}
-
-/** Windows repeats only if at least one repetition fits into the window. */
-function repeats(schedule: ScheduleConfig): boolean {
-  return schedule.intervalMinutes <= windowMinutes(schedule);
-}
-
-/** Start times of a workday: the window start, every interval up to and including the window end, and the extra runs. */
-export function runTimesOfDay(schedule: ScheduleConfig): string[] {
-  const start = minutesOf(schedule.windowStart);
-  const end = minutesOf(schedule.windowEnd);
-  const times = new Set<number>();
-  for (let minute = start; minute <= end; minute += schedule.intervalMinutes) times.add(minute);
-  for (const extra of schedule.extraRunTimes) times.add(minutesOf(extra));
-  return [...times].sort((a, b) => a - b).map(timeOf);
-}
+export { runTimesOfDay };
 
 function requireWorkdays(schedule: ScheduleConfig): Weekday[] {
   const days = sortedWorkdays(schedule);
@@ -161,32 +143,79 @@ function requireWorkdays(schedule: ScheduleConfig): Weekday[] {
   return days;
 }
 
-/** Warnings about the configuration; the template is produced anyway (package 08 §6). */
-export function scheduleWarnings(input: ScheduleTemplateInput, target: ScheduleTarget): string[] {
+export interface ScheduleFinding {
+  code: 'schedule_no_workdays' | 'schedule_extra_outside_window' | 'schedule_interval_exceeds_window' | 'claude_timeout_exceeds_reserve';
+  severity: 'error' | 'warning';
+  /** Prefix of the line on stderr. */
+  label: 'Warnung' | 'Hinweis' | 'Fehler';
+  /** JSON pointer of the field in `config.json`. */
+  path: string;
+  message: string;
+}
+
+/**
+ * Content rules of the schedule (package 08 §6, package 09 §4.2): shared by `ipa schedule` and `ipa config`.
+ * Without a valid window order the other rules have nothing to compare, `config` reports that rule itself.
+ */
+export function scheduleFindings(input: Pick<ScheduleTemplateInput, 'schedule' | 'maxRunSeconds' | 'claudeTimeoutSeconds'>): ScheduleFinding[] {
   const { schedule } = input;
-  const warnings: string[] = [];
-  for (const extra of schedule.extraRunTimes) {
+  const findings: ScheduleFinding[] = [];
+  if (schedule.workdays.length === 0) {
+    findings.push({
+      code: 'schedule_no_workdays',
+      severity: 'error',
+      label: 'Fehler',
+      path: '/schedule/workdays',
+      message: 'schedule.workdays ist leer: Ohne Arbeitstag gibt es keine geplanten Läufe.',
+    });
+  }
+  if (schedule.windowStart >= schedule.windowEnd) return findings;
+  schedule.extraRunTimes.forEach((extra, index) => {
     if (extra < schedule.windowStart || extra > schedule.windowEnd) {
-      warnings.push(
-        `Warnung: Der Zusatzlauf ${extra} (schedule.extraRunTimes) liegt ausserhalb des Zeitfensters ` +
+      findings.push({
+        code: 'schedule_extra_outside_window',
+        severity: 'warning',
+        label: 'Warnung',
+        path: `/schedule/extraRunTimes/${index}`,
+        message:
+          `Der Zusatzlauf ${extra} (schedule.extraRunTimes) liegt ausserhalb des Zeitfensters ` +
           `${schedule.windowStart}–${schedule.windowEnd}; ipa capture --scheduled würde diesen Lauf überspringen.`,
-      );
+      });
     }
-  }
+  });
   if (!repeats(schedule)) {
-    warnings.push(
-      `Hinweis: schedule.intervalMinutes (${schedule.intervalMinutes}) ist länger als das Zeitfenster ` +
+    findings.push({
+      code: 'schedule_interval_exceeds_window',
+      severity: 'warning',
+      label: 'Hinweis',
+      path: '/schedule/intervalMinutes',
+      message:
+        `schedule.intervalMinutes (${schedule.intervalMinutes}) ist länger als das Zeitfenster ` +
         `(${windowMinutes(schedule)} Minuten); pro Arbeitstag startet nur der Lauf um ${schedule.windowStart}, dazu die Zusatzläufe.`,
-    );
+    });
   }
-  if (target === 'windows' && input.claudeTimeoutSeconds > EXECUTION_RESERVE_SECONDS) {
-    warnings.push(
-      `Warnung: claude.timeoutSeconds (${input.claudeTimeoutSeconds} s) ist länger als die Reserve von 10 Minuten im ` +
+  if (input.claudeTimeoutSeconds > EXECUTION_RESERVE_SECONDS) {
+    findings.push({
+      code: 'claude_timeout_exceeds_reserve',
+      severity: 'warning',
+      label: 'Warnung',
+      path: '/claude/timeoutSeconds',
+      message:
+        `claude.timeoutSeconds (${input.claudeTimeoutSeconds} s) ist länger als die Reserve von 10 Minuten im ` +
         `ExecutionTimeLimit (${formatDuration(input.maxRunSeconds + EXECUTION_RESERVE_SECONDS)}). Die Aufgabenplanung könnte ` +
         'einen Claude-Aufruf abbrechen, der kurz vor der Laufzeitgrenze beginnt; der Snapshot bleibt dann offen und folgt im nächsten Lauf.',
-    );
+    });
   }
-  return warnings;
+  return findings;
+}
+
+/** Warnings about the configuration; the template is produced anyway (package 08 §6). */
+export function scheduleWarnings(input: ScheduleTemplateInput, target: ScheduleTarget): string[] {
+  return scheduleFindings(input)
+    .filter((finding) => finding.severity === 'warning')
+    // The execution time limit exists only in the Windows template.
+    .filter((finding) => target === 'windows' || finding.code !== 'claude_timeout_exceeds_reserve')
+    .map((finding) => `${finding.label}: ${finding.message}`);
 }
 
 const WINDOWS_DAYS: Record<Weekday, string> = {
@@ -235,6 +264,8 @@ function calendarTrigger(input: ScheduleTemplateInput, time: string, days: reado
 export interface WindowsTaskOptions {
   /** `UTF-16` for a file written as UTF-16 with BOM; `null` leaves the encoding to the reader (stdout). */
   encoding: 'UTF-16' | null;
+  /** `false` creates the task paused, so that an update never starts what the user paused (package 09 §4.3). */
+  enabled?: boolean;
 }
 
 /**
@@ -247,9 +278,7 @@ export function renderWindowsTask(input: ScheduleTemplateInput, options: Windows
   const days = requireWorkdays(schedule);
   const name = taskName(input.repositoryId);
   const window = `${describeWindow(schedule)} in ${input.timezone}`;
-  const args = captureArgs(input)
-    .map((arg) => (arg.path ? quoteWindowsArg(arg.text) : arg.text))
-    .join(' ');
+  const args = windowsTaskArguments(input);
   // Paths stay out of the comment: it must not contain `--`, which paths may (see commentLine).
   const comment = [
     `IPA Assistant: Vorlage für die Windows-Aufgabenplanung, Aufgabe ${name}`,
@@ -292,7 +321,7 @@ export function renderWindowsTask(input: ScheduleTemplateInput, options: Windows
     '    <StartWhenAvailable>true</StartWhenAvailable>',
     '    <RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>',
     '    <AllowStartOnDemand>true</AllowStartOnDemand>',
-    '    <Enabled>true</Enabled>',
+    `    <Enabled>${options.enabled === false ? 'false' : 'true'}</Enabled>`,
     '    <Hidden>false</Hidden>',
     '    <RunOnlyIfIdle>false</RunOnlyIfIdle>',
     '    <WakeToRun>false</WakeToRun>',

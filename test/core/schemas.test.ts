@@ -59,6 +59,15 @@ describe('Schemaregister (spec.md §8.4)', () => {
       'journal-input',
       'journal-output',
       'journal-record',
+      'cli-init',
+      'cli-capture',
+      'cli-journal',
+      'cli-note',
+      'cli-skip',
+      'cli-baseline',
+      'cli-doctor',
+      'cli-config',
+      'cli-schedule',
     ]);
     for (const id of SCHEMA_IDS) {
       expect(() => validate(id, {})).not.toThrow();

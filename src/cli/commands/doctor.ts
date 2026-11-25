@@ -10,11 +10,13 @@ import { usesSafeMode, usesSettingSources } from '../../claude/doctor-record.js'
 import type { BillingCheck, DoctorRecord, DoctorReport, ProbedFlag } from '../../claude/types.js';
 import { resolveContext, type WorkspaceContext } from '../../core/context.js';
 import { EXIT } from '../../core/errors.js';
+import { type ActionReport, type Emitter, runAction } from '../action.js';
 import { formatFields } from '../format.js';
 import type { CliIo, CliState, GlobalOptions } from '../io.js';
 
 interface DoctorCommandOptions extends GlobalOptions {
   live?: boolean;
+  json?: boolean;
 }
 
 const OPTIONAL_FLAGS: ProbedFlag[] = ['--safe-mode', '--setting-sources', '--model', '--verbose'];
@@ -114,22 +116,83 @@ export function describeProblems(report: DoctorReport, ctx: WorkspaceContext): s
   return problems.length > 0 ? problems.join('; ') : 'unbekannter Grund';
 }
 
+/** Result of the Claude check after `init` (package 09 §4.1). */
+export interface ClaudeCheckResult {
+  checked: boolean;
+  ok: boolean | null;
+  cliVersion: string | null;
+  problems: string | null;
+}
+
+export interface ClaudeCheckAfterInit {
+  result: ClaudeCheckResult;
+  /** Line for stdout if the check passed. */
+  confirmation: string | null;
+  /** Warning for stderr if it did not (a failure is only a warning). */
+  warning: string | null;
+}
+
 /** `ipa init` runs the check without a model call; a failure is only a warning (spec.md §6.3, AK-05-07). */
-export async function checkClaudeAfterInit(ctx: WorkspaceContext, io: CliIo): Promise<void> {
+export async function probeClaudeAfterInit(ctx: WorkspaceContext, env: NodeJS.ProcessEnv): Promise<ClaudeCheckAfterInit> {
   try {
-    const report = await probeClaude(ctx, { live: false, env: io.env });
+    const report = await probeClaude(ctx, { live: false, env });
     if (report.record.ok) {
-      io.stdout(
-        `Claude-Prüfung: bereit (Claude Code ${report.record.claude.version ?? 'unbekannter Version'}, ohne Modellaufruf). ` +
+      return {
+        result: { checked: true, ok: true, cliVersion: report.record.claude.version, problems: null },
+        confirmation:
+          `Claude-Prüfung: bereit (Claude Code ${report.record.claude.version ?? 'unbekannter Version'}, ohne Modellaufruf). ` +
           'Einen echten Aufruf prüft ipa doctor --live.\n',
-      );
-    } else {
-      io.stderr(`${CLAUDE_CHECK_WARNING} ${describeProblems(report, ctx)}. Der Arbeitsbereich ist vollständig angelegt; Details mit ipa doctor.\n`);
+        warning: null,
+      };
     }
+    const problems = describeProblems(report, ctx);
+    return {
+      result: { checked: true, ok: false, cliVersion: report.record.claude.version, problems },
+      confirmation: null,
+      warning: `${CLAUDE_CHECK_WARNING} ${problems}. Der Arbeitsbereich ist vollständig angelegt; Details mit ipa doctor.`,
+    };
   } catch (error) {
     const message = error instanceof Error ? (error.message.split(/\r?\n/)[0] ?? '') : String(error);
-    io.stderr(`${CLAUDE_CHECK_WARNING} ${message} Der Arbeitsbereich ist vollständig angelegt; Details mit ipa doctor.\n`);
+    return {
+      result: { checked: false, ok: null, cliVersion: null, problems: message },
+      confirmation: null,
+      warning: `${CLAUDE_CHECK_WARNING} ${message} Der Arbeitsbereich ist vollständig angelegt; Details mit ipa doctor.`,
+    };
   }
+}
+
+export async function checkClaudeAfterInit(ctx: WorkspaceContext, io: CliIo): Promise<void> {
+  const check = await probeClaudeAfterInit(ctx, io.env);
+  if (check.confirmation !== null) io.stdout(check.confirmation);
+  if (check.warning !== null) io.stderr(`${check.warning}\n`);
+}
+
+async function doctorReport(ctx: WorkspaceContext, out: Emitter, env: NodeJS.ProcessEnv, live: boolean): Promise<ActionReport> {
+  const report = await probeClaude(ctx, { live, env, onNotice: (message) => out.warn(message) });
+  const { record } = report;
+  return {
+    exitCode: record.ok ? EXIT.ok : EXIT.doctorFailed,
+    errors: record.ok
+      ? []
+      : [{ code: 'doctor_failed', message: 'Die Voraussetzungen für Claude sind nicht erfüllt. Einzelheiten stehen in den Befunden.' }],
+    result: {
+      live,
+      checkedAt: record.checkedAt,
+      ok: record.ok,
+      git: record.git,
+      claude: record.claude,
+      liveCheck: record.live,
+      liveCarriedOver: report.liveCarriedOver,
+      missingFlags: report.missingFlags,
+      billing: report.billing,
+      findings: report.findings,
+    },
+    print: () => {
+      out.stdout(formatDoctorReport(report, ctx, live));
+      for (const finding of report.findings) out.stderr(`Befund: ${finding}\n`);
+      if (!record.ok) out.stderr('Fehler: Die Voraussetzungen für Claude sind nicht erfüllt. Einzelheiten stehen in den Befunden.\n');
+    },
+  };
 }
 
 export function registerDoctorCommand(program: Command, io: CliIo, state: CliState): void {
@@ -138,14 +201,13 @@ export function registerDoctorCommand(program: Command, io: CliIo, state: CliSta
     .usage('[optionen]')
     .description('Git und Claude Code prüfen (Version, Anmeldung, Optionen, Kostenschutz), ohne Modellaufruf')
     .option('--live', 'zusätzlich zwei kleine echte Modellaufrufe: Werkzeuge, MCP-Server, strukturierte Antwort (verbraucht Kontingent)')
+    .option('--json', 'Ergebnis als JSON-Objekt auf stdout')
     .action(async (_options: unknown, command: Command) => {
       const options = command.optsWithGlobals<DoctorCommandOptions>();
-      const ctx = await resolveContext({ repo: options.repo, dataDir: options.dataDir, requireInit: true });
-      const live = options.live === true;
-      const report = await probeClaude(ctx, { live, env: io.env, onNotice: (message) => io.stderr(`${message}\n`) });
-      io.stdout(formatDoctorReport(report, ctx, live));
-      for (const finding of report.findings) io.stderr(`Befund: ${finding}\n`);
-      if (!report.record.ok) io.stderr('Fehler: Die Voraussetzungen für Claude sind nicht erfüllt. Einzelheiten stehen in den Befunden.\n');
-      state.exitCode = report.record.ok ? EXIT.ok : EXIT.doctorFailed;
+      await runAction({ command: 'doctor', json: options.json === true, io, state }, async (out) => {
+        const ctx = await resolveContext({ repo: options.repo, dataDir: options.dataDir, requireInit: true });
+        out.runId = ctx.runId;
+        return doctorReport(ctx, out, io.env, options.live === true);
+      });
     });
 }

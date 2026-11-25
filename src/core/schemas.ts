@@ -25,6 +25,15 @@ export const SCHEMA_IDS = [
   'journal-input',
   'journal-output',
   'journal-record',
+  'cli-init',
+  'cli-capture',
+  'cli-journal',
+  'cli-note',
+  'cli-skip',
+  'cli-baseline',
+  'cli-doctor',
+  'cli-config',
+  'cli-schedule',
 ] as const;
 export type SchemaId = (typeof SCHEMA_IDS)[number];
 

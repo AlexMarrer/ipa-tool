@@ -245,6 +245,8 @@ npm run test:live -- test/live/acceptance.live.ts
 5. Überschneidung: Während ein Lauf der Aufgabe noch arbeitet (etwa mit offener Analyse), die Aufgabe erneut auslösen: Die Aufgabenplanung startet keine zweite Instanz (`IgnoreNew`, Verlauf der Aufgabe). Zusätzlich während eines von Hand gestarteten `ipa capture` die Aufgabe auslösen: Ihr Lauf endet mit Exit-Code 3 und `lock_held` in `runs.jsonl`.
 6. Aufgabe entfernen: `schtasks /Delete /TN ipa-assistant-<repositoryId> /F`
 
+Ab Paket 09 richtet `ipa schedule install` die Aufgabe selbst ein, und `ipa schedule status|pause|resume|run|remove` verwalten sie. Dieselbe Prüfung lässt sich damit durchführen und um Zustand, nächsten und letzten Lauf und „veraltet“ erweitern; die Anleitung (AK-09-17) steht in `docs/implementation/packages/09-app-schnittstelle/checklist.md`. Beide manuellen Prüfungen lassen sich in einem Durchgang erledigen; die Ergebnisse gehören in die Tabelle unten.
+
 | Schritt | Datum | Ergebnis |
 | --- | --- | --- |
 | Import | offen | |
@@ -268,7 +270,7 @@ Aus dem Live-Lauf mindestens drei Aussagen aus Work-Logs und drei aus Journalen,
 ## Offene Punkte und Befunde
 
 - AK-08-08: Live-Durchführung aller Fälle und Stichprobe offen (vom Benutzer).
-- AK-08-07: Import, Auslösung und Überschneidungsschutz der Aufgabe offen (vom Benutzer).
+- AK-08-07: Import, Auslösung und Überschneidungsschutz der Aufgabe offen (vom Benutzer). Dasselbe gilt für die Zeitplan-Verwaltung aus Paket 09 (AK-09-17).
 - Offene Punkte früherer Pakete: Paket 04 manuelle Prüfung der interaktiven Eingabe in der Windows-Konsole; Paket 05 „`npm test` nach der Erweiterung grün (vom Benutzer auszuführen)“, in dieser Sitzung auf dem Entwicklungsrechner grün gelaufen; Paket 07 Live-Journal (der Live-Lauf dieser Abnahme erzeugt drei Journale).
 - Offene Entscheidungen O-02 bis O-08 (spec.md §3.4); O-03 vor dem Einsatz in der echten IPA klären.
 - Nicht beobachtet: ob die Aufgabenplanung am Ende der Wiederholungsdauer (`windowEnd`) noch einen Lauf startet; `--scheduled` liesse ihn zu.

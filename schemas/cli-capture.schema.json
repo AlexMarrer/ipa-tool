@@ -1,0 +1,572 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "IPA Assistant – ipa capture --json (Paket 09 §4.1)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "command",
+    "runId",
+    "ok",
+    "exitCode",
+    "outcome",
+    "errors",
+    "warnings",
+    "result"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "command": {
+      "type": "string",
+      "const": "capture"
+    },
+    "runId": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^R[0-9]{8}T[0-9]{6}Z-[0-9a-f]{4}$"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "exitCode": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 7
+    },
+    "outcome": {
+      "type": "string",
+      "enum": [
+        "ok",
+        "unchanged",
+        "halted",
+        "unstable",
+        "lock_held",
+        "analysis_failed",
+        "outside_window",
+        "usage_error",
+        "error"
+      ]
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/runError"
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "result": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/definitions/result"
+        }
+      ]
+    }
+  },
+  "definitions": {
+    "runError": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "message"
+      ],
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scheduled",
+        "outsideWindow",
+        "capture",
+        "snapshot",
+        "halt",
+        "recovered",
+        "retry",
+        "analysis",
+        "analyses"
+      ],
+      "properties": {
+        "scheduled": {
+          "type": "boolean"
+        },
+        "outsideWindow": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "weekday",
+                "time",
+                "reason"
+              ],
+              "properties": {
+                "weekday": {
+                  "type": "string",
+                  "enum": [
+                    "mon",
+                    "tue",
+                    "wed",
+                    "thu",
+                    "fri",
+                    "sat",
+                    "sun"
+                  ]
+                },
+                "time": {
+                  "type": "string",
+                  "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+                },
+                "reason": {
+                  "type": "string",
+                  "enum": [
+                    "weekday",
+                    "time"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "capture": {
+          "type": "string",
+          "enum": [
+            "created",
+            "unchanged",
+            "halted",
+            "unstable",
+            "skipped"
+          ]
+        },
+        "snapshot": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "kind",
+                "manifestPath",
+                "commits",
+                "fileStates",
+                "evidence",
+                "stateDeltas",
+                "statusChanges",
+                "testReports",
+                "gaps",
+                "excluded",
+                "withheld",
+                "omitted",
+                "analysisRequired"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "pattern": "^S[0-9]{6}$"
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "baseline",
+                    "work"
+                  ]
+                },
+                "manifestPath": {
+                  "type": "string"
+                },
+                "commits": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "fileStates": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "evidence": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "stateDeltas": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "statusChanges": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "testReports": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "gaps": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "excluded": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "withheld": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "omitted": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "analysisRequired": {
+                  "type": "boolean"
+                }
+              }
+            }
+          ]
+        },
+        "halt": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "reason",
+                "detectedAt",
+                "expected",
+                "observed"
+              ],
+              "properties": {
+                "reason": {
+                  "type": "string",
+                  "enum": [
+                    "branch_changed",
+                    "history_rewritten",
+                    "head_missing"
+                  ]
+                },
+                "detectedAt": {
+                  "type": "string"
+                },
+                "expected": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "branch",
+                    "head"
+                  ],
+                  "properties": {
+                    "branch": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "head": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  }
+                },
+                "observed": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "branch",
+                    "head"
+                  ],
+                  "properties": {
+                    "branch": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "head": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "recovered": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^S[0-9]{6}$"
+          }
+        },
+        "retry": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "snapshotId",
+                "afterAttempt"
+              ],
+              "properties": {
+                "snapshotId": {
+                  "type": "string",
+                  "pattern": "^S[0-9]{6}$"
+                },
+                "afterAttempt": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            }
+          ]
+        },
+        "analysis": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "claudeCalls",
+                "completed",
+                "failed",
+                "caughtUp",
+                "stoppedBy",
+                "cursor",
+                "open"
+              ],
+              "properties": {
+                "claudeCalls": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "completed": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "snapshotId",
+                      "mode",
+                      "workLogPath"
+                    ],
+                    "properties": {
+                      "snapshotId": {
+                        "type": "string",
+                        "pattern": "^S[0-9]{6}$"
+                      },
+                      "mode": {
+                        "type": "string",
+                        "enum": [
+                          "ai",
+                          "deterministic"
+                        ]
+                      },
+                      "workLogPath": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                },
+                "failed": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "snapshotId",
+                      "code",
+                      "message"
+                    ],
+                    "properties": {
+                      "snapshotId": {
+                        "type": "string",
+                        "pattern": "^S[0-9]{6}$"
+                      },
+                      "code": {
+                        "type": "string"
+                      },
+                      "message": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                },
+                "caughtUp": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^S[0-9]{6}$"
+                  }
+                },
+                "stoppedBy": {
+                  "anyOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "reason",
+                        "snapshotId"
+                      ],
+                      "properties": {
+                        "reason": {
+                          "type": "string",
+                          "enum": [
+                            "open",
+                            "run_limit",
+                            "deadline"
+                          ]
+                        },
+                        "snapshotId": {
+                          "type": "string",
+                          "pattern": "^S[0-9]{6}$"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "cursor": {
+                  "anyOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "type": "string",
+                      "pattern": "^S[0-9]{6}$"
+                    }
+                  ]
+                },
+                "open": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "snapshotId",
+                      "status"
+                    ],
+                    "properties": {
+                      "snapshotId": {
+                        "type": "string",
+                        "pattern": "^S[0-9]{6}$"
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "complete",
+                          "skipped",
+                          "not_required",
+                          "blocked",
+                          "exhausted",
+                          "failed",
+                          "pending"
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "analyses": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "pending",
+                "failed",
+                "blocked",
+                "exhausted",
+                "complete",
+                "skipped",
+                "notRequired",
+                "openIds"
+              ],
+              "properties": {
+                "pending": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "failed": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "blocked": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "exhausted": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "complete": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "skipped": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "notRequired": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "openIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^S[0-9]{6}$"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}
