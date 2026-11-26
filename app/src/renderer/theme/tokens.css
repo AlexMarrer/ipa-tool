@@ -1,0 +1,87 @@
+/*
+ * Design tokens (spec §10.1). Components use these variables only, never fixed colours.
+ * Light is the default; dark applies with the Windows setting or with an explicit data-theme attribute.
+ */
+:root,
+[data-theme='light'] {
+  --bg: #ffffff;
+  --side: #f5f5f7;
+  --surface: #f7f7f9;
+  --chip: #ececf0;
+  --fg: #1c1d21;
+  --mut: #666a75;
+  --line: #e6e6ea;
+  --acc: #5e6ad2;
+  --on-acc: #ffffff;
+  --acctx: #4f58c4;
+  --accsoft: #eceefc;
+  --warn: #946000;
+  --warnbg: #fbf1d6;
+  --err: #cf222e;
+  --errbg: #fde8e8;
+  --scrim: rgba(28, 29, 33, 0.32);
+  --dlg-bg: #ffffff;
+  --dlg-surface: #f6f6f8;
+  --dlg-chip: #ececf0;
+  --dlg-hair: #e0e0e6;
+  --page: #eeeef2;
+  --shadow-dialog: 0 24px 60px rgba(0, 0, 0, 0.22);
+  --shadow-popover: 0 14px 40px rgba(0, 0, 0, 0.2);
+  --shadow-run: 0 8px 28px rgba(20, 20, 40, 0.1);
+  color-scheme: light;
+}
+
+[data-theme='dark'] {
+  --bg: #121316;
+  --side: #17181c;
+  --surface: #1b1c21;
+  --chip: #25272e;
+  --fg: #ececf1;
+  --mut: #9ea3ae;
+  --line: #2a2c33;
+  --acc: #5e6ad2;
+  --on-acc: #ffffff;
+  --acctx: #9aa3ff;
+  --accsoft: #262b4d;
+  --warn: #e3b341;
+  --warnbg: #2e2510;
+  --err: #ff7b72;
+  --errbg: #3a1719;
+  --scrim: rgba(0, 0, 0, 0.55);
+  --dlg-bg: #1b1c21;
+  --dlg-surface: #23252b;
+  --dlg-chip: #2a2d35;
+  --dlg-hair: #33353d;
+  --page: #0f1013;
+  --shadow-dialog: 0 24px 60px rgba(0, 0, 0, 0.22);
+  --shadow-popover: 0 14px 40px rgba(0, 0, 0, 0.2);
+  --shadow-run: 0 8px 28px rgba(0, 0, 0, 0.5);
+  color-scheme: dark;
+}
+
+/* The renderer sets data-theme from the Windows setting; this keeps the first paint correct before it runs. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --bg: #121316;
+    --side: #17181c;
+    --surface: #1b1c21;
+    --chip: #25272e;
+    --fg: #ececf1;
+    --mut: #9ea3ae;
+    --line: #2a2c33;
+    --acctx: #9aa3ff;
+    --accsoft: #262b4d;
+    --warn: #e3b341;
+    --warnbg: #2e2510;
+    --err: #ff7b72;
+    --errbg: #3a1719;
+    --scrim: rgba(0, 0, 0, 0.55);
+    --dlg-bg: #1b1c21;
+    --dlg-surface: #23252b;
+    --dlg-chip: #2a2d35;
+    --dlg-hair: #33353d;
+    --page: #0f1013;
+    --shadow-run: 0 8px 28px rgba(0, 0, 0, 0.5);
+    color-scheme: dark;
+  }
+}

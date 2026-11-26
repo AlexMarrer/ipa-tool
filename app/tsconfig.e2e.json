@@ -1,0 +1,8 @@
+{
+  "extends": "./tsconfig.node.json",
+  "compilerOptions": {
+    // page.evaluate callbacks run in the page and use DOM globals; main-process code is checked without DOM.
+    "lib": ["ES2023", "DOM"]
+  },
+  "include": ["test/e2e/**/*.ts", "test/helpers/**/*.ts", "src/shared/**/*.ts"]
+}

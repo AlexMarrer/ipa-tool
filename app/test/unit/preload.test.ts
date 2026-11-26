@@ -1,0 +1,57 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { INVOKE_CHANNELS, IPC_CHANNELS } from '../../src/shared/ipc';
+
+const exposed: Record<string, unknown> = {};
+const invoke = vi.fn(async () => ({ ok: true, value: null }));
+const on = vi.fn();
+const removeListener = vi.fn();
+
+vi.mock('electron', () => ({
+  contextBridge: { exposeInMainWorld: (name: string, api: unknown) => void (exposed[name] = api) },
+  ipcRenderer: { invoke, on, removeListener },
+}));
+
+describe('Preload: window.ipa (AK-10-04)', () => {
+  beforeEach(async () => {
+    vi.resetModules();
+    invoke.mockClear();
+    on.mockClear();
+    await import('../../src/preload/index');
+  });
+
+  const api = () => exposed['ipa'] as Record<string, Record<string, (...args: unknown[]) => unknown>>;
+
+  it('stellt genau window.ipa mit den Gruppen aus §3.9 bereit und sonst nichts', () => {
+    expect(Object.keys(exposed)).toEqual(['ipa']);
+    expect(Object.keys(api()).sort()).toEqual(['app', 'projects', 'run', 'system']);
+    expect(Object.keys(api()['projects'] ?? {}).sort()).toEqual(['list', 'onChanged', 'status']);
+    expect(Object.keys(api()['run'] ?? {}).sort()).toEqual(['cancel', 'onEvent']);
+    expect(Object.keys(api()['system'] ?? {}).sort()).toEqual(['dataRoot', 'versions']);
+    expect(Object.keys(api()['app'] ?? {}).sort()).toEqual(['getState', 'setState']);
+    expect(JSON.stringify(Object.keys(exposed))).not.toMatch(/ipcRenderer|process|require/);
+  });
+
+  it('ruft jede Methode nur über einen freigegebenen Kanal auf', async () => {
+    const a = api();
+    await a['projects']?.['list']?.();
+    await a['projects']?.['status']?.('p-123456');
+    await a['run']?.['cancel']?.('k1');
+    await a['system']?.['versions']?.();
+    await a['system']?.['dataRoot']?.();
+    await a['app']?.['getState']?.();
+    await a['app']?.['setState']?.({ selection: { day: '2026-11-26' } });
+    const channels = invoke.mock.calls.map((call) => (call as unknown as [string])[0]);
+    expect(new Set(channels)).toEqual(new Set(INVOKE_CHANNELS));
+  });
+
+  it('gibt Ereignisse ohne das rohe Event weiter und lässt sich abmelden', () => {
+    const listener = vi.fn();
+    const stop = (api()['projects']?.['onChanged'] as (cb: (payload: unknown) => void) => () => void)(listener);
+    const [channel, wrapped] = on.mock.calls[0] as unknown as [string, (event: unknown, payload: unknown) => void];
+    expect(channel).toBe(IPC_CHANNELS.projectsChanged);
+    wrapped({ sender: 'geheim' }, { repositoryId: 'a' });
+    expect(listener).toHaveBeenCalledWith({ repositoryId: 'a' });
+    stop();
+    expect(removeListener).toHaveBeenCalledWith(channel, wrapped);
+  });
+});
