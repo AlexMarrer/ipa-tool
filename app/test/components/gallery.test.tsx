@@ -14,7 +14,7 @@ describe('Zustandsgalerie (AD-15)', () => {
     for (const theme of GALLERY_THEMES) {
       const panel = screen.getByTestId(`gallery-${theme}`);
       expect(panel).toHaveAttribute('data-theme', theme);
-      for (const section of ['Buttons', 'Split-Button', 'Chips', 'Status-Chips (Analyse)', 'Status-Chips (Lauf)', 'Referenz-Chips', 'Etiketten', 'Chip-Liste', 'Statuspunkte', 'Banner', 'Dialog und Bestätigung', 'Tooltip', 'Tabs', 'Tabelle', 'Felder', 'Laden und leer', 'Icons']) {
+      for (const section of ['Buttons', 'Split-Button', 'Chips', 'Status-Chips (Analyse)', 'Status-Chips (Lauf)', 'Referenz-Chips', 'Etiketten', 'Chip-Liste', 'Statuspunkte', 'Banner', 'Dialog und Bestätigung', 'Tooltip', 'Tabs', 'Tabelle', 'Felder', 'Laden und leer', 'Icons', 'Halt-Banner', 'Claude-Warnung', 'Tageszusammenfassung', 'Hinweise und Lücken', 'Zeitstrahl', 'Kalender', 'Markdown: Work-Log mit KI', 'Markdown: Journal ohne KI']) {
         expect(within(panel).getByRole('region', { name: section }), `${theme}: ${section}`).toBeInTheDocument();
       }
     }

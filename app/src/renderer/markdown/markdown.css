@@ -1,0 +1,26 @@
+/* Markdown view (spec §11.2): reading width about 80 characters, tables may be wider and scroll. */
+.md { font-size: 14.5px; line-height: 1.6; }
+.md > :not(.md-table) { max-width: 660px; }
+.md h1 { font-size: 20px; margin: 0 0 12px; }
+.md h2 { font-size: 15px; margin: 24px 0 8px; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.md h3 { font-size: 14px; margin: 16px 0 6px; }
+.md p { margin: 0 0 10px; }
+.md ul, .md ol { margin: 0 0 10px; padding-left: 22px; }
+.md li { margin: 2px 0; }
+.md code { background: var(--chip); border-radius: 6px; padding: 1px 5px; }
+.md pre { background: var(--chip); border-radius: var(--radius-card); padding: 10px 12px; overflow-x: auto; }
+.md pre code { background: transparent; padding: 0; }
+.md hr { border: 0; border-top: 1px solid var(--line); margin: 16px 0; }
+.md blockquote { margin: 0 0 12px; padding: 8px 12px; border-left: 3px solid var(--line); background: var(--surface); border-radius: 0 var(--radius-card) var(--radius-card) 0; color: var(--fg); }
+.md a { color: var(--acctx); }
+.md-label { font-size: 12px; font-weight: 400; color: var(--mut); }
+.md-img { color: var(--mut); font-style: italic; }
+.md-table { overflow-x: auto; margin: 0 0 12px; }
+.md-table table { border-collapse: collapse; min-width: 820px; width: 100%; }
+.md-table th { text-align: left; color: var(--mut); font-weight: 500; padding: 6px 10px; border-bottom: 1px solid var(--line); }
+.md-table td { padding: 6px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.md-row--hit td { background: var(--accsoft); }
+.md-hash { border: 0; background: var(--chip); border-radius: var(--radius-pill); padding: 1px 8px; font-family: var(--font-mono); font-size: 12.5px; cursor: pointer; color: var(--fg); }
+.md-hash:hover { background: var(--accsoft); color: var(--acctx); }
+.md-ref--missing { opacity: 0.55; }
+.md-ref--missing .chip { cursor: not-allowed; }

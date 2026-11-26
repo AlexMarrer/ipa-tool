@@ -50,6 +50,12 @@ describe('Dienste des Main-Prozesses', () => {
     for (const entry of log) {
       expect(entry).toMatchObject({ command: 'status', trigger: 'auto', ai: false });
     }
+    // The overview adds `schedule status`, which is allowed as well and never calls a model.
+    await services.loadOverview(project.repositoryId);
+    const commands = new Set(services.queue.log().map((entry) => entry.command));
+    expect([...commands].sort()).toEqual(['schedule status', 'status']);
+    for (const entry of services.queue.log()) expect(entry).toMatchObject({ trigger: 'auto', ai: false });
+    expect((await readFakeCalls(env)).filter((call) => call.kind === 'model-call')).toEqual([]);
     expect((await readFakeCalls(env)).filter((call) => call.kind === 'model-call')).toEqual([]);
   });
 

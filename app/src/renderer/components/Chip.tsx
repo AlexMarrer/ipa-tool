@@ -71,7 +71,7 @@ export function RefChip({ id, kind = 'snapshot', onOpen }: RefChipProps) {
 
 /** "KI-Entwurf", "ohne KI", "vom Tool", "Notiz" (spec §1.2). */
 export function ContentLabel({ kind }: { kind: ContentLabelKind }) {
-  return <span className={kind === 'ai' ? 'label label--ai' : 'label'}>{CONTENT_LABELS[kind]}</span>;
+  return <span className={kind === 'ai' || kind === 'aiWorkLog' ? 'label label--ai' : 'label'}>{CONTENT_LABELS[kind]}</span>;
 }
 
 export function ChipList({ label, items, max = 6 }: { label: string; items: string[]; max?: number }) {

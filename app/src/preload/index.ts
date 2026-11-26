@@ -28,6 +28,29 @@ const api: IpaApi = {
     getState: () => ipcRenderer.invoke(IPC_CHANNELS.appGetState),
     setState: (patch) => ipcRenderer.invoke(IPC_CHANNELS.appSetState, patch),
   },
+  day: {
+    load: (repositoryId, day) => ipcRenderer.invoke(IPC_CHANNELS.dayLoad, { repositoryId, day }),
+    index: (repositoryId) => ipcRenderer.invoke(IPC_CHANNELS.dayIndex, repositoryId),
+  },
+  snapshot: {
+    workLog: (repositoryId, snapshotId) => ipcRenderer.invoke(IPC_CHANNELS.snapshotWorkLog, { repositoryId, snapshotId }),
+  },
+  journal: {
+    read: (repositoryId, file) => ipcRenderer.invoke(IPC_CHANNELS.journalRead, { repositoryId, file }),
+  },
+  notes: {
+    references: (repositoryId) => ipcRenderer.invoke(IPC_CHANNELS.notesReferences, repositoryId),
+  },
+  overview: {
+    load: (repositoryId) => ipcRenderer.invoke(IPC_CHANNELS.overviewLoad, repositoryId),
+  },
+  shell: {
+    open: (repositoryId, ref) => ipcRenderer.invoke(IPC_CHANNELS.shellOpen, { repositoryId, ref }),
+    reveal: (repositoryId, ref) => ipcRenderer.invoke(IPC_CHANNELS.shellReveal, { repositoryId, ref }),
+    copy: (text) => ipcRenderer.invoke(IPC_CHANNELS.shellCopy, text),
+    copyPath: (repositoryId, ref) => ipcRenderer.invoke(IPC_CHANNELS.shellCopyPath, { repositoryId, ref }),
+    openExternal: (url) => ipcRenderer.invoke(IPC_CHANNELS.shellOpenExternal, url),
+  },
 };
 
 contextBridge.exposeInMainWorld('ipa', api);

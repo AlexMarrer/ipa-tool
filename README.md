@@ -135,7 +135,7 @@ Wo liegen die Ergebnisse? `ipa status` nennt den Arbeitsbereich. Darin liegen `l
 
 Die Desktop-App zeigt dieselben Daten grafisch an und startet `ipa` im Hintergrund. Sie liegt im Ordner [`app/`](app/README.md) mit eigenem `package.json`, damit `ipa` auch ohne App installierbar bleibt.
 
-**Stand:** Die App ist in Arbeit. Heute kann sie: die Projekte aus der Projektliste mit einem Statuspunkt anzeigen, zwischen den Bereichen wechseln und sich dem Hell- oder Dunkelmodus von Windows anpassen. Die Inhalte der Bereiche (Tagesansicht, Work-Logs, Journal, Zeitplan, Konfiguration) und alle Aktionen wie „Neue Notiz“ oder „Jetzt erfassen“ folgen in den nächsten Paketen und sind noch gesperrt oder leer. Einen Installer kannst du bauen (siehe unten), er ist aber noch nicht abgenommen.
+**Stand:** Die App ist in Arbeit, aber **lesen kannst du schon**: Sie zeigt die Projekte mit Statuspunkt, die Projektübersicht (mit rotem Banner bei einem Halt), den Tag mit Kalender, Zeitstrahl, Work-Logs, Notizen und Journal-Entwürfen und passt sich dem Hell- oder Dunkelmodus von Windows an. Änderungen aus dem Terminal erscheinen ohne Neustart. Zeitplan, Konfiguration, System und alle Aktionen wie „Neue Notiz“ oder „Jetzt erfassen“ folgen in den nächsten Paketen und sind noch gesperrt oder leer. Die App ändert beim Lesen nichts. Einen Installer kannst du bauen (siehe unten), er ist aber noch nicht abgenommen.
 
 **Starten (Entwicklung):** im Ordner des Werkzeugs, nachdem du die [Installation](#installation) des CLI gemacht hast.
 
@@ -156,7 +156,7 @@ npm run app:dist
 
 Das erzeugt `app\release\IPA Assistant Setup 0.1.0.exe` (rund 140 MB). Ein Doppelklick installiert die App ohne Administratorrechte nach `%LOCALAPPDATA%\Programs\IPA Assistant` und legt einen Desktop-Link und einen Startmenü-Eintrag an. Windows kann beim Start vor dem unsignierten Installer warnen („Weitere Informationen“ › „Trotzdem ausführen“). Einzelheiten stehen in [`app/README.md`](app/README.md#als-programm-installieren-mit-desktop-link).
 
-**Was du siehst:** Links die Projekte, die du mit `ipa init` eingerichtet hast. Ein neues Projekt legst du vorerst im Terminal mit `ipa init` an, die App liest die Projektliste daraus. Die App und das Terminal benutzen dieselben Daten (dieselbe Datenwurzel). Die App ändert nie selbst etwas an Arbeitsbereich oder Repository und ruft Claude nie von selbst auf.
+**Was du siehst:** Links die Projekte, die du mit `ipa init` eingerichtet hast; ein Klick zeigt die Übersicht, im Reiter „Tag“ die Arbeit eines Tages. Ein neues Projekt legst du vorerst im Terminal mit `ipa init` an, die App liest die Projektliste daraus. Die App und das Terminal benutzen dieselben Daten (dieselbe Datenwurzel). Die App ändert nie selbst etwas an Arbeitsbereich oder Repository und ruft Claude nie von selbst auf.
 
 Aufbau, Tests, Sicherheit und Versionen der App stehen in [`app/README.md`](app/README.md).
 
@@ -184,7 +184,7 @@ Weitere Fehler erklärt die Meldung des Werkzeugs meist mit dem nächsten Schrit
 Die Umsetzung erfolgt in Paketen, geplant in [`docs/implementation/`](docs/implementation/README.md).
 
 - **Das CLI** ist mit allen Befehlen von Version 1 umgesetzt (Pakete 01 bis 09): `ipa init`, `capture`, `skip`, `baseline`, `note`, `journal`, `schedule` (inklusive Verwaltung der Windows-Aufgabe), `config`, `status` und `doctor`, dazu maschinenlesbare Ergebnisse mit `--json`. Offen sind die Live-Abnahme mit echtem Claude und die manuelle Prüfung der Aufgabenplanung, siehe [Abnahmeprotokoll](docs/abnahme/v1-abnahmeprotokoll.md).
-- **Die Desktop-App** ist bei Paket 10 von 14 (Gerüst). Fortschritt: [`docs/implementation/checklist.md`](docs/implementation/checklist.md).
+- **Die Desktop-App** ist bei Paket 11 von 14 (Lesen; Aktionen, Zeitplan, Konfiguration und Installer-Abnahme folgen). Fortschritt: [`docs/implementation/checklist.md`](docs/implementation/checklist.md).
 
 Wo was steht:
 

@@ -57,6 +57,10 @@ export const CONTENT_LABELS = {
   noAi: 'ohne KI',
   tool: 'vom Tool',
   note: 'Notiz',
+  /** A line taken over from a Claude analysis, also inside a draft made without AI (spec §11.3). */
+  aiWorkLog: 'KI-Entwurf (Work-Log)',
+  /** Header label of a baseline snapshot. */
+  baseline: 'Ausgangslage',
 } as const;
 export type ContentLabelKind = keyof typeof CONTENT_LABELS;
 

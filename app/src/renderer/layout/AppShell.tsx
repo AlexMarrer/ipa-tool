@@ -2,6 +2,9 @@ import { useCallback } from 'react';
 import type { IpaApi } from '../../shared/ipc';
 import type { Page } from '../../shared/types';
 import { Banner, Button, EmptyState, ErrorBoundary, LoadingSkeleton } from '../components';
+import { DayPage } from '../pages/day/DayPage';
+import { PageEnvProvider } from '../pages/env';
+import { OverviewPage } from '../pages/overview/OverviewPage';
 import { PlaceholderPage } from '../pages/pages';
 import type { AppStore } from '../store/appStore';
 import { useStoreState } from '../store/createStore';
@@ -83,7 +86,17 @@ export function AppShell({ app, api }: AppShellProps) {
                 {project.hint.replace(/^Fehler: /, '')}. Prüfe, ob das Repository und der Arbeitsbereich noch am registrierten Ort liegen.
               </Banner>
             ) : (
-              <PlaceholderPage page={selection.page} />
+              <PageEnvProvider
+                value={{ api, repositoryId: project.repositoryId, timezone: project.timezone, dataVersion: state.dataVersion, actions, focus: state.focus }}
+              >
+                {selection.page === 'overview' ? (
+                  <OverviewPage />
+                ) : selection.page === 'day' ? (
+                  <DayPage day={selection.day} tab={state.dayTab} />
+                ) : (
+                  <PlaceholderPage page={selection.page} />
+                )}
+              </PageEnvProvider>
             )}
           </ErrorBoundary>
         </main>

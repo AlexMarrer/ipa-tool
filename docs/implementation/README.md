@@ -2,7 +2,7 @@
 
 Dieser Ordner enthält die verbindliche Umsetzungsplanung für Version 1 des IPA Assistant. Grundlage ist `IPA_ASSISTANT_KONZEPT.md` (Konzeptversion 1.1) im Repository-Root. Das Konzept bleibt als Referenz unverändert. Wo es von der Planung abweicht, gilt die Planung.
 
-Ab Paket 10 enthält die Planung zusätzlich die Desktop-App (Electron mit TypeScript und React, im selben Repository unter `app/`). Ihre Spezifikation steht in [../app/spec.md](../app/spec.md); die Pakete 10 bis 14 sind nicht Teil der Abnahme von Version 1 des CLI. Paket 10 (App-Gerüst) ist technisch abgeschlossen, Aufbau und Befehle der App stehen in [../../app/README.md](../../app/README.md).
+Ab Paket 10 enthält die Planung zusätzlich die Desktop-App (Electron mit TypeScript und React, im selben Repository unter `app/`). Ihre Spezifikation steht in [../app/spec.md](../app/spec.md); die Pakete 10 bis 14 sind nicht Teil der Abnahme von Version 1 des CLI. Paket 10 (App-Gerüst) und Paket 11 (App Lesen) sind technisch abgeschlossen, Aufbau und Befehle der App stehen in [../../app/README.md](../../app/README.md).
 
 ## Dateien
 

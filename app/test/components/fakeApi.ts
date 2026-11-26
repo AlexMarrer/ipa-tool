@@ -1,6 +1,7 @@
 import { vi } from 'vitest';
 import type { IpaApi } from '../../src/shared/ipc';
 import type { AppState, IpaResult, Project, ProjectList, ProjectsChange, RunEvent } from '../../src/shared/types';
+import type { DayIndex, DayView, JournalDraftView, OverviewView, ReferenceIndex, WorkLogView } from '../../src/shared/views';
 
 export const project = (overrides: Partial<Project> = {}): Project => ({
   repositoryId: 'alpha-111111',
@@ -13,11 +14,36 @@ export const project = (overrides: Partial<Project> = {}): Project => ({
   ...overrides,
 });
 
+/** A day without entries; tests spread their own values over it. */
+export const emptyDay = (day: string, overrides: Partial<DayView> = {}): DayView => ({
+  day,
+  weekday: 'Donnerstag',
+  title: 'Donnerstag, 26. November 2026',
+  timezone: 'Europe/Zurich',
+  isFuture: false,
+  isToday: false,
+  snapshots: [],
+  notes: [],
+  runs: [],
+  drafts: [],
+  summary: { snapshotCount: 0, noteCount: 0, time: { time: { measured: 0, estimated: 0 }, planned: { measured: 0, estimated: 0 }, delays: { measured: 0, estimated: 0 }, withoutTime: 0 } },
+  attention: [],
+  timeline: [],
+  invalid: { noteLines: 0, runLines: 0, unreadableFiles: [] },
+  ...overrides,
+});
+
 export interface FakeApiOptions {
   projects?: Project[];
   registry?: ProjectList['registry'];
   state?: Partial<AppState['selection']>;
   listResult?: IpaResult<ProjectList>;
+  days?: Record<string, DayView>;
+  index?: DayIndex;
+  workLogs?: Record<string, WorkLogView | null>;
+  journals?: Record<string, JournalDraftView | null>;
+  references?: ReferenceIndex;
+  overview?: OverviewView;
 }
 
 export function createFakeApi(options: FakeApiOptions = {}) {
@@ -30,6 +56,8 @@ export function createFakeApi(options: FakeApiOptions = {}) {
     selection: { repositoryId: null, section: 'overview', day: null, ...options.state },
   };
   const ok = <T,>(value: T): Promise<IpaResult<T>> => Promise.resolve({ ok: true, value });
+  const days = options.days ?? {};
+  const index: DayIndex = options.index ?? { timezone: 'Europe/Zurich', today: '2026-11-26', days: [] };
 
   const api: IpaApi = {
     projects: {
@@ -60,6 +88,40 @@ export function createFakeApi(options: FakeApiOptions = {}) {
         state = { ...state, window: { ...state.window, ...patch.window }, selection: { ...state.selection, ...patch.selection } };
         return ok(state);
       }),
+    },
+    day: {
+      load: vi.fn((_id: string, day: string) => ok(days[day] ?? emptyDay(day))),
+      index: vi.fn(() => ok(index)),
+    },
+    snapshot: { workLog: vi.fn((_id: string, snapshotId: string) => ok(options.workLogs?.[snapshotId] ?? null)) },
+    journal: { read: vi.fn((_id: string, file: string) => ok(options.journals?.[file] ?? null)) },
+    notes: { references: vi.fn(() => ok(options.references ?? { notes: {}, snapshots: {} })) },
+    overview: {
+      load: vi.fn(() =>
+        ok(
+          options.overview ?? {
+            halt: null,
+            claude: { checkedAt: null, ok: null, version: null, problem: null },
+            lastRun: null,
+            lastSnapshot: null,
+            analysedUpTo: null,
+            analyses: { pending: 0, failed: 0, blocked: 0, exhausted: 0, complete: 0, skipped: 0, notRequired: 0 },
+            withheld: { units: 0, notes: 0 },
+            notesToday: 0,
+            schedule: null,
+            recentDays: [],
+            timezone: 'Europe/Zurich',
+            inconsistent: false,
+          },
+        ),
+      ),
+    },
+    shell: {
+      open: vi.fn(() => ok({ opened: true })),
+      reveal: vi.fn(() => ok({ opened: true })),
+      copy: vi.fn(() => ok({ copied: true as const })),
+      copyPath: vi.fn(() => ok({ opened: true })),
+      openExternal: vi.fn(() => ok({ opened: true as const })),
     },
   };
 

@@ -15,11 +15,24 @@ export interface RunView {
   finished: Extract<RunEvent, { type: 'finished' }> | null;
 }
 
+export type DayTab = 'timeline' | 'workLogs' | 'notes' | 'journal';
+
+/** Where a reference chip or a link wants the day page to look (spec §11.4). */
+export interface Focus {
+  noteId: string | null;
+  snapshotId: string | null;
+  evidence: string | null;
+}
+
 export interface AppSnapshot {
   loading: boolean;
   registry: ProjectList['registry'] | null;
   projects: Project[];
   selection: { repositoryId: string | null; page: Page; section: Section; day: string | null };
+  dayTab: DayTab;
+  focus: Focus | null;
+  /** Increases whenever the observed files or the project list changed; pages load again (spec AK-10-34). */
+  dataVersion: number;
   /** Per project: the latest run shown in the panel. */
   runs: Record<string, RunView | undefined>;
   /** Counts Ctrl+N presses; the note dialog (a later package) reacts to it. */
@@ -33,6 +46,10 @@ export interface AppActions {
   selectProject(repositoryId: string): void;
   selectPage(page: Page): void;
   setDay(day: string): void;
+  setDayTab(tab: DayTab): void;
+  /** Opens the day page on a given day and tab, as from the overview or a reference chip. */
+  openDay(day: string, tab?: DayTab, focus?: Partial<Focus>): void;
+  clearFocus(): void;
   /** `←` and `→` in the day view. */
   shiftDay(delta: number): void;
   requestNewNote(): void;
@@ -56,6 +73,9 @@ export function createAppStore(api: IpaApi, options: AppStoreOptions = {}): { st
     registry: null,
     projects: [],
     selection: { repositoryId: null, page: 'overview', section: 'overview', day: null },
+    dayTab: 'timeline',
+    focus: null,
+    dataVersion: 0,
     runs: {},
     newNoteRequests: 0,
     loadError: null,
@@ -84,7 +104,7 @@ export function createAppStore(api: IpaApi, options: AppStoreOptions = {}): { st
     store.setState((state) => {
       const known = projects.some((project) => project.repositoryId === state.selection.repositoryId);
       const repositoryId = known ? state.selection.repositoryId : (projects[0]?.repositoryId ?? null);
-      return { ...state, loading: false, loadError: null, registry, projects, selection: { ...state.selection, repositoryId } };
+      return { ...state, loading: false, loadError: null, registry, projects, selection: { ...state.selection, repositoryId }, dataVersion: state.dataVersion + 1 };
     });
   }
 
@@ -148,8 +168,23 @@ export function createAppStore(api: IpaApi, options: AppStoreOptions = {}): { st
       persist();
     },
     setDay(day) {
-      store.setState((state) => ({ ...state, selection: { ...state.selection, day } }));
+      store.setState((state) => ({ ...state, selection: { ...state.selection, day }, focus: null }));
       persist();
+    },
+    setDayTab(tab) {
+      store.setState((state) => ({ ...state, dayTab: tab, focus: null }));
+    },
+    openDay(day, tab = 'timeline', focus = {}) {
+      store.setState((state) => ({
+        ...state,
+        selection: { ...state.selection, page: 'day', section: 'day', day },
+        dayTab: tab,
+        focus: { noteId: focus.noteId ?? null, snapshotId: focus.snapshotId ?? null, evidence: focus.evidence ?? null },
+      }));
+      persist();
+    },
+    clearFocus() {
+      store.setState((state) => (state.focus === null ? state : { ...state, focus: null }));
     },
     shiftDay(delta) {
       const project = current();

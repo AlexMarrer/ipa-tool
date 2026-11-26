@@ -107,11 +107,11 @@ export interface CliResult {
 }
 
 /** Runs the built CLI directly, like a console would. */
-export async function runCli(env: TestEnv, repo: string, args: string[]): Promise<CliResult> {
+export async function runCli(env: TestEnv, repo: string, args: string[], extraEnv: Record<string, string> = {}): Promise<CliResult> {
   try {
     const { stdout, stderr } = await execFileAsync(process.execPath, [CLI_JS, '--repo', repo, ...args], {
       cwd: env.userData,
-      env: env.env,
+      env: { ...env.env, ...extraEnv },
       windowsHide: true,
       encoding: 'utf8',
     });

@@ -23,6 +23,7 @@ import {
   Tooltip,
 } from '../components';
 import { StatusDot } from '../layout/Sidebar';
+import { PageStates } from './PageStates';
 
 /**
  * State gallery (spec AD-15): every base component in every state, in both themes. Only in development and
@@ -198,6 +199,7 @@ export function GalleryContent() {
           </span>
         ))}
       </Section>
+      <PageStates />
     </div>
   );
 }

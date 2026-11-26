@@ -1,8 +1,13 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
+import type { StatusReport } from '../shared/cli-types';
 import type { ProjectList, ProjectsChange, Project, VersionInfo } from '../shared/types';
+import type { DayIndex, DayView, FileRef, JournalDraftView, OverviewView, ReferenceIndex, WorkLogView } from '../shared/views';
 import { createAppStateStore, type AppStateStore } from './app-state';
+import { loadCliLib, type CliLib } from './cli-lib';
 import { AppError, toIpaError } from './cli/errors';
+import { noShell, type ShellPort } from './shell';
+import { createWorkspaceReader, type WorkspaceReader } from './reader/workspace';
 import { assertCliVersion, createRunner, readExpectedCliVersion, type Runner } from './cli/runner';
 import { resolveRuntime, type Runtime } from './cli/runtime';
 import { createSchemaValidator, type SchemaValidator } from './cli/validator';
@@ -27,7 +32,11 @@ export interface ServicesOptions {
   cliRoot?: string;
   watchDebounceMs?: number;
   watchPollMs?: number;
+  /** Operating system access (open files, clipboard, links); tests pass a recorder. */
+  shell?: ShellPort;
 }
+
+export type ReaderResult<T> = { ok: true; value: T } | { ok: false; error: { code: string; message: string } };
 
 export interface Services {
   appState: AppStateStore;
@@ -38,6 +47,19 @@ export interface Services {
   dataRoot: string | null;
   loadProjects(): Promise<ProjectList>;
   loadProject(repositoryId: string): Promise<Project | null>;
+  /** Reading views (package 11). Each returns an error result for an unknown project or a missing runtime. */
+  loadDay(repositoryId: string, day: string): Promise<ReaderResult<DayView>>;
+  loadDayIndex(repositoryId: string): Promise<ReaderResult<DayIndex>>;
+  loadWorkLog(repositoryId: string, snapshotId: string): Promise<ReaderResult<WorkLogView | null>>;
+  loadJournal(repositoryId: string, file: string): Promise<ReaderResult<JournalDraftView | null>>;
+  loadReferences(repositoryId: string): Promise<ReaderResult<ReferenceIndex>>;
+  loadOverview(repositoryId: string): Promise<ReaderResult<OverviewView>>;
+  openFile(repositoryId: string, ref: FileRef): Promise<ReaderResult<{ opened: boolean }>>;
+  revealFile(repositoryId: string, ref: FileRef): Promise<ReaderResult<{ opened: boolean }>>;
+  /** Puts the path of a file on the clipboard without handing it to the renderer. */
+  copyFilePath(repositoryId: string, ref: FileRef): Promise<ReaderResult<{ opened: boolean }>>;
+  copyText(text: string): void;
+  openExternal(url: string): Promise<void>;
   versions(): Promise<VersionInfo>;
   /** Observes the workspace of the selected project; `null` stops it. */
   watchProject(repositoryId: string | null): void;
@@ -72,6 +94,8 @@ export async function createServices(options: ServicesOptions): Promise<Services
   let validator: SchemaValidator | null = null;
   let runner: Runner | null = null;
   let cliVersion: string | null = null;
+  let cliLib: CliLib | null = null;
+  const shell = options.shell ?? noShell;
 
   try {
     runtime = await resolveRuntime({
@@ -85,6 +109,7 @@ export async function createServices(options: ServicesOptions): Promise<Services
     validator = createSchemaValidator(runtime.schemasDir);
     runner = createRunner({ runtime, cwd: options.userDataDir, env: options.env, validator });
     cliVersion = await assertCliVersion(runner, readExpectedCliVersion(options.appRoot, runtime.cliRoot));
+    cliLib = await loadCliLib(runtime.cliRoot);
   } catch (error) {
     const failure = toIpaError(error);
     runtimeProblem = failure.details === undefined ? failure.message : `${failure.message} (${failure.details})`;
@@ -143,7 +168,64 @@ export async function createServices(options: ServicesOptions): Promise<Services
         return { report: result.status, failed: result.status === null };
       }),
     );
+    for (const project of projects) timezones.set(project.repositoryId, project.timezone);
     return { registry: { state: read.state, path: read.path, detail: read.detail }, projects };
+  }
+
+  const readers = new Map<string, WorkspaceReader>();
+  const timezones = new Map<string, string | null>();
+
+  /** The reader of a project; the registry is read once when nothing was loaded yet. */
+  async function readerOf(repositoryId: string): Promise<{ reader: WorkspaceReader; entry: RegistryEntry } | null> {
+    if (entries.length === 0 && validator !== null && dataRoot !== null) entries = (await readRegistry(dataRoot, validator)).repositories;
+    const entry = entries.find((candidate) => candidate.repositoryId === repositoryId);
+    if (entry === undefined || validator === null || cliLib === null || runtimeProblem !== null) return null;
+    const key = `${repositoryId}|${entry.workspacePath}`;
+    let reader = readers.get(key);
+    if (reader === undefined) {
+      const lib = cliLib;
+      reader = createWorkspaceReader({
+        workspacePath: entry.workspacePath,
+        validator,
+        createScanner: (secrets) => lib.createSecretScanner(secrets),
+        // Used only when config.json cannot be read; the time zone of the last status call.
+        fallbackTimezone: timezones.get(repositoryId) ?? null,
+      });
+      readers.set(key, reader);
+    }
+    return { reader, entry };
+  }
+
+  const unknownProject = { ok: false as const, error: { code: 'project_unknown', message: 'Dieses Projekt ist nicht in der Projektliste oder die CLI-Laufzeit steht nicht bereit.' } };
+  async function withReader<T>(repositoryId: string, work: (reader: WorkspaceReader, entry: RegistryEntry) => Promise<T>): Promise<ReaderResult<T>> {
+    const found = await readerOf(repositoryId);
+    if (found === null) return unknownProject;
+    return { ok: true, value: await work(found.reader, found.entry) };
+  }
+
+  /** Status and schedule status for the overview; both are automatic calls that never start Claude. */
+  async function overviewInputs(repositoryId: string): Promise<{ status: StatusReport | null; schedule: OverviewView['schedule'] }> {
+    const statusRun = await queue.start(repositoryId, { name: 'status' }, 'auto');
+    const status = statusRun.ok ? (await statusRun.done).status : null;
+    let schedule: OverviewView['schedule'] = null;
+    const scheduleRun = await queue.start(repositoryId, { name: 'scheduleStatus' }, 'auto');
+    if (scheduleRun.ok) {
+      const result = (await scheduleRun.done).envelope?.result;
+      if (result !== null && result !== undefined && typeof result['state'] === 'string') {
+        schedule = { state: result['state'], nextRun: typeof result['nextRun'] === 'string' ? result['nextRun'] : null };
+      }
+    }
+    return { status, schedule };
+  }
+
+  async function openRef(repositoryId: string, ref: FileRef, reveal: boolean): Promise<ReaderResult<{ opened: boolean }>> {
+    return withReader(repositoryId, async (reader) => {
+      const file = await reader.resolveFile(ref);
+      if (file === null) return { opened: false };
+      if (reveal) shell.showItemInFolder(file);
+      else if ((await shell.openPath(file)) !== '') return { opened: false };
+      return { opened: true };
+    });
   }
 
   return {
@@ -158,6 +240,26 @@ export async function createServices(options: ServicesOptions): Promise<Services
       const list = await loadProjects();
       return list.projects.find((project) => project.repositoryId === repositoryId) ?? null;
     },
+    loadDay: (repositoryId, day) => withReader(repositoryId, (reader) => reader.day(day)),
+    loadDayIndex: (repositoryId) => withReader(repositoryId, (reader) => reader.dayIndex()),
+    loadWorkLog: (repositoryId, snapshotId) => withReader(repositoryId, (reader) => reader.workLog(snapshotId)),
+    loadJournal: (repositoryId, file) => withReader(repositoryId, (reader) => reader.journal(file)),
+    loadReferences: (repositoryId) => withReader(repositoryId, (reader) => reader.references()),
+    async loadOverview(repositoryId) {
+      const inputs = await overviewInputs(repositoryId);
+      return withReader(repositoryId, (reader) => reader.overview(inputs.status, inputs.schedule));
+    },
+    openFile: (repositoryId, ref) => openRef(repositoryId, ref, false),
+    revealFile: (repositoryId, ref) => openRef(repositoryId, ref, true),
+    copyFilePath: (repositoryId, ref) =>
+      withReader(repositoryId, async (reader) => {
+        const file = await reader.resolveFile(ref);
+        if (file === null) return { opened: false };
+        shell.writeClipboard(file);
+        return { opened: true };
+      }),
+    copyText: (text) => shell.writeClipboard(text),
+    openExternal: (url) => shell.openExternal(url),
     async versions() {
       return {
         app: options.appVersion,

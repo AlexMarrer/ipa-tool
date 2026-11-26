@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, nativeTheme, protocol } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, protocol, shell } from 'electron';
 import path from 'node:path';
 import { IPC_CHANNELS } from '../shared/ipc';
 import { createHandlers } from './ipc/handlers';
@@ -48,6 +48,12 @@ if (!app.requestSingleInstanceLock()) {
       env: process.env,
       appVersion: await readPackageVersion(appRoot),
       electronVersion: process.versions.electron,
+      shell: {
+        openPath: (file) => shell.openPath(file),
+        showItemInFolder: (file) => shell.showItemInFolder(file),
+        writeClipboard: (text) => clipboard.writeText(text),
+        openExternal: (url) => shell.openExternal(url),
+      },
       ...(nodeExe !== undefined ? { nodeExe } : {}),
       ...(cliRoot !== undefined ? { cliRoot } : {}),
     });

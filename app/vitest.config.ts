@@ -23,6 +23,10 @@ export default defineConfig({
           include: ['test/components/**/*.test.tsx', 'test/components/**/*.test.ts'],
           environment: 'jsdom',
           setupFiles: ['test/components/setup.ts'],
+          // Some component tests render real files of the CLI and build their workspace first.
+          globalSetup: ['test/setup/global-setup.ts'],
+          testTimeout: 60_000,
+          hookTimeout: 120_000,
         },
       },
     ],

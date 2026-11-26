@@ -98,8 +98,39 @@ describe('Registrierung der Kanäle (AK-10-04)', () => {
   });
 
   it('liefert keinen Kanal für Pfade, Umgebungsvariablen oder rohe Befehle', () => {
-    const names = Object.values(IPC_CHANNELS).join(' ');
+    // `shell` opens by kind and id and the app opens only links after confirmation; neither takes a path.
+    const names = Object.values(IPC_CHANNELS).join(' ').replace(/ipa:shell:(open|reveal|copyPath|copy|openExternal)/g, '');
     expect(names).not.toMatch(/env|path|open|exec|spawn|readFile|shell/i);
+    expect(Object.values(IPC_CHANNELS).some((channel) => /run:start|spawn|exec/i.test(channel))).toBe(false);
+  });
+
+  it('prüft die Eingaben der Leseansichten und der Shell', async () => {
+    const send = (channel: string, argument: unknown) => ipcMain.listeners.get(channel)?.(trusted('app://app/index.html'), argument);
+    const readers = services as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    for (const name of ['loadDay', 'loadDayIndex', 'loadWorkLog', 'loadJournal', 'loadReferences', 'loadOverview', 'openFile', 'revealFile', 'copyFilePath', 'copyText', 'openExternal']) {
+      readers[name] = vi.fn(async () => ({ ok: true, value: name === 'openFile' || name === 'revealFile' || name === 'copyFilePath' ? { opened: true } : {} }));
+    }
+    // Day and project id are validated; extra fields are refused.
+    expect(await send(IPC_CHANNELS.dayLoad, { repositoryId: 'p-123456', day: '2026-11-26' })).toMatchObject({ ok: true });
+    expect(await send(IPC_CHANNELS.dayLoad, { repositoryId: 'p-123456', day: '26.11.2026' })).toMatchObject({ ok: false, error: { code: 'invalid_request' } });
+    expect(await send(IPC_CHANNELS.dayLoad, { repositoryId: 'p-123456', day: '2026-11-26', path: 'C:/x' })).toMatchObject({ ok: false });
+    expect(await send(IPC_CHANNELS.dayLoad, '2026-11-26')).toMatchObject({ ok: false });
+    // Files are referenced by kind and id, never by path.
+    const open = (ref: unknown) => send(IPC_CHANNELS.shellOpen, { repositoryId: 'p-123456', ref });
+    expect(await open({ kind: 'workLog', snapshotId: 'S000002' })).toMatchObject({ ok: true });
+    expect(await open({ kind: 'journalFinalFolder' })).toMatchObject({ ok: true });
+    expect(await open({ kind: 'workLog', snapshotId: 'S000002', path: 'C:/Windows/system32/cmd.exe' })).toMatchObject({ ok: false });
+    expect(await open({ kind: 'path', path: 'C:/Windows/system32/cmd.exe' })).toMatchObject({ ok: false });
+    expect(await open('C:/Windows/system32/cmd.exe')).toMatchObject({ ok: false });
+    // External links: only http and https.
+    const external = (url: unknown) => send(IPC_CHANNELS.shellOpenExternal, url);
+    expect(await external('https://example.com/seite')).toMatchObject({ ok: true });
+    expect(await external('http://example.com/')).toMatchObject({ ok: true });
+    for (const bad of ['javascript:alert(1)', 'file:///C:/Windows/win.ini', 'data:text/html,<script>1</script>', 'vbscript:x', 'ms-msdt:/id', '//example.com', 'kein link', 42]) {
+      expect(await external(bad), String(bad)).toMatchObject({ ok: false });
+    }
+    expect(await send(IPC_CHANNELS.shellCopy, 42)).toMatchObject({ ok: false });
+    expect(await send(IPC_CHANNELS.shellCopy, 'Text')).toMatchObject({ ok: true });
   });
 });
 

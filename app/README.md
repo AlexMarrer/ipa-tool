@@ -4,7 +4,13 @@ Die Desktop-App ist die grafische Oberfläche für das Kommandozeilenwerkzeug `i
 
 Falls du das Projekt zum ersten Mal siehst: Lies zuerst das [README im Wurzelordner](../README.md). Es erklärt, was der IPA Assistant ist, und wie du `ipa` installierst. Diese Datei beschreibt nur die App.
 
-**Stand: Paket 10 von 14 (App-Gerüst).** Die App ist noch nicht fertig. Heute zeigt sie die Projektliste mit Statuspunkten, lässt dich zwischen den Bereichen wechseln und folgt dem Hell- oder Dunkelmodus von Windows. Die Bereiche (Übersicht, Tag, Zeitplan, Konfiguration, System, Projekt hinzufügen) sind noch leere Rahmen, und „Neue Notiz“ und „Jetzt erfassen“ sind gesperrt. Das kommt mit den Paketen 11 bis 14. Einen Installer kannst du bauen (unsigniert, siehe [Als Programm installieren](#als-programm-installieren-mit-desktop-link)); er ist noch nicht auf einem sauberen Windows abgenommen.
+**Stand: Paket 11 von 14 (App Lesen).** Die App ist noch nicht fertig, aber du kannst mit ihr lesen, was `ipa` gesammelt hat:
+
+- **Übersicht** eines Projekts: letzter Lauf, Analyse-Stand, offene und zurückgehaltene Inhalte, Zeitplan-Kurzstatus, die letzten Tage, ein roter Banner bei einem Halt und eine Warnung, wenn Claude nicht bereit ist.
+- **Tag** mit Kalender, Zusammenfassung, Hinweisen und vier Tabs: Zeitstrahl, **Work-Logs** (mit Etiketten `KI-Entwurf`, `ohne KI`, `vom Tool`), **Notizen** und **Journal-Entwürfe**. Verweise wie `[S000002:E003]` oder Notiz-IDs sind klickbar.
+- Änderungen aus dem Terminal erscheinen ohne Neustart (gemessen: gut eine Sekunde).
+
+Noch leere Rahmen sind Zeitplan, Konfiguration, System und Projekt hinzufügen. „Neue Notiz“, „Jetzt erfassen“ und alle anderen Aktionen sind gesperrt; sie kommen mit den Paketen 12 bis 14. Die App **ändert beim Lesen nichts** und ruft Claude nie von selbst auf. Einen Installer kannst du bauen (unsigniert, siehe [Als Programm installieren](#als-programm-installieren-mit-desktop-link)); er ist noch nicht auf einem sauberen Windows abgenommen.
 
 ## Inhalt
 
@@ -133,10 +139,12 @@ src/shared/     Typen der IPC-Schnittstelle, Meldungstexte, Tagesrechnung (kein 
 src/main/       Main-Prozess: Fenster und Sicherheit, Protokoll app://, IPC, Dienste
   cli/          Laufzeit (resolveRuntime), Befehle, Runner, Hüllenprüfung gegen die Schemas des CLI
   run/          Sperren pro Projekt, zentrale Warteschlange, Abbruch des Prozessbaums, Live-Zeilen
-  reader/       Registry und Projektstatus
+  reader/       Registry, Projektstatus und der Reader der Arbeitsbereiche (Tag, Snapshots, Notizen, Journale)
   watch/        Dateibeobachtung (fs.watch mit Entprellung und Abfrage alle 10 s)
 src/preload/    window.ipa: die einzige Schnittstelle des Renderers
 src/renderer/   React: Tokens (Hell/Dunkel), Basiskomponenten, Layout, Store, Zustandsgalerie
+  markdown/     Darstellung von Work-Logs und Journalen: sicher, mit Etiketten und Referenz-Chips
+  pages/        Übersicht und Tag (Zeitstrahl, Work-Logs, Notizen, Journal)
 test/           unit, reader, components (jsdom), e2e (Playwright), helpers
 scripts/        write-cli-version, stage-cli, fetch-node, after-pack (Fuses)
 ```
@@ -195,6 +203,7 @@ Stand 26.11.2026, geprüft mit `npm view` und einem vollständigen Lauf der Test
 | Vitest, jsdom, Testing Library | 5.1.2, 31.0.1, 16.3.3 | Tests von Main-Prozess, Reader und Komponenten; Vitest wie im CLI. |
 | Playwright (`_electron`) | 1.65.1 | Start-Test der gebauten App. Braucht keine Browser-Downloads. |
 | @electron/fuses | 2.1.3 | Setzt die Fuses beim Paketieren. |
+| react-markdown / remark-gfm | 10.1.0 / 4.0.1 | Stellt Work-Logs und Journale dar (Spezifikation AD-10). Rendert in React-Elemente, nie in HTML; Roh-HTML wird übersprungen (`skipHtml`), `rehype-raw` ist nicht eingebaut. `remark-gfm` für Tabellen. |
 | electron-builder | 26.18.0 | NSIS-Installer (Paket 14). Die Schlüssel in `electron-builder.yml` sind gegen `node_modules/app-builder-lib/scheme.json` dieser Version geprüft (AO-07); ein Lauf von `app:dist` steht noch aus. |
 | Node-Laufzeit des Installers | 24.22.3 | In `node-runtime.json` mit SHA-256 festgelegt (AO-03: einziger Ort zur Pflege). `fetch-node` bricht bei Abweichung der Prüfsumme ab. |
 
@@ -204,7 +213,9 @@ Neue Abhängigkeiten ausser den hier genannten brauchen eine Begründung in dies
 
 - Windows 11 ist die einzige vorgesehene Plattform; Windows 10 ist nicht geprüft.
 - Die Sichtprüfung gegen die Artboards des Designs (Hell und Dunkel) und die Bedienung mit Screenreader sind manuell und noch nicht erfolgt (AK-10-80).
-- `Neue Notiz` und `Jetzt erfassen` sind im Kopf vorhanden, aber gesperrt, bis die Aktionen (Paket 12) umgesetzt sind.
+- `Neue Notiz` und `Jetzt erfassen` sind im Kopf vorhanden, aber gesperrt, bis die Aktionen (Paket 12) umgesetzt sind. Der Halt-Banner nennt den Grund, bietet aber noch keinen neuen Ausgangspunkt an.
+- Die App zeigt keine Diffs und bearbeitet nichts: Journal-Entwürfe lassen sich öffnen und kopieren, die Endfassung schreibst du von Hand nach `journal/final/`.
+- Zurückgehaltene Notizen (möglicher Zugangswert) erscheinen mit Detektor, aber ohne den betroffenen Text.
 - Der Installer ist unsigniert (Windows-SmartScreen-Warnung), hat das Standard-Icon von Electron und wurde noch nicht auf einem sauberen Windows installiert. Die Abnahme (AK-10-80) und der Test der CLI-Testsuite mit der mitgelieferten `node.exe` (AK-10-76) gehören zu Paket 14.
 - Ein Playwright-Test gegen die gepackte App ist nicht möglich: Die Fuses schalten das Debugging ab, das Playwright zum Verbinden braucht. Geprüft wird die gepackte App deshalb von Hand.
 - Die Zustandsgalerie ist nur in Entwicklung und Tests erreichbar (`#/gallery`), nicht im gebauten Paket.

@@ -57,7 +57,7 @@ test('öffnet das Hauptfenster mit den Sicherheitseinstellungen (AK-10-03)', asy
     keys: Object.keys((window as unknown as { ipa: object }).ipa).sort(),
     url: location.href,
   }));
-  expect(exposure).toMatchObject({ process: 'undefined', require: 'undefined', ipcRenderer: 'undefined', keys: ['app', 'projects', 'run', 'system'] });
+  expect(exposure).toMatchObject({ process: 'undefined', require: 'undefined', ipcRenderer: 'undefined', keys: ['app', 'day', 'journal', 'notes', 'overview', 'projects', 'run', 'shell', 'snapshot', 'system'] });
   expect(exposure.url.startsWith('app://app/')).toBe(true);
 });
 
@@ -109,7 +109,11 @@ test('zeigt das Projekt aus der Registry und navigiert ohne je Claude zu starten
   const log = (await readFile(path.join(env.userData, 'logs', 'app.log'), 'utf8')).split('\n').filter(Boolean).map((line) => JSON.parse(line) as { event: string; command?: string; trigger?: string; ai?: boolean });
   const started = log.filter((entry) => entry.event === 'cli_started');
   expect(started.length).toBeGreaterThan(0);
-  for (const entry of started) expect(entry).toMatchObject({ command: 'status', trigger: 'auto', ai: false });
+  // Only commands that never call a model may start on their own (spec §12.1): status and schedule status.
+  for (const entry of started) {
+    expect(entry).toMatchObject({ trigger: 'auto', ai: false });
+    expect(['status', 'schedule status']).toContain(entry.command);
+  }
   expect(await fingerprintRepo(project.repo.root)).toMatchObject({ ...before, 'src/aenderung.ts': expect.any(String) });
 });
 
