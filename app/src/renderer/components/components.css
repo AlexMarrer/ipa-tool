@@ -95,3 +95,9 @@
 
 .spin { animation: spin 1.2s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+.dialog--wide { width: min(600px, calc(100vw - 48px)); }
+.textarea { padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--radius-field); background: var(--dlg-surface); font: inherit; resize: vertical; min-height: 72px; }
+.textarea[aria-invalid='true'] { border-color: var(--err); }
+.attempt-bars { display: flex; gap: 6px; margin-bottom: 4px; }
+.attempt-bar { flex: 1; height: 8px; border-radius: 4px; background: var(--chip); }
+.attempt-bar--used { background: var(--err); }

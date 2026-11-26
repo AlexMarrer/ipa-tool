@@ -2,7 +2,7 @@ import type { HaltView, OverviewView } from '../../../shared/views';
 import { ANALYSIS_STATUS, EXIT_CODE_MESSAGES, RUN_OUTCOME, type RunOutcome } from '../../../shared/messages';
 import { Banner, Button, Chip, LoadingSkeleton, OutcomeChip, StatusChip } from '../../components';
 import { SCHEDULE_STATE, formatDuration, formatStamp, shortRunId } from '../format';
-import { usePageEnv, useLoad } from '../env';
+import { actionReason, usePageEnv, useLoad } from '../env';
 
 /** Halt texts of the design (spec §8.2). */
 export const HALT_TEXT: Record<HaltView['reason'], { title: string; text: string }> = {
@@ -34,10 +34,22 @@ function position(label: string, value: { branch: string | null; head: string | 
 }
 
 /** Red banner with reason, expected and observed state, run and time (spec §8.2). The action follows with the actions package. */
-export function HaltBanner({ halt, timezone }: { halt: HaltView; timezone: string }) {
+export function HaltBanner({ halt, timezone, onSetBaseline, lockedReason = null }: { halt: HaltView; timezone: string; onSetBaseline?: () => void; lockedReason?: string | null }) {
   const text = HALT_TEXT[halt.reason];
   return (
-    <Banner level="err" title={`Erfassung angehalten: ${text.title}`}>
+    <Banner
+      level="err"
+      title={`Erfassung angehalten: ${text.title}`}
+      {...(onSetBaseline !== undefined
+        ? {
+            actions: (
+              <Button variant="primary" disabled={lockedReason !== null} {...(lockedReason !== null ? { disabledReason: lockedReason } : {})} onClick={onSetBaseline}>
+                Neuen Ausgangspunkt setzen
+              </Button>
+            ),
+          }
+        : {})}
+    >
       <p style={{ margin: '4px 0 8px' }}>{text.text}</p>
       <dl className="kv">
         {position('Erwarteter Stand', halt.expected)}
@@ -59,17 +71,23 @@ export function HaltBanner({ halt, timezone }: { halt: HaltView; timezone: strin
 }
 
 /** Warning only for a problem; with a ready Claude nothing appears (spec §8.2). */
-export function ClaudeWarning({ claude, timezone }: { claude: OverviewView['claude']; timezone: string }) {
+export function ClaudeWarning({ claude, timezone, onCheck, checkDisabled }: { claude: OverviewView['claude']; timezone: string; onCheck?: () => void; checkDisabled?: string | null }) {
   if (claude.ok === true) return null;
+  const check =
+    onCheck === undefined ? undefined : (
+      <Button disabled={checkDisabled != null} {...(checkDisabled != null ? { disabledReason: checkDisabled } : {})} onClick={onCheck}>
+        Prüfen
+      </Button>
+    );
   if (claude.ok === null) {
     return (
-      <Banner level="info" title="Claude: Noch nicht geprüft">
+      <Banner level="info" title="Claude: Noch nicht geprüft" {...(check !== undefined ? { actions: check } : {})}>
         Die Bereitschaft von Claude wurde noch nicht geprüft. Aufnehmen funktioniert auch ohne.
       </Banner>
     );
   }
   return (
-    <Banner level="warn" title="Claude ist nicht bereit">
+    <Banner level="warn" title="Claude ist nicht bereit" {...(check !== undefined ? { actions: check } : {})}>
       {claude.problem ?? 'Die Prüfung ist nicht bestanden.'} Aufnehmen funktioniert weiter, Analysen und Journal mit KI sind gesperrt.
       <div className="muted" style={{ marginTop: 4 }}>
         {claude.version !== null ? `Version ${claude.version}, ` : ''}geprüft am {formatStamp(claude.checkedAt, timezone)}
@@ -94,8 +112,10 @@ export function OverviewPage() {
   const statuses = (['pending', 'failed', 'blocked', 'exhausted'] as const).filter((key) => data.analyses[key] > 0);
   return (
     <div className="stack">
-      {data.halt !== null ? <HaltBanner halt={data.halt} timezone={tz} /> : null}
-      <ClaudeWarning claude={data.claude} timezone={tz} />
+      {data.halt !== null ? (
+        <HaltBanner halt={data.halt} timezone={tz} lockedReason={actionReason(env, 'baseline')} onSetBaseline={() => env.actions.openDialog({ kind: 'baseline', force: false })} />
+      ) : null}
+      <ClaudeWarning claude={data.claude} timezone={tz} checkDisabled={actionReason(env, 'doctor')} onCheck={() => void env.actions.check(env.repositoryId)} />
       {data.inconsistent ? (
         <Banner level="info" title="Analyse-Stand uneinheitlich">
           Die Ableitung der App weicht von <span className="mono">ipa status</span> ab. Angezeigt werden die Werte von <span className="mono">ipa status</span>.
@@ -165,6 +185,17 @@ export function OverviewPage() {
           </div>
         </section>
       </div>
+      {data.halt === null ? (
+        <details className="advanced">
+          <summary>Erweitert</summary>
+          <p className="muted" style={{ margin: '8px 0' }}>
+            Setzt den Ausgangspunkt neu, obwohl die Erfassung nicht angehalten ist. Zwischen dem bisherigen und dem neuen Stand entsteht eine Lücke, die im Journal sichtbar bleibt.
+          </p>
+          <Button disabled={actionReason(env, 'baseline') !== null} {...(actionReason(env, 'baseline') !== null ? { disabledReason: actionReason(env, 'baseline') as string } : {})} onClick={() => env.actions.openDialog({ kind: 'baseline', force: true })}>
+            Trotzdem setzen
+          </Button>
+        </details>
+      ) : null}
       <section aria-label="Letzte Tage">
         <h3 style={{ fontSize: 14, marginBottom: 8 }}>Letzte Tage</h3>
         {data.recentDays.length === 0 ? (

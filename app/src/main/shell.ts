@@ -5,6 +5,8 @@ export interface ShellPort {
   showItemInFolder(file: string): void;
   writeClipboard(text: string): void;
   openExternal(url: string): Promise<void>;
+  /** `shell.trashItem`: moves to the recycle bin; rejects if that is not possible. Nothing is deleted for good. */
+  trashItem(file: string): Promise<void>;
 }
 
 /** Used where no operating system is available (tests that do not care). Nothing is opened. */
@@ -13,4 +15,5 @@ export const noShell: ShellPort = {
   showItemInFolder: () => undefined,
   writeClipboard: () => undefined,
   openExternal: async () => undefined,
+  trashItem: async () => undefined,
 };

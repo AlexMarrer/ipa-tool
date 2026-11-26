@@ -130,6 +130,7 @@ describe('Tastenkürzel (AK-10-10)', () => {
     const view = await mount({ projects: [project()], state: { repositoryId: 'alpha-111111' } });
     await user.keyboard('{Control>}n{/Control}');
     expect(view.app.store.getSnapshot().newNoteRequests).toBe(1);
+    expect(screen.getByRole('dialog', { name: 'Neue Notiz' })).toBeInTheDocument();
   });
 
   it('Strg+N tut ohne Projekt nichts', async () => {
@@ -183,12 +184,12 @@ describe('Tastenkürzel (AK-10-10)', () => {
 });
 
 describe('Kopfzeile und Laufanzeige', () => {
-  it('zeigt Neue Notiz und Jetzt erfassen mit KI-Markierung, vorerst gesperrt', async () => {
+  it('zeigt Neue Notiz und Jetzt erfassen mit KI-Markierung, beide bedienbar', async () => {
     await mount({ projects: [project()], state: { repositoryId: 'alpha-111111' } });
     expect(screen.getByRole('heading', { level: 1, name: /alpha-111111/ })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Neue Notiz/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Neue Notiz/ })).toBeEnabled();
     const capture = screen.getByRole('button', { name: /Jetzt erfassen.*Claude/ });
-    expect(capture).toBeDisabled();
+    expect(capture).toBeEnabled();
     expect(capture.querySelector('[data-icon="spark"]')).not.toBeNull();
   });
 
@@ -197,30 +198,56 @@ describe('Kopfzeile und Laufanzeige', () => {
     const view = await mount({ projects: [project()], state: { repositoryId: 'alpha-111111' } });
     expect(screen.getByText('Kein Lauf aktiv.')).toBeInTheDocument();
     act(() =>
-      view.emitRun({ type: 'started', runKey: 'k1', repositoryId: 'alpha-111111', label: 'capture', cancellable: true, ai: true, startedAt: new Date().toISOString() }),
+      view.emitRun({ type: 'started', runKey: 'k1', repositoryId: 'alpha-111111', label: 'capture', cancellable: true, ai: true, panel: true, startedAt: new Date().toISOString() }),
     );
     act(() => view.emitRun({ type: 'live', runKey: 'k1', line: { at: '2026-11-26T09:00:00Z', text: 'Arbeitsstand prüfen' } }));
+    expect(screen.getByText('Erfasse Snapshot und analysiere …')).toBeInTheDocument();
+    expect(screen.getByText('Läuft')).toBeInTheDocument();
+    expect(screen.queryByText('Arbeitsstand prüfen')).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Live-Ausgabe' }));
     expect(screen.getByText('Arbeitsstand prüfen')).toBeInTheDocument();
-    expect(screen.getByText(/läuft/)).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Abbrechen' }));
-    expect(screen.getByRole('dialog', { name: 'Lauf wirklich abbrechen?' })).toHaveTextContent('gescheiterter Versuch');
+    const dialog = screen.getByRole('dialog', { name: 'Lauf wirklich abbrechen?' });
+    expect(dialog).toHaveTextContent('Bereits gespeicherte Snapshots bleiben erhalten.');
+    expect(dialog).toHaveTextContent('Ein abgebrochener Claude-Aufruf zählt als gescheiterter Versuch.');
     expect(view.api.run.cancel).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Weiterlaufen lassen' }));
+    expect(view.api.run.cancel).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Abbrechen' }));
     await user.click(screen.getByRole('button', { name: 'Lauf abbrechen' }));
     expect(view.api.run.cancel).toHaveBeenCalledWith('k1');
 
-    act(() => view.emitRun({ type: 'finished', runKey: 'k1', repositoryId: 'alpha-111111', exitCode: null, cancelled: true, notice: null, failure: null }));
-    expect(screen.getByText('Lauf abgebrochen')).toBeInTheDocument();
+    act(() => view.emitRun({ type: 'finished', runKey: 'k1', repositoryId: 'alpha-111111', exitCode: null, cancelled: true, notice: null, failure: null, summary: null }));
+    expect(screen.getAllByText('Lauf abgebrochen').length).toBeGreaterThan(0);
     await user.click(screen.getByRole('button', { name: 'Schliessen' }));
     expect(screen.getByText('Kein Lauf aktiv.')).toBeInTheDocument();
   });
 
   it('zeigt Exit-Code 3 als Hinweis in Klartext und sperrt Jetzt erfassen während des Laufs', async () => {
     const view = await mount({ projects: [project()], state: { repositoryId: 'alpha-111111' } });
-    act(() => view.emitRun({ type: 'started', runKey: 'k2', repositoryId: 'alpha-111111', label: 'capture', cancellable: true, ai: true, startedAt: new Date().toISOString() }));
+    view.api.run.state = vi.fn(async () => ({ ok: true as const, value: { own: [{ runKey: 'k2', label: 'capture', ai: true, cancellable: true, kind: 'write' as const }], foreign: null } }));
+    act(() => view.emitRun({ type: 'started', runKey: 'k2', repositoryId: 'alpha-111111', label: 'capture', cancellable: true, ai: true, panel: true, startedAt: new Date().toISOString() }));
+    await waitFor(() => expect(screen.getByRole('button', { name: /Jetzt erfassen.*Claude/ })).toBeDisabled());
     expect(screen.getByRole('button', { name: /Jetzt erfassen.*Claude/ })).toHaveAccessibleDescription(/Ein Lauf ist aktiv\. Jetzt erfassen ist gesperrt, bis er endet\./);
-    act(() => view.emitRun({ type: 'finished', runKey: 'k2', repositoryId: 'alpha-111111', exitCode: 3, cancelled: false, notice: 'lock_held', failure: null }));
+    expect(screen.getByRole('button', { name: 'Weitere Optionen' })).toBeDisabled();
+    view.api.run.state = vi.fn(async () => ({ ok: true as const, value: { own: [], foreign: null } }));
+    act(() =>
+      view.emitRun({
+        type: 'finished',
+        runKey: 'k2',
+        repositoryId: 'alpha-111111',
+        exitCode: 3,
+        cancelled: false,
+        notice: 'lock_held',
+        failure: null,
+        summary: { command: 'capture', exitCode: 3, outcome: 'lock_held', runId: null, errors: [], warnings: [], output: '', failure: null, cancelled: false, result: null, lock: { command: 'capture', startedAt: '16:20' } },
+      }),
+    );
     expect(screen.getByText('Ein anderer Lauf ist aktiv')).toBeInTheDocument();
+    expect(screen.getByText('Nicht gestartet')).toBeInTheDocument();
+    expect(screen.getByText('Aktiv seit 16:20')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: /Jetzt erfassen.*Claude/ })).toBeEnabled());
   });
 
   it('klappt die Laufanzeige ein und aus', async () => {

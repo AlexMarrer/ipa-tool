@@ -13,16 +13,19 @@ export interface DialogProps {
   onConfirm?: () => void;
   /** Renders in place without scrim, for the state gallery. */
   inline?: boolean;
+  /** 600 px instead of 520 px, for the forms of the actions (spec §8.8). */
+  wide?: boolean;
 }
 
 /** Modal dialog with focus trap, Esc to close and focus restored to the opener (spec §10.3). */
-export function Dialog({ title, children, footer, onClose, onConfirm, inline = false }: DialogProps) {
+export function Dialog({ title, children, footer, onClose, onConfirm, inline = false, wide = false }: DialogProps) {
   const titleId = useId();
   const root = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const first = root.current?.querySelector<HTMLElement>(FOCUSABLE);
+    // A control marked `data-autofocus` takes the focus, for example the text of a note (spec §8.8).
+    const first = root.current?.querySelector<HTMLElement>('[data-autofocus]') ?? root.current?.querySelector<HTMLElement>(FOCUSABLE);
     (first ?? root.current)?.focus();
     return () => opener?.focus();
   }, []);
@@ -62,7 +65,7 @@ export function Dialog({ title, children, footer, onClose, onConfirm, inline = f
       aria-modal={inline ? undefined : true}
       aria-labelledby={titleId}
       tabIndex={-1}
-      className={inline ? 'dialog dialog--inline' : 'dialog'}
+      className={['dialog', inline ? 'dialog--inline' : '', wide ? 'dialog--wide' : ''].filter(Boolean).join(' ')}
       onKeyDown={onKeyDown}
     >
       <h2 id={titleId} className="dialog__title">

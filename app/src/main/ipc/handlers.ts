@@ -48,6 +48,16 @@ function unwrap<T>(result: ReaderResult<T>): T {
 /** The request handlers behind the channels; the renderer reaches nothing else (spec §3.9, AK-10-04). */
 export function createHandlers(services: Services): Record<Exclude<IpcChannel, typeof IPC_CHANNELS.projectsChanged | typeof IPC_CHANNELS.runEvent>, Handler> {
   return {
+    [IPC_CHANNELS.runStart]: async (argument) => {
+      const v = input.fields(argument, ['repositoryId', 'input']);
+      return services.startRun(input.string(v['repositoryId'], 80), input.runInput(v['input']));
+    },
+    [IPC_CHANNELS.runState]: async (argument) => services.runState(input.string(argument, 80)),
+    [IPC_CHANNELS.snapshotEvidenceList]: async (argument) => unwrap(await services.loadEvidenceList(input.string(argument, 80))),
+    [IPC_CHANNELS.configScanText]: async (argument) => {
+      const v = input.fields(argument, ['repositoryId', 'text']);
+      return unwrap(await services.scanText(input.string(v['repositoryId'], 80), input.text(v['text'], 20_000)));
+    },
     [IPC_CHANNELS.dayLoad]: async (argument) => {
       const v = input.fields(argument, ['repositoryId', 'day']);
       return unwrap(await services.loadDay(input.string(v['repositoryId'], 80), input.day(v['day'])));
@@ -60,6 +70,19 @@ export function createHandlers(services: Services): Record<Exclude<IpcChannel, t
     [IPC_CHANNELS.journalRead]: async (argument) => {
       const v = input.fields(argument, ['repositoryId', 'file']);
       return unwrap(await services.loadJournal(input.string(v['repositoryId'], 80), input.string(v['file'], 60)));
+    },
+    [IPC_CHANNELS.journalFinals]: async (argument) => {
+      const v = input.fields(argument, ['repositoryId', 'day']);
+      return unwrap(await services.loadFinals(input.string(v['repositoryId'], 80), input.day(v['day'])));
+    },
+    [IPC_CHANNELS.journalFinalize]: async (argument) => {
+      const v = input.fields(argument, ['repositoryId', 'file']);
+      return unwrap(await services.finalizeDraft(input.string(v['repositoryId'], 80), input.string(v['file'], 60)));
+    },
+    [IPC_CHANNELS.journalRemove]: async (argument) => {
+      const v = input.fields(argument, ['repositoryId', 'kind', 'file']);
+      if (v['kind'] !== 'draft' && v['kind'] !== 'final') throw new InvalidInput('Entwurf oder Endfassung erwartet.');
+      return unwrap(await services.removeJournalFile(input.string(v['repositoryId'], 80), v['kind'], input.string(v['file'], 120)));
     },
     [IPC_CHANNELS.notesReferences]: async (argument) => unwrap(await services.loadReferences(input.string(argument, 80))),
     [IPC_CHANNELS.overviewLoad]: async (argument) => unwrap(await services.loadOverview(input.string(argument, 80))),

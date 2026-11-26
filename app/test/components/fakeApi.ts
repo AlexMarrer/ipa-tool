@@ -1,7 +1,8 @@
 import { vi } from 'vitest';
 import type { IpaApi } from '../../src/shared/ipc';
 import type { AppState, IpaResult, Project, ProjectList, ProjectsChange, RunEvent } from '../../src/shared/types';
-import type { DayIndex, DayView, JournalDraftView, OverviewView, ReferenceIndex, WorkLogView } from '../../src/shared/views';
+import type { LockState, StartOutcome } from '../../src/shared/run';
+import type { DayIndex, DayView, EvidenceGroup, FinalFileView, JournalDraftView, OverviewView, ReferenceIndex, RemoveResult, WorkLogView } from '../../src/shared/views';
 
 export const project = (overrides: Partial<Project> = {}): Project => ({
   repositoryId: 'alpha-111111',
@@ -11,6 +12,7 @@ export const project = (overrides: Partial<Project> = {}): Project => ({
   timezone: 'Europe/Zurich',
   status: 'ok',
   hint: '',
+  claudeReady: null,
   ...overrides,
 });
 
@@ -44,6 +46,11 @@ export interface FakeApiOptions {
   journals?: Record<string, JournalDraftView | null>;
   references?: ReferenceIndex;
   overview?: OverviewView;
+  lock?: LockState;
+  finals?: Record<string, FinalFileView[]>;
+  evidence?: EvidenceGroup[];
+  /** Detector names a text hits; default none. */
+  detectors?: (text: string) => string[];
 }
 
 export function createFakeApi(options: FakeApiOptions = {}) {
@@ -72,6 +79,8 @@ export function createFakeApi(options: FakeApiOptions = {}) {
       }),
     },
     run: {
+      start: vi.fn(() => ok<StartOutcome>({ ok: true, runKey: 'k1' })),
+      state: vi.fn(() => ok<LockState>(options.lock ?? { own: [], foreign: null })),
       cancel: vi.fn(() => ok({ cancelled: true })),
       onEvent: vi.fn((listener) => {
         runListeners.add(listener);
@@ -93,8 +102,17 @@ export function createFakeApi(options: FakeApiOptions = {}) {
       load: vi.fn((_id: string, day: string) => ok(days[day] ?? emptyDay(day))),
       index: vi.fn(() => ok(index)),
     },
-    snapshot: { workLog: vi.fn((_id: string, snapshotId: string) => ok(options.workLogs?.[snapshotId] ?? null)) },
-    journal: { read: vi.fn((_id: string, file: string) => ok(options.journals?.[file] ?? null)) },
+    config: { scanText: vi.fn((_id: string, text: string) => ok({ detectors: options.detectors?.(text) ?? [] })) },
+    snapshot: {
+      workLog: vi.fn((_id: string, snapshotId: string) => ok(options.workLogs?.[snapshotId] ?? null)),
+      evidenceList: vi.fn(() => ok(options.evidence ?? [])),
+    },
+    journal: {
+      read: vi.fn((_id: string, file: string) => ok(options.journals?.[file] ?? null)),
+      finals: vi.fn((_id: string, day: string) => ok(options.finals?.[day] ?? [])),
+      finalize: vi.fn((_id: string, draft: string) => ok({ file: `${draft.slice(0, 10)}.md` })),
+      remove: vi.fn(() => ok<RemoveResult>({ removed: true, problem: null })),
+    },
     notes: { references: vi.fn(() => ok(options.references ?? { notes: {}, snapshots: {} })) },
     overview: {
       load: vi.fn(() =>

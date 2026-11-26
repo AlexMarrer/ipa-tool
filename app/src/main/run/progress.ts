@@ -1,3 +1,4 @@
+import { ATTEMPT_ERROR_TEXT } from '../../shared/messages';
 import type { LiveLine } from '../../shared/types';
 
 /**
@@ -10,19 +11,7 @@ import type { LiveLine } from '../../shared/types';
 const SNAPSHOT_ID = /^S\d{6}$/;
 const IDLE_AFTER_MS = 15_000;
 
-export const ATTEMPT_ERROR_TEXT: Record<string, string> = {
-  not_found: 'Claude wurde nicht gefunden',
-  not_executable: 'Claude lässt sich nicht starten',
-  timeout: 'Zeitüberschreitung beim KI-Schritt',
-  nonzero_exit: 'Claude wurde mit einem Fehler beendet',
-  invalid_envelope: 'Die Antwort von Claude war nicht auswertbar',
-  missing_structured_output: 'Die Antwort von Claude war nicht auswertbar',
-  error_result: 'Claude meldete einen Fehler',
-  schema_invalid: 'Die Antwort von Claude hat die Prüfung nicht bestanden',
-  evidence_invalid: 'Die Antwort von Claude hat die Prüfung nicht bestanden',
-  rule_violation: 'Die Antwort von Claude hat die Prüfung nicht bestanden',
-  interrupted: 'Der Versuch wurde abgebrochen',
-};
+export { ATTEMPT_ERROR_TEXT };
 
 export interface ProgressMapperOptions {
   /** Reads a workspace-relative text file, `null` if it does not exist or cannot be read. */
@@ -75,9 +64,10 @@ export function createProgressMapper(options: ProgressMapperOptions): ProgressMa
       emit(command === null ? 'Lauf gestartet' : `Lauf gestartet (${command})`);
     } else if (parts[0] === 'snapshots' && parts[1]?.startsWith('.tmp-') && once('tmp')) {
       emit('Arbeitsstand prüfen');
-    } else if (parts[0] === 'snapshots' && parts[1] !== undefined && SNAPSHOT_ID.test(parts[1]) && parts[2] === 'manifest.json') {
+    } else if (parts[0] === 'snapshots' && parts[1] !== undefined && SNAPSHOT_ID.test(parts[1]) && (parts.length === 2 || parts[2] === 'manifest.json')) {
+      // The snapshot folder appears by renaming a temporary one, so Windows may report only `snapshots/<id>`.
       if (once(`manifest:${parts[1]}`)) {
-        const manifest = parseJson(await options.readText(relativePath));
+        const manifest = parseJson(await options.readText(`snapshots/${parts[1]}/manifest.json`));
         const states = Array.isArray(manifest?.['fileStates']) ? manifest['fileStates'].length : 0;
         emit(`Snapshot ${parts[1]} gespeichert, ${states} Dateizustände`);
         const decisions = Array.isArray(manifest?.['filterDecisions']) ? manifest['filterDecisions'] : [];

@@ -23,14 +23,15 @@ describe('Preload: window.ipa (AK-10-04)', () => {
 
   it('stellt genau window.ipa mit den Gruppen aus §3.9 bereit und sonst nichts', () => {
     expect(Object.keys(exposed)).toEqual(['ipa']);
-    expect(Object.keys(api()).sort()).toEqual(['app', 'day', 'journal', 'notes', 'overview', 'projects', 'run', 'shell', 'snapshot', 'system']);
+    expect(Object.keys(api()).sort()).toEqual(['app', 'config', 'day', 'journal', 'notes', 'overview', 'projects', 'run', 'shell', 'snapshot', 'system']);
     expect(Object.keys(api()['projects'] ?? {}).sort()).toEqual(['list', 'onChanged', 'status']);
-    expect(Object.keys(api()['run'] ?? {}).sort()).toEqual(['cancel', 'onEvent']);
+    expect(Object.keys(api()['run'] ?? {}).sort()).toEqual(['cancel', 'onEvent', 'start', 'state']);
+    expect(Object.keys(api()['config'] ?? {})).toEqual(['scanText']);
     expect(Object.keys(api()['system'] ?? {}).sort()).toEqual(['dataRoot', 'versions']);
     expect(Object.keys(api()['app'] ?? {}).sort()).toEqual(['getState', 'setState']);
     expect(Object.keys(api()['day'] ?? {}).sort()).toEqual(['index', 'load']);
-    expect(Object.keys(api()['snapshot'] ?? {})).toEqual(['workLog']);
-    expect(Object.keys(api()['journal'] ?? {})).toEqual(['read']);
+    expect(Object.keys(api()['snapshot'] ?? {}).sort()).toEqual(['evidenceList', 'workLog']);
+    expect(Object.keys(api()['journal'] ?? {}).sort()).toEqual(['finalize', 'finals', 'read', 'remove']);
     expect(Object.keys(api()['notes'] ?? {})).toEqual(['references']);
     expect(Object.keys(api()['overview'] ?? {})).toEqual(['load']);
     expect(Object.keys(api()['shell'] ?? {}).sort()).toEqual(['copy', 'copyPath', 'open', 'openExternal', 'reveal']);
@@ -42,6 +43,10 @@ describe('Preload: window.ipa (AK-10-04)', () => {
     await a['projects']?.['list']?.();
     await a['projects']?.['status']?.('p-123456');
     await a['run']?.['cancel']?.('k1');
+    await a['run']?.['start']?.('p-123456', { name: 'doctor' });
+    await a['run']?.['state']?.('p-123456');
+    await a['config']?.['scanText']?.('p-123456', 'Text');
+    await a['snapshot']?.['evidenceList']?.('p-123456');
     await a['system']?.['versions']?.();
     await a['system']?.['dataRoot']?.();
     await a['app']?.['getState']?.();
@@ -50,6 +55,9 @@ describe('Preload: window.ipa (AK-10-04)', () => {
     await a['day']?.['index']?.('p-123456');
     await a['snapshot']?.['workLog']?.('p-123456', 'S000002');
     await a['journal']?.['read']?.('p-123456', '2026-11-26-R20261126T100000Z-ab12');
+    await a['journal']?.['finals']?.('p-123456', '2026-11-26');
+    await a['journal']?.['finalize']?.('p-123456', '2026-11-26-R20261126T100000Z-ab12');
+    await a['journal']?.['remove']?.('p-123456', 'draft', '2026-11-26-R20261126T100000Z-ab12');
     await a['notes']?.['references']?.('p-123456');
     await a['overview']?.['load']?.('p-123456');
     await a['shell']?.['open']?.('p-123456', { kind: 'journalFinalFolder' });

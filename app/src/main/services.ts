@@ -2,11 +2,16 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { StatusReport } from '../shared/cli-types';
 import type { ProjectList, ProjectsChange, Project, VersionInfo } from '../shared/types';
-import type { DayIndex, DayView, FileRef, JournalDraftView, OverviewView, ReferenceIndex, WorkLogView } from '../shared/views';
+import type { LockState, StartOutcome } from '../shared/run';
+import type { DayIndex, DayView, EvidenceGroup, FileRef, FinalFileView, JournalDraftView, OverviewView, ReferenceIndex, RemoveResult, WorkLogView } from '../shared/views';
+import type { CommandRequest } from './cli/commands';
+import { startLiveSession, type LiveSession } from './run/session';
+import { summarizeRun } from './run/summary';
 import { createAppStateStore, type AppStateStore } from './app-state';
 import { loadCliLib, type CliLib } from './cli-lib';
 import { AppError, toIpaError } from './cli/errors';
 import { noShell, type ShellPort } from './shell';
+import { createJournalFiles } from './reader/journal-files';
 import { createWorkspaceReader, type WorkspaceReader } from './reader/workspace';
 import { assertCliVersion, createRunner, readExpectedCliVersion, type Runner } from './cli/runner';
 import { resolveRuntime, type Runtime } from './cli/runtime';
@@ -52,8 +57,18 @@ export interface Services {
   loadDayIndex(repositoryId: string): Promise<ReaderResult<DayIndex>>;
   loadWorkLog(repositoryId: string, snapshotId: string): Promise<ReaderResult<WorkLogView | null>>;
   loadJournal(repositoryId: string, file: string): Promise<ReaderResult<JournalDraftView | null>>;
+  loadFinals(repositoryId: string, day: string): Promise<ReaderResult<FinalFileView[]>>;
+  /** On the user's request: copies a draft to `journal/final/` (spec §4.3). */
+  finalizeDraft(repositoryId: string, draft: string): Promise<ReaderResult<{ file: string }>>;
+  /** On the user's request: draft or final file to the recycle bin. */
+  removeJournalFile(repositoryId: string, kind: 'draft' | 'final', file: string): Promise<ReaderResult<RemoveResult>>;
   loadReferences(repositoryId: string): Promise<ReaderResult<ReferenceIndex>>;
   loadOverview(repositoryId: string): Promise<ReaderResult<OverviewView>>;
+  loadEvidenceList(repositoryId: string): Promise<ReaderResult<EvidenceGroup[]>>;
+  scanText(repositoryId: string, text: string): Promise<ReaderResult<{ detectors: string[] }>>;
+  /** Starts an action on the user's request; the only way the renderer starts a command (spec §12.1). */
+  startRun(repositoryId: string, request: CommandRequest): Promise<StartOutcome>;
+  runState(repositoryId: string): Promise<LockState>;
   openFile(repositoryId: string, ref: FileRef): Promise<ReaderResult<{ opened: boolean }>>;
   revealFile(repositoryId: string, ref: FileRef): Promise<ReaderResult<{ opened: boolean }>>;
   /** Puts the path of a file on the clipboard without handing it to the renderer. */
@@ -128,6 +143,7 @@ export async function createServices(options: ServicesOptions): Promise<Services
       return entry === undefined ? null : { repositoryId, repoPath: entry.repoPath, workspacePath: entry.workspacePath };
     },
     onLog: (entry) => log.write({ ...entry, event: `cli_${entry.event}` }),
+    summarize: summarizeRun,
   });
 
   const listeners = new Set<(change: ProjectsChange) => void>();
@@ -228,6 +244,33 @@ export async function createServices(options: ServicesOptions): Promise<Services
     });
   }
 
+  // Live lines of long runs, derived from file events in the workspace while the run is active (spec §3.5).
+  const sessions = new Map<string, LiveSession>();
+  queue.onEvent((event) => {
+    if (event.type === 'started' && event.panel) {
+      void (async () => {
+        const found = await readerOf(event.repositoryId);
+        if (found === null) return;
+        const settings = await found.reader.settings();
+        sessions.set(
+          event.runKey,
+          startLiveSession({
+            workspacePath: found.entry.workspacePath,
+            maxAnalysesPerRun: settings.maxAnalysesPerRun,
+            emit: (live) => queue.emit(live),
+            runKey: event.runKey,
+            sinceMs: Date.parse(event.startedAt),
+            ...(options.watchDebounceMs !== undefined ? { debounceMs: options.watchDebounceMs } : {}),
+          }),
+        );
+      })();
+    } else if (event.type === 'finished') {
+      const session = sessions.get(event.runKey);
+      sessions.delete(event.runKey);
+      if (session !== undefined) void session.finish(event.exitCode, event.cancelled);
+    }
+  });
+
   return {
     appState,
     log,
@@ -244,10 +287,32 @@ export async function createServices(options: ServicesOptions): Promise<Services
     loadDayIndex: (repositoryId) => withReader(repositoryId, (reader) => reader.dayIndex()),
     loadWorkLog: (repositoryId, snapshotId) => withReader(repositoryId, (reader) => reader.workLog(snapshotId)),
     loadJournal: (repositoryId, file) => withReader(repositoryId, (reader) => reader.journal(file)),
+    loadFinals: (repositoryId, day) => withReader(repositoryId, async (_reader, entry) => createJournalFiles(entry.workspacePath, shell).finals(day)),
+    async finalizeDraft(repositoryId, draft) {
+      const found = await readerOf(repositoryId);
+      if (found === null) return unknownProject;
+      const done = await createJournalFiles(found.entry.workspacePath, shell).finalize(draft);
+      return done.ok ? { ok: true, value: { file: done.file } } : { ok: false, error: { code: 'journal_file', message: done.problem } };
+    },
+    removeJournalFile: (repositoryId, kind, file) => withReader(repositoryId, async (_reader, entry) => createJournalFiles(entry.workspacePath, shell).remove(kind, file)),
     loadReferences: (repositoryId) => withReader(repositoryId, (reader) => reader.references()),
     async loadOverview(repositoryId) {
       const inputs = await overviewInputs(repositoryId);
       return withReader(repositoryId, (reader) => reader.overview(inputs.status, inputs.schedule));
+    },
+    loadEvidenceList: (repositoryId) => withReader(repositoryId, (reader) => reader.evidenceList()),
+    scanText: (repositoryId, text) => withReader(repositoryId, async (reader) => ({ detectors: await reader.scanText(text) })),
+    async startRun(repositoryId, request) {
+      // Make sure the registry is known (the renderer lists projects first, tests may not).
+      if (entries.length === 0) await readerOf(repositoryId);
+      const started = await queue.start(repositoryId, request, 'user');
+      return started.ok ? { ok: true, runKey: started.runKey } : { ok: false, reason: started.reason, message: started.message };
+    },
+    async runState(repositoryId) {
+      return {
+        own: queue.activeRuns(repositoryId).map((run) => ({ runKey: run.runKey, label: run.label, ai: run.ai, cancellable: run.cancellable, kind: run.kind })),
+        foreign: await queue.foreignLock(repositoryId).then((lock) => (lock === null ? null : { command: lock.command, startedAt: lock.startedAt })),
+      };
     },
     openFile: (repositoryId, ref) => openRef(repositoryId, ref, false),
     revealFile: (repositoryId, ref) => openRef(repositoryId, ref, true),

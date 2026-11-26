@@ -52,11 +52,11 @@ export async function buildProject(
     workspacePath: entry.workspacePath,
     workspaceMode: entry.workspaceMode,
   };
-  if (!(await fileExists(entry.repoPath))) return { ...base, timezone: null, status: 'error', hint: 'Fehler: Repository fehlt' };
-  if (!(await fileExists(entry.workspacePath))) return { ...base, timezone: null, status: 'error', hint: 'Fehler: Arbeitsbereich fehlt' };
+  if (!(await fileExists(entry.repoPath))) return { ...base, timezone: null, status: 'error', hint: 'Fehler: Repository fehlt', claudeReady: null };
+  if (!(await fileExists(entry.workspacePath))) return { ...base, timezone: null, status: 'error', hint: 'Fehler: Arbeitsbereich fehlt', claudeReady: null };
 
   const { report, failed } = await runStatus(entry);
-  if (report === null) return { ...base, timezone: null, status: 'error', hint: failed ? 'Fehler: nicht lesbar' : 'Fehler' };
+  if (report === null) return { ...base, timezone: null, status: 'error', hint: failed ? 'Fehler: nicht lesbar' : 'Fehler', claudeReady: null };
   const derived = deriveStatus(report);
-  return { ...base, timezone: report.timezone, ...derived };
+  return { ...base, timezone: report.timezone, ...derived, claudeReady: report.claude === null ? null : report.claude.ok };
 }

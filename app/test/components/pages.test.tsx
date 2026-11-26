@@ -474,7 +474,7 @@ describe('Journal (AK-10-27)', () => {
     expect(api.shell.copyPath).toHaveBeenCalledWith('alpha-111111', { kind: 'journalDraft', file: NEWEST });
     await user.click(screen.getByRole('button', { name: 'Ordner öffnen' }));
     expect(api.shell.open).toHaveBeenLastCalledWith('alpha-111111', { kind: 'journalFinalFolder' });
-    expect(screen.getByText(/Die App schreibt nie dorthin/)).toBeInTheDocument();
+    expect(screen.getByText(/Das CLI schreibt dort nie\. Die App legt dort nur auf deinen Klick eine Kopie des Entwurfs an und überschreibt nie etwas/)).toBeInTheDocument();
   });
 
   it('springt von einem Notiz-Chip im Journal zur Notiz im Tab Notizen', async () => {
@@ -485,13 +485,14 @@ describe('Journal (AK-10-27)', () => {
     expect(screen.getByRole('button', { name: /Pair-Programming/ })).toHaveAttribute('aria-expanded', 'true');
   });
 
-  it('zeigt den leeren Zustand ohne Erzeugen-Schaltflächen (kommen mit den Aktionen)', async () => {
+  it('zeigt den leeren Zustand mit den Aktionen Journal erzeugen und Ohne KI erzeugen', async () => {
     const user = userEvent.setup();
     await mount({ days: { [DAY]: emptyDay(DAY) } });
     await user.click(await screen.findByRole('tab', { name: /Journal/ }));
     expect(await screen.findByText('Noch kein Journal für diesen Tag')).toBeInTheDocument();
     expect(screen.getByText(/Die Endfassung entsteht von Hand unter journal\/final\//)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Journal erzeugen/ })).toBeNull();
+    expect(screen.getByRole('button', { name: /Journal erzeugen.*Claude/ })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Ohne KI erzeugen' })).toBeEnabled();
   });
 
   it('meldet eine nicht lesbare Entwurfsdatei, statt abzustürzen', async () => {

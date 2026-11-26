@@ -1,24 +1,35 @@
+import { useState } from 'react';
 import { EXIT_CODE_MESSAGES } from '../../shared/messages';
+import type { LockState } from '../../shared/run';
 import type { Project } from '../../shared/types';
 import { Banner, Button, SplitButton } from '../components';
+import type { AppActions } from '../store/appStore';
+import { lockReason, unavailableReason } from '../store/locks';
 import { StatusDot } from './Sidebar';
 
 export interface ProjectHeaderProps {
   project: Project;
-  /** A run is active in this project: Jetzt erfassen is locked (spec §3.7). */
-  runActive: boolean;
-  onNewNote: () => void;
+  actions: AppActions;
+  locks: LockState | undefined;
 }
 
-const NOT_AVAILABLE = 'Diese Aktion ist in dieser Version noch nicht verfügbar.';
-const RUN_ACTIVE = 'Ein Lauf ist aktiv. Jetzt erfassen ist gesperrt, bis er endet.';
-
 /**
- * Name, main action and side action (spec §8.1). Starting a run follows with the actions package, so the
- * run buttons are present and disabled, never silently active.
+ * Name, main action and side action (spec §8.1). "Jetzt erfassen" calls Claude and is marked as such; "Nur aufnehmen"
+ * does not. Locked buttons stay visible and say why (spec §3.7).
  */
-export function ProjectHeader({ project, runActive, onNewNote }: ProjectHeaderProps) {
+export function ProjectHeader({ project, actions, locks }: ProjectHeaderProps) {
   const halted = project.status === 'halt';
+  const [notice, setNotice] = useState<string | null>(null);
+  const captureReason = unavailableReason('capture', locks, project.claudeReady);
+  const noAiReason = lockReason('captureNoAi', locks);
+  const haltReason = lockReason('baseline', locks);
+
+  const capture = async (mode: 'full' | 'noAnalysis'): Promise<void> => {
+    setNotice(null);
+    const result = await actions.startRun(project.repositoryId, { name: 'capture', mode });
+    if (!result.started) setNotice(result.message);
+  };
+
   return (
     <>
       <header className="header">
@@ -27,24 +38,45 @@ export function ProjectHeader({ project, runActive, onNewNote }: ProjectHeaderPr
           <span>{project.repositoryId}</span>
         </h1>
         <div className="header__actions">
-          <Button variant="primary" icon="plus" disabled disabledReason={NOT_AVAILABLE} onClick={onNewNote}>
+          <Button variant="primary" icon="plus" onClick={() => actions.requestNewNote()}>
             Neue Notiz <span className="kbd">Strg+N</span>
           </Button>
           <SplitButton
             ai
             label="Jetzt erfassen"
-            disabled
-            disabledReason={runActive ? RUN_ACTIVE : NOT_AVAILABLE}
-            onClick={() => undefined}
-            items={[{ id: 'no-analysis', label: 'Nur aufnehmen', onSelect: () => undefined, disabled: true }]}
+            mainDisabled={captureReason !== null}
+            menuDisabled={noAiReason !== null}
+            {...(captureReason !== null ? { disabledReason: captureReason } : {})}
+            onClick={() => void capture('full')}
+            items={[{ id: 'no-analysis', label: 'Nur aufnehmen', disabled: noAiReason !== null, onSelect: () => void capture('noAnalysis') }]}
           />
         </div>
       </header>
-      {halted ? (
+      {halted || notice !== null || project.claudeReady === false ? (
         <div className="header__banners">
-          <Banner level="err" title={EXIT_CODE_MESSAGES[4]?.title ?? 'Halt'}>
-            {EXIT_CODE_MESSAGES[4]?.text}
-          </Banner>
+          {halted ? (
+            <Banner
+              level="err"
+              title={EXIT_CODE_MESSAGES[4]?.title ?? 'Halt'}
+              actions={
+                <Button variant="primary" disabled={haltReason !== null} {...(haltReason !== null ? { disabledReason: haltReason } : {})} onClick={() => actions.openDialog({ kind: 'baseline', force: false })}>
+                  Neuen Ausgangspunkt setzen
+                </Button>
+              }
+            >
+              {EXIT_CODE_MESSAGES[4]?.text}
+            </Banner>
+          ) : null}
+          {project.claudeReady === false ? (
+            <Banner level="warn" title="Claude ist nicht bereit" actions={<Button onClick={() => void actions.check(project.repositoryId)}>Prüfen</Button>}>
+              Aufnehmen funktioniert weiter, Analysen und Journal mit KI sind gesperrt.
+            </Banner>
+          ) : null}
+          {notice !== null ? (
+            <Banner level="info" title="Nicht gestartet" actions={<Button variant="ghost" onClick={() => setNotice(null)}>Schliessen</Button>}>
+              {notice}
+            </Banner>
+          ) : null}
         </div>
       ) : null}
     </>

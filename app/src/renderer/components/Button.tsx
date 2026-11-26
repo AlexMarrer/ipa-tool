@@ -38,13 +38,17 @@ export interface SplitButtonProps {
   variant?: ButtonProps['variant'];
   disabled?: boolean;
   disabledReason?: string;
+  /** Disables only the menu, for example when the main action is unavailable but the variants are not. Defaults to `disabled`. */
+  menuDisabled?: boolean;
+  /** The main button only: locked while the menu stays usable. */
+  mainDisabled?: boolean;
   onClick: () => void;
   items: SplitMenuItem[];
   menuLabel?: string;
 }
 
 /** Main action plus a menu with variants, for example "Jetzt erfassen" and "Nur aufnehmen" (spec §8.7). */
-export function SplitButton({ label, ai = false, variant = 'secondary', disabled, disabledReason, onClick, items, menuLabel = 'Weitere Optionen' }: SplitButtonProps) {
+export function SplitButton({ label, ai = false, variant = 'secondary', disabled, disabledReason, menuDisabled, mainDisabled, onClick, items, menuLabel = 'Weitere Optionen' }: SplitButtonProps) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLSpanElement>(null);
 
@@ -66,7 +70,7 @@ export function SplitButton({ label, ai = false, variant = 'secondary', disabled
 
   return (
     <span className="split" ref={root}>
-      <Button variant={variant} ai={ai} disabled={disabled} {...(disabledReason !== undefined ? { disabledReason } : {})} onClick={onClick}>
+      <Button variant={variant} ai={ai} disabled={disabled === true || mainDisabled === true} {...(disabledReason !== undefined ? { disabledReason } : {})} onClick={onClick}>
         {label}
       </Button>
       <button
@@ -75,7 +79,7 @@ export function SplitButton({ label, ai = false, variant = 'secondary', disabled
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label={menuLabel}
-        disabled={disabled}
+        disabled={menuDisabled ?? disabled}
         onClick={() => setOpen((value) => !value)}
         onKeyDown={(event) => {
           if (event.key === 'ArrowDown') {

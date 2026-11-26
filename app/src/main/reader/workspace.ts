@@ -9,6 +9,7 @@ import type {
   DayIndex,
   DayView,
   DraftView,
+  EvidenceGroup,
   FileRef,
   FileState,
   GapView,
@@ -22,6 +23,7 @@ import type {
   SnapshotView,
   TimelineEntry,
   WorkLogView,
+  WorkspaceSettings,
 } from '../../shared/views';
 import { OPEN_STATUSES } from '../../shared/views';
 import type { SecretScanner, SecretsConfig } from '../cli-lib';
@@ -29,6 +31,7 @@ import type { SchemaValidator } from '../cli/validator';
 import { ATTEMPT_ERROR_TEXT } from '../run/progress';
 import { countStatuses, countsEqual, deriveSnapshotStatus, failedAttemptsSinceRetry, type AnalysisCounts, type AttemptOutcomeName } from './analysis-status';
 import { exists, listDir, readJson, readJsonl, readText } from './files';
+import { FINAL_NAME } from './journal-files';
 import { summarizeTime } from './time-summary';
 
 const SNAPSHOT_ID = /^S\d{6}$/;
@@ -87,7 +90,7 @@ interface JournalRecord {
 
 interface ConfigData {
   timezone: string;
-  claude: { maxAttemptsPerSnapshot: number };
+  claude: { maxAttemptsPerSnapshot: number; maxAnalysesPerRun?: number };
   secrets: SecretsConfig;
 }
 
@@ -119,6 +122,12 @@ export interface WorkspaceReader {
   resolveFile(ref: FileRef): Promise<string | null>;
   /** Counts derived from files, for the comparison with `status --json` (AK-10-18). */
   derivedCounts(): Promise<{ counts: AnalysisCounts; openIds: string[]; withheldNotes: number }>;
+  /** All evidence of all snapshots, grouped by snapshot, for the note dialog (spec §5.8). */
+  evidenceList(): Promise<EvidenceGroup[]>;
+  /** Time zone and run limit of the project. */
+  settings(): Promise<WorkspaceSettings>;
+  /** Names of the detectors that hit in `text`, never the value (spec §8.9, I-12). */
+  scanText(text: string): Promise<string[]>;
 }
 
 const secretText = (hits: boolean, value: string): string => (hits ? MASKED : value);
@@ -707,6 +716,10 @@ export function createWorkspaceReader(options: WorkspaceReaderOptions): Workspac
         if (!DRAFT_FILE.test(ref.file)) return null;
         target = path.join(ws, 'journal', 'drafts', `${ref.file}.md`);
         break;
+      case 'journalFinal':
+        if (!FINAL_NAME.test(ref.file) || ref.file.includes('..')) return null;
+        target = path.join(ws, 'journal', 'final', ref.file);
+        break;
       case 'journalFinalFolder':
         target = path.join(ws, 'journal', 'final');
         break;
@@ -731,7 +744,64 @@ export function createWorkspaceReader(options: WorkspaceReaderOptions): Workspac
     return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative)) ? real : null;
   }
 
-  return { day, dayIndex, workLog, drafts: async (dayValue) => (await loadDrafts((await loadConfig()).config.timezone)).filter((draft) => draft.day === dayValue), journal, references, overview, resolveFile, derivedCounts };
+  const KIND_LABEL: Record<string, string> = {
+    commit_message: 'Commit',
+    commit_diff: 'Commit-Diff',
+    staged_diff: 'Staged-Diff',
+    unstaged_diff: 'Unstaged-Diff',
+    state_delta: 'Datei-Zustand',
+    test_report: 'Testbericht',
+  };
+  const OMIT_LABEL: Record<string, string> = {
+    excluded: 'ausgeschlossen',
+    secret_suspected: 'Secret-Verdacht',
+    binary: 'binär',
+    file_too_large: 'Datei zu gross',
+    snapshot_limit: 'Snapshot-Limit',
+    unreadable: 'nicht lesbar',
+    symlink: 'Verweis',
+  };
+
+  async function evidenceList(): Promise<EvidenceGroup[]> {
+    const ctx = await context();
+    return ctx.snapshots.map(({ manifest, view }) => ({
+      snapshotId: view.id,
+      title: `${view.id} · ${view.kind === 'baseline' ? 'Ausgangslage' : ANALYSIS_STATUS[view.status].label}`,
+      items: manifest.evidence.map((item) => ({
+        ref: `${view.id}:${item.id}`,
+        id: item.id,
+        kind: item.kind,
+        kindLabel: KIND_LABEL[item.kind] ?? item.kind,
+        path: item.path,
+        omitted: item.omitted == null ? null : `ausgelassen (${OMIT_LABEL[item.omitted.reason] ?? item.omitted.reason})`,
+      })),
+    }));
+  }
+
+  async function settings(): Promise<WorkspaceSettings> {
+    const { config } = await loadConfig();
+    return { timezone: config.timezone, maxAnalysesPerRun: config.claude.maxAnalysesPerRun ?? 5 };
+  }
+
+  async function scanText(text: string): Promise<string[]> {
+    const { config } = await loadConfig();
+    return [...new Set(options.createScanner(config.secrets).scan(text).map((hit) => hit.detector))];
+  }
+
+  return {
+    day,
+    dayIndex,
+    workLog,
+    drafts: async (dayValue) => (await loadDrafts((await loadConfig()).config.timezone)).filter((draft) => draft.day === dayValue),
+    journal,
+    references,
+    overview,
+    resolveFile,
+    derivedCounts,
+    evidenceList,
+    settings,
+    scanText,
+  };
 }
 
 export type { SnapshotStatus };

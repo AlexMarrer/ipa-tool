@@ -12,10 +12,12 @@ export interface DayCalendarProps {
   index: DayIndex | null;
   onSelect: (day: string) => void;
   onClose: () => void;
+  /** Days after today are shown but not selectable (note dialog, types other than planning). */
+  disableFuture?: boolean;
 }
 
 /** Month grid with marks for "day with data" and "day with warning" (spec §8.3). Future days are selectable. */
-export function DayCalendar({ selected, today, index, onSelect, onClose }: DayCalendarProps) {
+export function DayCalendar({ selected, today, index, onSelect, onClose, disableFuture = false }: DayCalendarProps) {
   const [month, setMonth] = useState(() => ({ year: Number(selected.slice(0, 4)), month: Number(selected.slice(5, 7)) - 1 }));
   const marks = new Map((index?.days ?? []).map((entry) => [entry.day, entry]));
   const first = new Date(Date.UTC(month.year, month.month, 1));
@@ -63,6 +65,7 @@ export function DayCalendar({ selected, today, index, onSelect, onClose }: DayCa
               className={['cal-day', day === today ? 'cal-day--today' : ''].filter(Boolean).join(' ')}
               aria-pressed={day === selected}
               aria-label={parts.join(', ')}
+              disabled={disableFuture && day > today}
               onClick={() => onSelect(day)}
             >
               {index0 + 1}

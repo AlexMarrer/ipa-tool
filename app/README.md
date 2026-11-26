@@ -4,13 +4,16 @@ Die Desktop-App ist die grafische Oberfläche für das Kommandozeilenwerkzeug `i
 
 Falls du das Projekt zum ersten Mal siehst: Lies zuerst das [README im Wurzelordner](../README.md). Es erklärt, was der IPA Assistant ist, und wie du `ipa` installierst. Diese Datei beschreibt nur die App.
 
-**Stand: Paket 11 von 14 (App Lesen).** Die App ist noch nicht fertig, aber du kannst mit ihr lesen, was `ipa` gesammelt hat:
+**Stand: Paket 12 von 14 (App Aktionen).** Die App ist noch nicht fertig, aber du kannst mit ihr lesen, was `ipa` gesammelt hat, und die täglichen Aktionen auslösen:
 
-- **Übersicht** eines Projekts: letzter Lauf, Analyse-Stand, offene und zurückgehaltene Inhalte, Zeitplan-Kurzstatus, die letzten Tage, ein roter Banner bei einem Halt und eine Warnung, wenn Claude nicht bereit ist.
+- **Übersicht** eines Projekts: letzter Lauf, Analyse-Stand, offene und zurückgehaltene Inhalte, Zeitplan-Kurzstatus, die letzten Tage, ein roter Banner bei einem Halt (mit **Neuen Ausgangspunkt setzen**) und eine Warnung, wenn Claude nicht bereit ist (mit **Prüfen**).
 - **Tag** mit Kalender, Zusammenfassung, Hinweisen und vier Tabs: Zeitstrahl, **Work-Logs** (mit Etiketten `KI-Entwurf`, `ohne KI`, `vom Tool`), **Notizen** und **Journal-Entwürfe**. Verweise wie `[S000002:E003]` oder Notiz-IDs sind klickbar.
-- Änderungen aus dem Terminal erscheinen ohne Neustart (gemessen: gut eine Sekunde).
+- **Neue Notiz** (`Strg+N`, speichern mit `Strg+Enter`): sechs Arten, Tag, Zeit als Dauer oder Von–bis, Verzögerung, Belege. Die Bestätigung zeigt Art, Tag und Zeit, nie den Text.
+- **Jetzt erfassen** (mit dem Funken-Symbol: ruft Claude auf) und **Nur aufnehmen** (ohne Claude). Die Laufanzeige am unteren Rand zeigt Laufzeit, die Live-Ausgabe aus den Dateien des Laufs und das Ergebnis in Klartext. Ein Lauf lässt sich mit Rückfrage abbrechen.
+- **Journal erzeugen** und **Ohne KI erzeugen** für den angezeigten Tag, danach **Als Endfassung übernehmen** und **Löschen** (Papierkorb) für Entwürfe und Endfassungen, **Erneut versuchen** (nur bei erschöpften Analysen) und **Überspringen** mit Pflichtgrund.
+- Änderungen aus dem Terminal erscheinen ohne Neustart (gemessen: gut eine Sekunde). Läuft gerade ein Lauf (auch ein geplanter oder einer aus dem Terminal), sind die Schaltflächen, die Claude aufrufen oder schreiben, gesperrt und sagen im Tooltip warum.
 
-Noch leere Rahmen sind Zeitplan, Konfiguration, System und Projekt hinzufügen. „Neue Notiz“, „Jetzt erfassen“ und alle anderen Aktionen sind gesperrt; sie kommen mit den Paketen 12 bis 14. Die App **ändert beim Lesen nichts** und ruft Claude nie von selbst auf. Einen Installer kannst du bauen (unsigniert, siehe [Als Programm installieren](#als-programm-installieren-mit-desktop-link)); er ist noch nicht auf einem sauberen Windows abgenommen.
+Noch leere Rahmen sind Zeitplan, Konfiguration, System und Projekt hinzufügen; sie kommen mit den Paketen 13 und 14. Die App ruft Claude **nur auf, wenn du eine Schaltfläche mit dem Funken-Symbol drückst**, und ändert das Repository nie. Einen Installer kannst du bauen (unsigniert, siehe [Als Programm installieren](#als-programm-installieren-mit-desktop-link)); er ist noch nicht auf einem sauberen Windows abgenommen.
 
 ## Inhalt
 
@@ -84,11 +87,11 @@ Im Wurzelordner:
 
 ```powershell
 npm run app:typecheck   # Typprüfung
-npm run app:test        # Unit- und Komponententests (dauert etwa 15 Sekunden)
+npm run app:test        # Unit- und Komponententests (dauert etwa eine Minute; die Aktionstests starten das echte CLI)
 npm run app:build       # baut CLI und App nach app/out/
 ```
 
-Für den Start-Test der echten App (öffnet kurz ein Fenster), nach `app:build`:
+Für die Tests der echten App (öffnen kurz Fenster; sie bedienen Notiz-Dialog, Erfassen, Abbrechen und Halt gegen das echte CLI), nach `app:build`:
 
 ```powershell
 npm run test:e2e --prefix app
@@ -138,13 +141,14 @@ Die Tests starten das echte CLI aus dem Wurzel-`dist/`. Fehlt es, baut das globa
 src/shared/     Typen der IPC-Schnittstelle, Meldungstexte, Tagesrechnung (kein Node, kein DOM)
 src/main/       Main-Prozess: Fenster und Sicherheit, Protokoll app://, IPC, Dienste
   cli/          Laufzeit (resolveRuntime), Befehle, Runner, Hüllenprüfung gegen die Schemas des CLI
-  run/          Sperren pro Projekt, zentrale Warteschlange, Abbruch des Prozessbaums, Live-Zeilen
+  run/          Sperren pro Projekt, zentrale Warteschlange, Abbruch des Prozessbaums, Live-Zeilen, Zusammenfassung eines Laufs
   reader/       Registry, Projektstatus und der Reader der Arbeitsbereiche (Tag, Snapshots, Notizen, Journale)
   watch/        Dateibeobachtung (fs.watch mit Entprellung und Abfrage alle 10 s)
 src/preload/    window.ipa: die einzige Schnittstelle des Renderers
 src/renderer/   React: Tokens (Hell/Dunkel), Basiskomponenten, Layout, Store, Zustandsgalerie
   markdown/     Darstellung von Work-Logs und Journalen: sicher, mit Etiketten und Referenz-Chips
   pages/        Übersicht und Tag (Zeitstrahl, Work-Logs, Notizen, Journal)
+  dialogs/      Notiz-Dialog (Formularlogik in noteForm.ts), Ausgangspunkt, Überspringen, Erneut versuchen, Prüfen
 test/           unit, reader, components (jsdom), e2e (Playwright), helpers
 scripts/        write-cli-version, stage-cli, fetch-node, after-pack (Fuses)
 ```
@@ -213,8 +217,10 @@ Neue Abhängigkeiten ausser den hier genannten brauchen eine Begründung in dies
 
 - Windows 11 ist die einzige vorgesehene Plattform; Windows 10 ist nicht geprüft.
 - Die Sichtprüfung gegen die Artboards des Designs (Hell und Dunkel) und die Bedienung mit Screenreader sind manuell und noch nicht erfolgt (AK-10-80).
-- `Neue Notiz` und `Jetzt erfassen` sind im Kopf vorhanden, aber gesperrt, bis die Aktionen (Paket 12) umgesetzt sind. Der Halt-Banner nennt den Grund, bietet aber noch keinen neuen Ausgangspunkt an.
-- Die App zeigt keine Diffs und bearbeitet nichts: Journal-Entwürfe lassen sich öffnen und kopieren, die Endfassung schreibst du von Hand nach `journal/final/`.
+- Ein echter Lauf mit Claude aus der App (Jetzt erfassen, Journal erzeugen) ist noch nicht von Hand geprüft, weil er Kontingent verbraucht. Die automatischen Tests nutzen ein gespieltes Claude. Probiere es einmal mit einem kleinen Projekt aus.
+- Notiztexte sind auf 8 000 Zeichen begrenzt (Windows verträgt als Befehlszeilenargument rund 32 000).
+- Die Lauf-ID eines laufenden Befehls erscheint erst nach dem Ende.
+- Die App zeigt keine Diffs und bearbeitet keine Texte: Journal-Entwürfe lassen sich öffnen und kopieren. **Als Endfassung übernehmen** kopiert einen Entwurf auf Klick nach `journal/final/<Tag>.md` (ersetzt nie eine Datei), die Überarbeitung machst du in deinem Editor. **Löschen** (Entwurf oder Endfassung) verschiebt nach Rückfrage in den Windows-Papierkorb; endgültig löscht die App nie. Das ist die einzige Stelle, an der die App selbst Dateien im Arbeitsbereich anlegt; das CLI schreibt nie nach `journal/final/`.
 - Zurückgehaltene Notizen (möglicher Zugangswert) erscheinen mit Detektor, aber ohne den betroffenen Text.
 - Der Installer ist unsigniert (Windows-SmartScreen-Warnung), hat das Standard-Icon von Electron und wurde noch nicht auf einem sauberen Windows installiert. Die Abnahme (AK-10-80) und der Test der CLI-Testsuite mit der mitgelieferten `node.exe` (AK-10-76) gehören zu Paket 14.
 - Ein Playwright-Test gegen die gepackte App ist nicht möglich: Die Fuses schalten das Debugging ab, das Playwright zum Verbinden braucht. Geprüft wird die gepackte App deshalb von Hand.

@@ -57,3 +57,12 @@
 .note-filter button[aria-pressed='true'] { background: var(--fg); color: var(--bg); }
 .note-row { border-bottom: 1px solid var(--line); }
 .note-row--hit { background: var(--accsoft); }
+.note-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.note-tile { display: flex; align-items: center; gap: 6px; justify-content: center; min-height: 40px; border: 1px solid var(--line); border-radius: var(--radius-field); background: var(--dlg-surface); cursor: pointer; font: inherit; color: inherit; }
+.note-tile--on { background: var(--accsoft); border-color: var(--acctx); }
+.note-time { border: 1px solid var(--line); border-radius: var(--radius-field); padding: 10px 12px; display: grid; gap: 10px; }
+.note-time legend { padding: 0 6px; font-weight: 500; }
+.evidence-list { max-height: 220px; overflow: auto; border: 1px solid var(--line); border-radius: var(--radius-field); padding: 6px 10px; }
+.evidence-group { border: 0; margin: 0 0 8px; padding: 0; }
+.evidence-group legend { font-weight: 500; padding: 0; margin-bottom: 4px; }
+.evidence-row { display: flex; gap: 8px; align-items: center; padding: 2px 0; }

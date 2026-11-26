@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import type { DayView, NoteType, NoteView, ReferenceIndex } from '../../../shared/views';
-import { Banner, Chip, ContentLabel, EmptyState, Icon, RefChip, type IconName } from '../../components';
+import { Banner, Button, Chip, ContentLabel, EmptyState, Icon, RefChip, type IconName } from '../../components';
 import { BASIS_LABEL, NOTE_TYPES, NOTE_TYPE_LABEL, noteFigure, noteTitle, timeDetail } from '../format';
 import { jumpToReference, usePageEnv } from '../env';
 
-const ICON: Record<NoteType, IconName> = { general: 'info', activity: 'clock', problem: 'warning', decision: 'branch', insight: 'bulb', plan: 'calendar' };
+export const NOTE_ICON: Record<NoteType, IconName> = { general: 'info', activity: 'clock', problem: 'warning', decision: 'branch', insight: 'bulb', plan: 'calendar' };
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -90,6 +90,11 @@ export function NotesTab({ view, references }: NotesTabProps) {
         <EmptyState
           title="Keine Notizen an diesem Tag"
           text="Notizen halten Tätigkeiten, Probleme und Entscheidungen fest. Notizen fliessen in die Analyse und das Journal ein. Notizen mit möglichem Zugangsdatum werden zurückgehalten."
+          action={
+            <Button variant="primary" icon="plus" onClick={() => env.actions.requestNewNote(view.day)}>
+              Neue Notiz
+            </Button>
+          }
         />
       </div>
     );
@@ -97,6 +102,11 @@ export function NotesTab({ view, references }: NotesTabProps) {
 
   return (
     <div className="stack">
+      <div className="row">
+        <Button variant="primary" icon="plus" onClick={() => env.actions.requestNewNote(view.day)}>
+          Neue Notiz
+        </Button>
+      </div>
       <p className="muted" style={{ margin: 0 }}>
         Notizen sind in V1 nicht änderbar.{counts.has('plan') ? ' Planung zählt nicht zur Zeit, sie wird getrennt als Geplant gezeigt.' : ''}
       </p>
@@ -129,7 +139,7 @@ export function NotesTab({ view, references }: NotesTabProps) {
                 }
               >
                 <span className="tl-time">{note.displayTime ?? '–'}</span>
-                <Icon name={ICON[note.type]} title={NOTE_TYPE_LABEL[note.type]} />
+                <Icon name={NOTE_ICON[note.type]} title={NOTE_TYPE_LABEL[note.type]} />
                 <span>
                   {noteTitle(note.text)}{' '}
                   <Chip>{NOTE_TYPE_LABEL[note.type]}</Chip>{' '}

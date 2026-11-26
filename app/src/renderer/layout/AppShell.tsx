@@ -1,7 +1,9 @@
 import { useCallback } from 'react';
 import type { IpaApi } from '../../shared/ipc';
 import type { Page } from '../../shared/types';
+import { todayIn } from '../../shared/dates';
 import { Banner, Button, EmptyState, ErrorBoundary, LoadingSkeleton } from '../components';
+import { DialogHost } from '../dialogs/DialogHost';
 import { DayPage } from '../pages/day/DayPage';
 import { PageEnvProvider } from '../pages/env';
 import { OverviewPage } from '../pages/overview/OverviewPage';
@@ -9,7 +11,7 @@ import { PlaceholderPage } from '../pages/pages';
 import type { AppStore } from '../store/appStore';
 import { useStoreState } from '../store/createStore';
 import { ProjectHeader } from './ProjectHeader';
-import { RunPanel } from './RunPanel';
+import { RunPanel, type RunTarget } from './RunPanel';
 import { SectionNav } from './SectionNav';
 import { Sidebar } from './Sidebar';
 import { useShortcuts } from './useShortcuts';
@@ -36,6 +38,13 @@ export function AppShell({ app, api }: AppShellProps) {
   });
 
   const run = project === null ? undefined : state.runs[project.repositoryId];
+  const locks = project === null ? undefined : state.locks[project.repositoryId];
+  const goTo = (target: RunTarget): void => {
+    if (project === null) return;
+    const day = selection.day ?? todayIn(project.timezone);
+    if (target.tab === 'journal') actions.openDay(target.day ?? day, 'journal');
+    else actions.openDay(day, 'workLogs', target.snapshotId === null ? {} : { snapshotId: target.snapshotId });
+  };
 
   return (
     <div className="shell">
@@ -49,7 +58,7 @@ export function AppShell({ app, api }: AppShellProps) {
       <div className="content">
         {project !== null && onProjectPage ? (
           <>
-            <ProjectHeader project={project} runActive={run !== undefined && run.finished === null} onNewNote={actions.requestNewNote} />
+            <ProjectHeader project={project} actions={actions} locks={locks} />
             <SectionNav page={selection.page} onSelect={actions.selectPage} />
           </>
         ) : null}
@@ -87,7 +96,7 @@ export function AppShell({ app, api }: AppShellProps) {
               </Banner>
             ) : (
               <PageEnvProvider
-                value={{ api, repositoryId: project.repositoryId, timezone: project.timezone, dataVersion: state.dataVersion, actions, focus: state.focus }}
+                value={{ api, repositoryId: project.repositoryId, timezone: project.timezone, dataVersion: state.dataVersion, actions, focus: state.focus, locks, claudeReady: project.claudeReady }}
               >
                 {selection.page === 'overview' ? (
                   <OverviewPage />
@@ -103,11 +112,14 @@ export function AppShell({ app, api }: AppShellProps) {
         {project !== null && onProjectPage ? (
           <RunPanel
             run={run}
+            foreign={locks?.foreign ?? null}
             timezone={project.timezone}
             onCancel={(runKey) => void api.run.cancel(runKey)}
             onDismiss={() => actions.dismissRun(project.repositoryId)}
+            onGoTo={goTo}
           />
         ) : null}
+        {project !== null ? <DialogHost api={api} actions={actions} project={project} dialog={state.dialog} day={selection.day} /> : null}
       </div>
     </div>
   );

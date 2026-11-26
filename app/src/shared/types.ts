@@ -1,4 +1,5 @@
 /** Types shared by main, preload and renderer (spec §3.9, §5.1). Pure data, no Node or DOM types. */
+import type { RunSummary } from './run';
 
 export type IpaError = { code: string; message: string; details?: string };
 export type IpaResult<T> = { ok: true; value: T } | { ok: false; error: IpaError };
@@ -16,6 +17,8 @@ export interface Project {
   status: ProjectStatus;
   /** Short line next to the status dot (spec §5.1), empty for `ok`. */
   hint: string;
+  /** Claude is ready / not ready / never checked, from `status --json`; drives the warning in the header. */
+  claudeReady: boolean | null;
 }
 
 export type RegistryState = 'ok' | 'missing' | 'invalid' | 'unreadable';
@@ -54,7 +57,17 @@ export interface LiveLine {
 }
 
 export type RunEvent =
-  | { type: 'started'; runKey: string; repositoryId: string; label: string; cancellable: boolean; ai: boolean; startedAt: string }
+  | {
+      type: 'started';
+      runKey: string;
+      repositoryId: string;
+      label: string;
+      cancellable: boolean;
+      ai: boolean;
+      /** Long runs show in the run panel; short commands (note, skip, baseline, doctor) report to their dialog. */
+      panel: boolean;
+      startedAt: string;
+    }
   | { type: 'live'; runKey: string; line: LiveLine }
   | {
       type: 'finished';
@@ -65,6 +78,7 @@ export type RunEvent =
       /** Exit code 3 is a notice, not an error (spec §3.7). */
       notice: 'lock_held' | null;
       failure: IpaError | null;
+      summary: RunSummary | null;
     };
 
 export type ProjectsChange = { repositoryId: string | null; reason: 'registry' | 'workspace' | 'poll' };

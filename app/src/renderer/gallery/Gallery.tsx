@@ -23,6 +23,7 @@ import {
   Tooltip,
 } from '../components';
 import { StatusDot } from '../layout/Sidebar';
+import { ActionStates } from './ActionStates';
 import { PageStates } from './PageStates';
 
 /**
@@ -200,6 +201,7 @@ export function GalleryContent() {
         ))}
       </Section>
       <PageStates />
+      <ActionStates />
     </div>
   );
 }

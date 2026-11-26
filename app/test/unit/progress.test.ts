@@ -22,6 +22,13 @@ describe('Live-Zeilen aus Dateiereignissen (spec §3.5)', () => {
     ]);
   });
 
+  it('erkennt den Snapshot auch, wenn nur der umbenannte Ordner gemeldet wird', async () => {
+    const m = mapper({ 'snapshots/S000007/manifest.json': JSON.stringify({ fileStates: [1, 2], filterDecisions: [] }) });
+    expect(texts(await m.handlePath('snapshots/S000007', at(0)))).toEqual(['Snapshot S000007 gespeichert, 2 Dateizustände', 'Geheimnisprüfung: keine Verdachtsfälle']);
+    // The folder event and the file event describe the same snapshot: reported once.
+    expect(await m.handlePath('snapshots/S000007/manifest.json', at(1))).toEqual([]);
+  });
+
   it('meldet fehlende Verdachtsfälle', async () => {
     const m = mapper({ 'snapshots/S000002/manifest.json': JSON.stringify({ fileStates: [1], filterDecisions: [] }) });
     expect(texts(await m.handlePath('snapshots/S000002/manifest.json', at(0)))).toContain('Geheimnisprüfung: keine Verdachtsfälle');

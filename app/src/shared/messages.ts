@@ -107,6 +107,21 @@ export const EXIT_CODE_MESSAGES: Record<number, { title: string; text: string; l
   },
 };
 
+/** Plain German for `outcome.json › errorCode` of an attempt (spec §9.3). */
+export const ATTEMPT_ERROR_TEXT: Record<string, string> = {
+  not_found: 'Claude wurde nicht gefunden',
+  not_executable: 'Claude lässt sich nicht starten',
+  timeout: 'Zeitüberschreitung beim KI-Schritt',
+  nonzero_exit: 'Claude wurde mit einem Fehler beendet',
+  invalid_envelope: 'Die Antwort von Claude war nicht auswertbar',
+  missing_structured_output: 'Die Antwort von Claude war nicht auswertbar',
+  error_result: 'Claude meldete einen Fehler',
+  schema_invalid: 'Die Antwort von Claude hat die Prüfung nicht bestanden',
+  evidence_invalid: 'Die Antwort von Claude hat die Prüfung nicht bestanden',
+  rule_violation: 'Die Antwort von Claude hat die Prüfung nicht bestanden',
+  interrupted: 'Der Versuch wurde abgebrochen',
+};
+
 /** Failures of the app itself, not exit codes of the CLI (spec §3.4). */
 export const APP_ERROR_MESSAGES = {
   runtime_missing: 'Die mitgelieferte CLI-Laufzeit fehlt oder ist beschädigt. Installiere die App neu.',

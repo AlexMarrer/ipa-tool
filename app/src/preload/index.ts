@@ -17,8 +17,13 @@ const api: IpaApi = {
     onChanged: (listener) => subscribe<ProjectsChange>(IPC_CHANNELS.projectsChanged, listener),
   },
   run: {
+    start: (repositoryId, input) => ipcRenderer.invoke(IPC_CHANNELS.runStart, { repositoryId, input }),
+    state: (repositoryId) => ipcRenderer.invoke(IPC_CHANNELS.runState, repositoryId),
     cancel: (runKey) => ipcRenderer.invoke(IPC_CHANNELS.runCancel, runKey),
     onEvent: (listener) => subscribe<RunEvent>(IPC_CHANNELS.runEvent, listener),
+  },
+  config: {
+    scanText: (repositoryId, text) => ipcRenderer.invoke(IPC_CHANNELS.configScanText, { repositoryId, text }),
   },
   system: {
     versions: () => ipcRenderer.invoke(IPC_CHANNELS.systemVersions),
@@ -34,9 +39,13 @@ const api: IpaApi = {
   },
   snapshot: {
     workLog: (repositoryId, snapshotId) => ipcRenderer.invoke(IPC_CHANNELS.snapshotWorkLog, { repositoryId, snapshotId }),
+    evidenceList: (repositoryId) => ipcRenderer.invoke(IPC_CHANNELS.snapshotEvidenceList, repositoryId),
   },
   journal: {
     read: (repositoryId, file) => ipcRenderer.invoke(IPC_CHANNELS.journalRead, { repositoryId, file }),
+    finals: (repositoryId, day) => ipcRenderer.invoke(IPC_CHANNELS.journalFinals, { repositoryId, day }),
+    finalize: (repositoryId, draftFile) => ipcRenderer.invoke(IPC_CHANNELS.journalFinalize, { repositoryId, file: draftFile }),
+    remove: (repositoryId, kind, file) => ipcRenderer.invoke(IPC_CHANNELS.journalRemove, { repositoryId, kind, file }),
   },
   notes: {
     references: (repositoryId) => ipcRenderer.invoke(IPC_CHANNELS.notesReferences, repositoryId),

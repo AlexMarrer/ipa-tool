@@ -176,11 +176,49 @@ export interface WorkLogView {
   replacement: boolean;
 }
 
+/** A file the user keeps in `journal/final/` for a day (spec §8.5). */
+export interface FinalFileView {
+  file: string;
+  modifiedAt: string;
+}
+
+/** Result of removing a draft or a final file: it goes to the recycle bin, never away for good. */
+export interface RemoveResult {
+  removed: boolean;
+  /** Plain German reason when it did not work. */
+  problem: string | null;
+}
+
 export interface JournalDraftView {
   draft: DraftView;
   state: FileState;
   markdown: string;
   headings: string[];
+}
+
+/** One piece of evidence a note can point to (spec §5.8). */
+export interface EvidenceItem {
+  /** Qualified id such as `S000002:E003`, as `--ref` takes it. */
+  ref: string;
+  id: string;
+  kind: string;
+  /** Plain German for `kind`. */
+  kindLabel: string;
+  path: string | null;
+  /** "ausgelassen (Grund)" for omitted evidence, which stays selectable. */
+  omitted: string | null;
+}
+
+export interface EvidenceGroup {
+  snapshotId: string;
+  /** "S000002 · Analyse abgeschlossen" or "S000001 · Ausgangslage". */
+  title: string;
+  items: EvidenceItem[];
+}
+
+export interface WorkspaceSettings {
+  timezone: string;
+  maxAnalysesPerRun: number;
 }
 
 export interface ReferenceTarget {
@@ -231,6 +269,8 @@ export interface OverviewView {
 export type FileRef =
   | { kind: 'workLog'; snapshotId: string }
   | { kind: 'journalDraft'; file: string }
+  | { kind: 'journalFinal'; file: string }
+  | { kind: 'journalFinal'; file: string }
   | { kind: 'journalFinalFolder' }
   | { kind: 'workspaceFolder' }
   | { kind: 'evidence'; snapshotId: string; evidenceId: string };

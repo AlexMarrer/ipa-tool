@@ -6,7 +6,7 @@ import { Banner, Button, ContentLabel, EmptyState, LoadingSkeleton, StatusChip }
 import { MarkdownView } from '../../markdown/MarkdownView';
 import type { DocKind, RefInfo } from '../../markdown/plugins';
 import { formatStamp, shortRunId } from '../format';
-import { jumpToReference, useLoad, usePageEnv } from '../env';
+import { actionReason, jumpToReference, useLoad, usePageEnv } from '../env';
 
 function labelOf(snapshot: SnapshotView): 'ai' | 'noAi' | 'baseline' | null {
   if (snapshot.kind === 'baseline') return 'baseline';
@@ -85,6 +85,10 @@ export function WorkLogsTab({ view, references }: WorkLogsTabProps) {
             onOpen={(reveal) => void run(reveal, log.data as WorkLogView)}
             onReference={(ref) => jumpToReference(env, references, ref)}
             onConfig={() => env.actions.selectPage('config')}
+            retryReason={actionReason(env, 'retry')}
+            skipReason={actionReason(env, 'skip')}
+            onRetry={() => env.actions.openDialog({ kind: 'retry', snapshot: (log.data as WorkLogView).snapshot })}
+            onSkip={() => env.actions.openDialog({ kind: 'skip', snapshot: (log.data as WorkLogView).snapshot, timezone: view.timezone })}
             onCopy={(text) => void env.api.shell.copy(text)}
             onExternal={(url) => void env.api.shell.openExternal(url)}
           />
@@ -105,9 +109,14 @@ interface BodyProps {
   onConfig: () => void;
   onCopy: (text: string) => void;
   onExternal: (url: string) => void;
+  /** Why "Erneut versuchen" and "Überspringen" are locked right now, or `null`. */
+  retryReason: string | null;
+  skipReason: string | null;
+  onRetry: () => void;
+  onSkip: () => void;
 }
 
-function WorkLogBody({ log, timezone, references, notice, highlight, onOpen, onReference, onConfig, onCopy, onExternal }: BodyProps) {
+function WorkLogBody({ log, timezone, references, notice, highlight, onOpen, onReference, onConfig, onCopy, onExternal, retryReason, skipReason, onRetry, onSkip }: BodyProps) {
   const { snapshot } = log;
   const label = labelOf(snapshot);
   const origin = snapshot.gaps.some((gap) => gap.type === 'rebaseline') ? 'Ausgangspunkt gesetzt' : snapshot.runId !== null ? 'Lauf' : 'unbekannt';
@@ -142,6 +151,16 @@ function WorkLogBody({ log, timezone, references, notice, highlight, onOpen, onR
             Datei öffnen
           </Button>
           <Button onClick={() => onOpen(true)}>Ordner zeigen</Button>
+          {snapshot.status === 'exhausted' ? (
+            <Button ai disabled={retryReason !== null} {...(retryReason !== null ? { disabledReason: retryReason } : {})} onClick={onRetry}>
+              Erneut versuchen
+            </Button>
+          ) : null}
+          {OPEN_STATUSES.includes(snapshot.status) ? (
+            <Button disabled={skipReason !== null} {...(skipReason !== null ? { disabledReason: skipReason } : {})} onClick={onSkip}>
+              Überspringen
+            </Button>
+          ) : null}
         </div>
         {notice !== null ? <Banner level="warn">{notice}</Banner> : null}
         {snapshot.status === 'blocked' ? (

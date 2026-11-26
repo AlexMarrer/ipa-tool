@@ -1,7 +1,8 @@
 import type { RejectReason } from '../../shared/messages';
 import { REJECT_MESSAGES } from '../../shared/messages';
+import type { RunSummary } from '../../shared/run';
 import type { RunEvent } from '../../shared/types';
-import { classify, describeCommand, isAutoAllowed, type CommandRequest } from '../cli/commands';
+import { classify, describeCommand, isAutoAllowed, type CommandClass, type CommandRequest } from '../cli/commands';
 import type { CliRun, CliRunResult, Runner } from '../cli/runner';
 import { readLockFile, type createRunRegistry, type ForeignLock } from './locks';
 
@@ -42,6 +43,8 @@ export interface RunQueueOptions {
   readLock?: (workspacePath: string) => Promise<ForeignLock | null>;
   clock?: () => Date;
   onLog?: (entry: InvocationEntry) => void;
+  /** Builds the summary that goes to the renderer with the `finished` event. */
+  summarize?: (label: string, request: CommandRequest, result: CliRunResult, lock: ForeignLock | null) => RunSummary;
 }
 
 export interface RunQueue {
@@ -49,8 +52,10 @@ export interface RunQueue {
   start(repositoryId: string, request: CommandRequest, trigger: Trigger): Promise<StartResult>;
   cancel(runKey: string): Promise<{ cancelled: boolean; reason?: 'not_cancellable' | 'run_unknown' }>;
   cancelAll(): Promise<void>;
-  activeRuns(repositoryId?: string): { runKey: string; repositoryId: string; label: string; ai: boolean; cancellable: boolean }[];
+  activeRuns(repositoryId?: string): { runKey: string; repositoryId: string; label: string; ai: boolean; cancellable: boolean; kind: CommandClass['kind'] }[];
   onEvent(listener: (event: RunEvent) => void): () => void;
+  /** Sends an event to all listeners; used for the live lines of a run (spec §3.5). */
+  emit(event: RunEvent): void;
   /** Foreign lock of a project, ignoring runs the app started itself. */
   foreignLock(repositoryId: string): Promise<ForeignLock | null>;
   /** Entries since the app started (for tests and the log file). */
@@ -64,7 +69,7 @@ export function createRunQueue(options: RunQueueOptions): RunQueue {
   const listeners = new Set<(event: RunEvent) => void>();
   const running = new Map<
     string,
-    { run: CliRun; repositoryId: string; label: string; ai: boolean; cancellable: boolean; releaseKey: () => void }
+    { run: CliRun; repositoryId: string; label: string; ai: boolean; cancellable: boolean; kind: CommandClass['kind']; releaseKey: () => void }
   >();
   let counter = 0;
 
@@ -114,15 +119,19 @@ export function createRunQueue(options: RunQueueOptions): RunQueue {
     const runKey = `k${++counter}`;
     const startedAt = clock().toISOString();
     const run = options.runner.start(project.repoPath, request);
-    running.set(runKey, { run, repositoryId, label, ai: kind.ai, cancellable: kind.cancellable, releaseKey: acquired.release });
+    running.set(runKey, { run, repositoryId, label, ai: kind.ai, cancellable: kind.cancellable, kind: kind.kind, releaseKey: acquired.release });
     record({ event: 'started', repositoryId, command: label, trigger, ai: kind.ai });
+    // Long runs show in the run panel; note, skip, baseline and doctor report to their dialog (spec §8.7).
+    const panel = kind.ai || request.name === 'capture' || request.name === 'journal';
     if (trigger === 'user') {
-      emit({ type: 'started', runKey, repositoryId, label, cancellable: kind.cancellable, ai: kind.ai, startedAt });
+      emit({ type: 'started', runKey, repositoryId, label, cancellable: kind.cancellable, ai: kind.ai, panel, startedAt });
     }
 
-    const done = run.result.then((result) => {
+    const done = run.result.then(async (result) => {
       running.delete(runKey);
       acquired.release();
+      // For exit code 3 the lock file names the run that holds it (spec §8.7: "Aktiv seit ...").
+      const holder = result.exitCode === 3 ? await foreignLock(repositoryId) : null;
       record({
         event: 'finished',
         repositoryId,
@@ -143,6 +152,7 @@ export function createRunQueue(options: RunQueueOptions): RunQueue {
           cancelled: result.cancelled,
           notice: result.exitCode === 3 ? 'lock_held' : null,
           failure: result.failure,
+          summary: options.summarize?.(label, request, result, holder) ?? null,
         });
       }
       return result;
@@ -171,12 +181,14 @@ export function createRunQueue(options: RunQueueOptions): RunQueue {
           label: entry.label,
           ai: entry.ai,
           cancellable: entry.cancellable,
+          kind: entry.kind,
         }));
     },
     onEvent(listener) {
       listeners.add(listener);
       return () => void listeners.delete(listener);
     },
+    emit,
     foreignLock,
     log: () => entries,
   };

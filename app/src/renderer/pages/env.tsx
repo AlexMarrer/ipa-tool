@@ -4,6 +4,8 @@ import type { IpaError, IpaResult } from '../../shared/types';
 import type { AppActions, Focus } from '../store/appStore';
 import type { RefInfo } from '../markdown/plugins';
 import type { ReferenceIndex } from '../../shared/views';
+import type { LockState } from '../../shared/run';
+import { unavailableReason, type ActionKind } from '../store/locks';
 
 /** What every page needs: the API, the project, its zone and the counter that says "load again". */
 export interface PageEnv {
@@ -13,12 +15,20 @@ export interface PageEnv {
   dataVersion: number;
   actions: AppActions;
   focus: Focus | null;
+  locks: LockState | undefined;
+  /** `false` when the last check found Claude not ready; `null` when unknown. */
+  claudeReady: boolean | null;
 }
 
 const Context = createContext<PageEnv | null>(null);
 
 export function PageEnvProvider({ value, children }: { value: PageEnv; children: ReactNode }) {
   return <Context.Provider value={value}>{children}</Context.Provider>;
+}
+
+/** Why an action is unavailable right now, or `null` (spec §3.7). */
+export function actionReason(env: PageEnv, action: ActionKind): string | null {
+  return unavailableReason(action, env.locks, env.claudeReady);
 }
 
 export function usePageEnv(): PageEnv {

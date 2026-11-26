@@ -57,7 +57,7 @@ test('öffnet das Hauptfenster mit den Sicherheitseinstellungen (AK-10-03)', asy
     keys: Object.keys((window as unknown as { ipa: object }).ipa).sort(),
     url: location.href,
   }));
-  expect(exposure).toMatchObject({ process: 'undefined', require: 'undefined', ipcRenderer: 'undefined', keys: ['app', 'day', 'journal', 'notes', 'overview', 'projects', 'run', 'shell', 'snapshot', 'system'] });
+  expect(exposure).toMatchObject({ process: 'undefined', require: 'undefined', ipcRenderer: 'undefined', keys: ['app', 'config', 'day','journal', 'notes', 'overview', 'projects', 'run', 'shell', 'snapshot', 'system'] });
   expect(exposure.url.startsWith('app://app/')).toBe(true);
 });
 

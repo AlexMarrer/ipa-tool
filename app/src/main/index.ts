@@ -53,6 +53,7 @@ if (!app.requestSingleInstanceLock()) {
         showItemInFolder: (file) => shell.showItemInFolder(file),
         writeClipboard: (text) => clipboard.writeText(text),
         openExternal: (url) => shell.openExternal(url),
+        trashItem: (file) => shell.trashItem(file),
       },
       ...(nodeExe !== undefined ? { nodeExe } : {}),
       ...(cliRoot !== undefined ? { cliRoot } : {}),

@@ -36,3 +36,8 @@
 .runpanel__lines li { display: flex; gap: 10px; }
 .runpanel__lines time { color: var(--mut); font-family: var(--font-mono); font-size: 12.5px; }
 .runpanel__lines .muted { color: var(--mut); }
+.runpanel__text { margin: 0; }
+.runpanel__meta { color: var(--mut); font-size: 13px; }
+.runpanel__toggle { display: inline-flex; align-items: center; gap: 4px; padding: 2px 0; border: 0; background: transparent; color: inherit; cursor: pointer; font: inherit; }
+.runpanel__lines { font-family: var(--font-mono); font-size: 12.5px; margin-top: 6px; }
+.runpanel__output { margin: 6px 0 0; max-height: 160px; overflow: auto; font-family: var(--font-mono); font-size: 12.5px; white-space: pre-wrap; }
