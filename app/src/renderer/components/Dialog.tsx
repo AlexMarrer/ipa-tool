@@ -85,6 +85,8 @@ export interface ConfirmDialogProps {
   confirmLabel: string;
   cancelLabel?: string;
   danger?: boolean;
+  /** The confirmation calls Claude: spark icon and tooltip (spec §12.2). */
+  confirmAi?: boolean;
   onConfirm: () => void;
   onClose: () => void;
   inline?: boolean;
@@ -93,7 +95,7 @@ export interface ConfirmDialogProps {
 }
 
 /** Confirmation in one or two steps. The last step confirms with Ctrl+Enter only after the acknowledgement. */
-export function ConfirmDialog({ title, children, confirmLabel, cancelLabel = 'Abbrechen', danger, onConfirm, onClose, inline, secondStep }: ConfirmDialogProps) {
+export function ConfirmDialog({ title, children, confirmLabel, cancelLabel = 'Abbrechen', danger, confirmAi = false, onConfirm, onClose, inline, secondStep }: ConfirmDialogProps) {
   const [step, setStep] = useState<1 | 2>(1);
   const [acknowledged, setAcknowledged] = useState(false);
   const checkbox = useId();
@@ -118,7 +120,7 @@ export function ConfirmDialog({ title, children, confirmLabel, cancelLabel = 'Ab
         <>
           <span className="dialog__hint">Strg+Enter bestätigt</span>
           <Button onClick={onClose}>{cancelLabel}</Button>
-          <Button variant={danger === true ? 'danger' : 'primary'} disabled={!canConfirm} onClick={confirm}>
+          <Button variant={danger === true ? 'danger' : 'primary'} ai={confirmAi && (onSecond || secondStep === undefined)} disabled={!canConfirm} onClick={confirm}>
             {onSecond ? secondStep.confirmLabel : secondStep !== undefined ? 'Weiter' : confirmLabel}
           </Button>
         </>

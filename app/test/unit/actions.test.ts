@@ -20,7 +20,7 @@ describe('Aktionen mit dem echten CLI', () => {
   const events: RunEvent[] = [];
   const clipboard: string[] = [];
 
-  const shell: ShellPort = { openPath: async () => '', showItemInFolder: () => undefined, writeClipboard: (text) => void clipboard.push(text), openExternal: async () => undefined, trashItem: async () => undefined, chooseFile: async () => null };
+  const shell: ShellPort = { openPath: async () => '', showItemInFolder: () => undefined, writeClipboard: (text) => void clipboard.push(text), openExternal: async () => undefined, trashItem: async () => undefined, chooseFile: async () => null, chooseFolder: async () => null };
 
   beforeAll(async () => {
     env = await createTestEnv();

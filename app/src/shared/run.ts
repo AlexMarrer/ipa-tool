@@ -27,7 +27,8 @@ export type RunInput =
   | { name: 'journal'; day?: string; noAi?: boolean }
   | { name: 'skip'; snapshotId: string; reason: string }
   | { name: 'baseline'; reason: string; force?: boolean }
-  | { name: 'doctor' }
+  /** `live` is the live test of the page System: two short calls of the model (spec §8.13). */
+  | { name: 'doctor'; live?: boolean }
   | ({ name: 'note' } & NoteInput)
   /** Saves changes with `ipa config set`; `confirmPaidUsage` only together with `claude.allowPaidUsage = true`. */
   | { name: 'configSet'; changes: ConfigChange[]; confirmPaidUsage?: boolean }
@@ -76,7 +77,9 @@ export type RunResultView =
       checkedAt: string;
       git: { found: boolean; version: string | null };
       claude: { found: boolean; version: string | null; loggedIn: boolean | null; authMethod: string | null };
-      billing: { detected: boolean; allowPaidUsage: boolean; blocked: boolean; /** Names of variables and settings, never values. */ sources: string[] };
+      billing: { detected: boolean; allowPaidUsage: boolean; blocked: boolean; /** Names of variables and settings, never values. */ sources: string[]; /** Settings files that could not be read. */ unreadable?: string[] };
+      /** Result of the live test, if one ran. */
+      live?: { ok: boolean } | null;
       findings: string[];
     };
 

@@ -56,6 +56,11 @@ if (!app.requestSingleInstanceLock()) {
         writeClipboard: (text) => clipboard.writeText(text),
         openExternal: (url) => shell.openExternal(url),
         trashItem: (file) => shell.trashItem(file),
+        chooseFolder: async () => {
+          const options = { properties: ['openDirectory' as const] };
+          const chosen = mainWindow !== null && !mainWindow.isDestroyed() ? await dialog.showOpenDialog(mainWindow, options) : await dialog.showOpenDialog(options);
+          return chosen.canceled || chosen.filePaths[0] === undefined ? null : chosen.filePaths[0];
+        },
         chooseFile: async (defaultPath) => {
           const options = { defaultPath, properties: ['openFile' as const] };
           const chosen = mainWindow !== null && !mainWindow.isDestroyed() ? await dialog.showOpenDialog(mainWindow, options) : await dialog.showOpenDialog(options);

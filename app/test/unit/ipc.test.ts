@@ -99,8 +99,9 @@ describe('Registrierung der Kanäle (AK-10-04)', () => {
 
   it('liefert keinen Kanal für Pfade, Umgebungsvariablen oder rohe Befehle', () => {
     // `shell` opens by kind and id and the app opens only links after confirmation; neither takes a path.
+    // `system:openDataRoot` opens the data root and takes nothing; the folder of the wizard is chosen in the system dialog.
     // `config:testPath` takes a repository path to test against the filter, and only answers allowed or not.
-    const names = Object.values(IPC_CHANNELS).join(' ').replace(/ipa:shell:(open|reveal|copyPath|copy|openExternal)/g, '').replace(/ipa:config:testPath/, '');
+    const names = Object.values(IPC_CHANNELS).join(' ').replace(/ipa:shell:(open|reveal|copyPath|copy|openExternal)/g, '').replace(/ipa:config:testPath/, '').replace(/ipa:system:openDataRoot/, '');
     expect(names).not.toMatch(/env|path|open|exec|spawn|readFile|shell/i);
     expect(Object.values(IPC_CHANNELS).some((channel) => /spawn|exec|command/i.test(channel))).toBe(false);
   });
@@ -225,6 +226,23 @@ describe('Registrierung der Kanäle (AK-10-04)', () => {
       { name: 'schedulePause', args: ['--force'] },
       { name: 'configCheck' },
     ]) expect(await send(bad), JSON.stringify(bad)).toMatchObject({ ok: false, error: { code: 'invalid_request' } });
+  });
+
+  it('prüft Assistent und System: keine Pfade vom Renderer, Zeitzone aus der Laufzeit, feste Zeiträume', async () => {
+    const send = (channel: string, argument: unknown) => ipcMain.listeners.get(channel)?.(trusted('app://app/index.html'), argument);
+    const fake = services as unknown as Record<string, unknown>;
+    for (const name of ['chooseFolder', 'checkChosenFolder', 'initChosenFolder', 'systemStatus', 'loadUsage', 'openDataRoot', 'copyDataRoot']) fake[name] = vi.fn(async () => ({ ok: true, value: {} }));
+    for (const channel of [IPC_CHANNELS.projectChooseFolder, IPC_CHANNELS.projectCheck, IPC_CHANNELS.systemStatus, IPC_CHANNELS.systemOpenDataRoot, IPC_CHANNELS.systemCopyDataRoot]) {
+      expect(await send(channel, undefined), channel).toMatchObject({ ok: true });
+      // The folder and the data root are never named by the renderer.
+      expect(await send(channel, { path: 'C:/Windows' }), channel).toMatchObject({ ok: false, error: { code: 'invalid_request' } });
+    }
+    expect(await send(IPC_CHANNELS.projectInit, { timezone: 'Europe/Zurich', workspace: 'default' })).toMatchObject({ ok: true });
+    for (const bad of [{ timezone: 'Mars/Olympus', workspace: 'default' }, { timezone: 'Europe/Zurich', workspace: 'default', repoPath: 'C:/x' }, { timezone: 'Europe/Zurich', workspace: 'C:/x' }, 'Europe/Zurich']) {
+      expect(await send(IPC_CHANNELS.projectInit, bad), JSON.stringify(bad)).toMatchObject({ ok: false, error: { code: 'invalid_request' } });
+    }
+    for (const range of ['7', '30', 'all']) expect(await send(IPC_CHANNELS.systemUsage, range), range).toMatchObject({ ok: true });
+    for (const bad of ['1', 7, '../x', undefined]) expect(await send(IPC_CHANNELS.systemUsage, bad), String(bad)).toMatchObject({ ok: false });
   });
 
   it('prüft Endfassung und Löschen: nur Entwurf oder Endfassung, nie ein Pfad', async () => {

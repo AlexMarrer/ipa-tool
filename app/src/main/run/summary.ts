@@ -96,7 +96,8 @@ export function resultView(request: CommandRequest, result: Json | null): RunRes
         checkedAt: str(result['checkedAt']) ?? '',
         git: { found: git?.['found'] === true, version: str(git?.['version']) },
         claude: { found: claude?.['found'] === true, version: str(claude?.['version']), loggedIn: typeof claude?.['loggedIn'] === 'boolean' ? claude['loggedIn'] : null, authMethod: str(claude?.['authMethod']) },
-        billing: { detected: billing?.['detected'] === true, allowPaidUsage: billing?.['allowPaidUsage'] === true, blocked: billing?.['blocked'] === true, sources: sources.flatMap((source) => str(source) ?? []) },
+        billing: { detected: billing?.['detected'] === true, allowPaidUsage: billing?.['allowPaidUsage'] === true, blocked: billing?.['blocked'] === true, sources: sources.flatMap((source) => str(source) ?? []), unreadable: Array.isArray(billing?.['unreadableSettings']) ? (billing['unreadableSettings'] as unknown[]).flatMap((entry) => str(entry) ?? []) : [] },
+        live: rec(result['liveCheck']) === null ? null : { ok: rec(result['liveCheck'])?.['ok'] === true },
         findings: Array.isArray(result['findings']) ? (result['findings'] as unknown[]).flatMap((finding) => str(finding) ?? []) : [],
       };
     }

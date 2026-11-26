@@ -58,6 +58,28 @@ export function createHandlers(services: Services): Record<Exclude<IpcChannel, t
       const v = input.fields(argument, ['repositoryId', 'text']);
       return unwrap(await services.scanText(input.string(v['repositoryId'], 80), input.text(v['text'], 20_000)));
     },
+    [IPC_CHANNELS.projectChooseFolder]: async (argument) => {
+      input.none(argument);
+      return services.chooseFolder();
+    },
+    [IPC_CHANNELS.projectCheck]: async (argument) => {
+      input.none(argument);
+      return unwrap(await services.checkChosenFolder());
+    },
+    [IPC_CHANNELS.projectInit]: async (argument) => unwrap(await services.initChosenFolder(input.initInput(argument))),
+    [IPC_CHANNELS.systemStatus]: async (argument) => {
+      input.none(argument);
+      return unwrap(await services.systemStatus());
+    },
+    [IPC_CHANNELS.systemUsage]: async (argument) => unwrap(await services.loadUsage(input.usageRange(argument))),
+    [IPC_CHANNELS.systemOpenDataRoot]: async (argument) => {
+      input.none(argument);
+      return services.openDataRoot();
+    },
+    [IPC_CHANNELS.systemCopyDataRoot]: async (argument) => {
+      input.none(argument);
+      return services.copyDataRoot();
+    },
     [IPC_CHANNELS.configRead]: async (argument) => unwrap(await services.loadConfig(input.string(argument, 80))),
     [IPC_CHANNELS.configPreview]: async (argument) => {
       const v = input.fields(argument, ['repositoryId', 'changes']);

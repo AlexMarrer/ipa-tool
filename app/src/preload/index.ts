@@ -29,6 +29,11 @@ const api: IpaApi = {
     testPath: (repositoryId, input) => ipcRenderer.invoke(IPC_CHANNELS.configTestPath, { repositoryId, ...input }),
     chooseFile: (repositoryId) => ipcRenderer.invoke(IPC_CHANNELS.configChooseFile, repositoryId),
   },
+  project: {
+    chooseFolder: () => ipcRenderer.invoke(IPC_CHANNELS.projectChooseFolder),
+    check: () => ipcRenderer.invoke(IPC_CHANNELS.projectCheck),
+    init: (input) => ipcRenderer.invoke(IPC_CHANNELS.projectInit, input),
+  },
   schedule: {
     status: (repositoryId) => ipcRenderer.invoke(IPC_CHANNELS.scheduleStatus, repositoryId),
     runs: (repositoryId) => ipcRenderer.invoke(IPC_CHANNELS.scheduleRuns, repositoryId),
@@ -36,6 +41,10 @@ const api: IpaApi = {
   system: {
     versions: () => ipcRenderer.invoke(IPC_CHANNELS.systemVersions),
     dataRoot: () => ipcRenderer.invoke(IPC_CHANNELS.systemDataRoot),
+    status: () => ipcRenderer.invoke(IPC_CHANNELS.systemStatus),
+    usage: (range) => ipcRenderer.invoke(IPC_CHANNELS.systemUsage, range),
+    openDataRoot: () => ipcRenderer.invoke(IPC_CHANNELS.systemOpenDataRoot),
+    copyDataRoot: () => ipcRenderer.invoke(IPC_CHANNELS.systemCopyDataRoot),
   },
   app: {
     getState: () => ipcRenderer.invoke(IPC_CHANNELS.appGetState),

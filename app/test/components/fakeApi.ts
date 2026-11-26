@@ -3,6 +3,7 @@ import type { IpaApi } from '../../src/shared/ipc';
 import type { AppState, IpaResult, Project, ProjectList, ProjectsChange, RunEvent } from '../../src/shared/types';
 import type { ConfigChange, ConfigFile, ConfigPreview, ConfigView, RunHistoryEntry, ScheduleView } from '../../src/shared/config';
 import { CLAUDE_DEFAULTS, LIMIT_DEFAULTS, SCHEDULE_DEFAULTS } from '../../src/shared/config';
+import type { InitOutcome, ProjectCheck, SystemStatus, UsageRow } from '../../src/shared/project';
 import type { LockState, StartOutcome } from '../../src/shared/run';
 import type { DayIndex, DayView, EvidenceGroup, FinalFileView, JournalDraftView, OverviewView, ReferenceIndex, RemoveResult, WorkLogView } from '../../src/shared/views';
 
@@ -58,6 +59,12 @@ export interface FakeApiOptions {
   /** Answer of "Pfad testen". */
   testPath?: (input: { include: string[]; exclude: string[]; path: string }) => { allowed: boolean; rule: string | null };
   chosenFile?: string | null;
+  /** Answer of the checklist of the wizard (`null`: no folder chosen). */
+  projectCheck?: ProjectCheck | null;
+  folder?: string | null;
+  initOutcome?: InitOutcome;
+  systemStatus?: Partial<SystemStatus>;
+  usage?: UsageRow[];
   finals?: Record<string, FinalFileView[]>;
   evidence?: EvidenceGroup[];
   /** Detector names a text hits; default none. */
@@ -118,6 +125,10 @@ export function createFakeApi(options: FakeApiOptions = {}) {
     system: {
       versions: vi.fn(() => ok({ app: '0.1.0', electron: '45.5.0', node: 'v24.22.3', cli: '0.1.0', runtime: 'test' as const, runtimeProblem: null })),
       dataRoot: vi.fn(() => ok({ path: 'C:/daten' })),
+      status: vi.fn(() => ok<SystemStatus>({ check: { checkedAt: '2026-11-26T07:52:00Z', ok: true, claude: { found: true, version: '2.1.4', loggedIn: true, authMethod: 'claude.ai' }, git: { found: true, version: '2.47.1' }, liveCheck: null }, dataRoot: 'C:/daten', workspacesInRepository: [], ...options.systemStatus })),
+      usage: vi.fn((range: string) => ok(range === 'all' ? (options.usage ?? []) : (options.usage ?? []).filter((row) => Date.now() - Date.parse(row.startedAt) < Number(range) * 86_400_000))),
+      openDataRoot: vi.fn(() => ok({ opened: true })),
+      copyDataRoot: vi.fn(() => ok({ copied: true })),
     },
     app: {
       getState: vi.fn(() => ok(state)),
@@ -148,6 +159,11 @@ export function createFakeApi(options: FakeApiOptions = {}) {
       preview: vi.fn((_id: string, changes: ConfigChange[]) => ok<ConfigPreview>(options.preview?.(changes) ?? { valid: true, findings: [], schedulePlan: { ...defaultPlan, workdays: [...defaultPlan.workdays] }, failure: null })),
       testPath: vi.fn((_id: string, input: { include: string[]; exclude: string[]; path: string }) => ok(options.testPath?.(input) ?? { allowed: true, rule: null })),
       chooseFile: vi.fn(() => ok({ path: options.chosenFile ?? null })),
+    },
+    project: {
+      chooseFolder: vi.fn(() => ok({ path: options.folder ?? null })),
+      check: vi.fn(() => ok<ProjectCheck | null>(options.projectCheck ?? null)),
+      init: vi.fn(() => ok<InitOutcome>(options.initOutcome ?? { exitCode: 0, errors: [], warnings: [], failure: null, result: { created: true, repositoryId: 'neu-123456', workspacePath: 'C:/daten/workspaces/neu-123456', workspaceMode: 'default', timezone: 'Europe/Zurich', baselineSnapshotId: 'S000001', claude: { checked: true, ok: true, cliVersion: '2.1.4', problems: null } } })),
     },
     schedule: {
       status: vi.fn(() =>

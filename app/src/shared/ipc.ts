@@ -1,5 +1,6 @@
 import type { AppState, IpaResult, Project, ProjectList, ProjectsChange, RunEvent, VersionInfo } from './types';
 import type { ConfigChange, ConfigPreview, ConfigView, PathDecisionView, RunHistoryEntry, ScheduleView } from './config';
+import type { InitInput, InitOutcome, ProjectCheck, SystemStatus, UsageRange, UsageRow } from './project';
 import type { LockState, RunInput, StartOutcome } from './run';
 import type { DayIndex, DayView, EvidenceGroup, FileRef, FinalFileView, JournalDraftView, OverviewView, ReferenceIndex, RemoveResult, WorkLogView } from './views';
 
@@ -22,6 +23,13 @@ export const IPC_CHANNELS = {
   configPreview: 'ipa:config:preview',
   configTestPath: 'ipa:config:testPath',
   configChooseFile: 'ipa:config:chooseFile',
+  projectChooseFolder: 'ipa:project:chooseFolder',
+  projectCheck: 'ipa:project:check',
+  projectInit: 'ipa:project:init',
+  systemStatus: 'ipa:system:status',
+  systemUsage: 'ipa:system:usage',
+  systemOpenDataRoot: 'ipa:system:openDataRoot',
+  systemCopyDataRoot: 'ipa:system:copyDataRoot',
   scheduleStatus: 'ipa:schedule:status',
   scheduleRuns: 'ipa:schedule:runs',
   systemVersions: 'ipa:system:versions',
@@ -58,6 +66,13 @@ export const INVOKE_CHANNELS: readonly IpcChannel[] = [
   IPC_CHANNELS.configPreview,
   IPC_CHANNELS.configTestPath,
   IPC_CHANNELS.configChooseFile,
+  IPC_CHANNELS.projectChooseFolder,
+  IPC_CHANNELS.projectCheck,
+  IPC_CHANNELS.projectInit,
+  IPC_CHANNELS.systemStatus,
+  IPC_CHANNELS.systemUsage,
+  IPC_CHANNELS.systemOpenDataRoot,
+  IPC_CHANNELS.systemCopyDataRoot,
   IPC_CHANNELS.scheduleStatus,
   IPC_CHANNELS.scheduleRuns,
   IPC_CHANNELS.runCancel,
@@ -122,6 +137,19 @@ export interface IpaApi {
   system: {
     versions(): Promise<IpaResult<VersionInfo>>;
     dataRoot(): Promise<IpaResult<{ path: string }>>;
+    /** Newest check of Claude and Git over all projects, plus the data root (spec §8.13). */
+    status(): Promise<IpaResult<SystemStatus>>;
+    /** Claude calls of all projects from `ai-usage.jsonl`; never a prompt or an answer. */
+    usage(range: UsageRange): Promise<IpaResult<UsageRow[]>>;
+    openDataRoot(): Promise<IpaResult<{ opened: boolean }>>;
+    copyDataRoot(): Promise<IpaResult<{ copied: boolean }>>;
+  };
+  /** The wizard "Projekt hinzufügen": the folder is chosen in the system dialog and stays in the main process (spec §8.12). */
+  project: {
+    chooseFolder(): Promise<IpaResult<{ path: string | null }>>;
+    /** Checklist of step 1 for the chosen folder, `null` if none was chosen. */
+    check(): Promise<IpaResult<ProjectCheck | null>>;
+    init(input: InitInput): Promise<IpaResult<InitOutcome>>;
   };
   app: {
     getState(): Promise<IpaResult<AppState>>;

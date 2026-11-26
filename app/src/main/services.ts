@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { StatusReport } from '../shared/cli-types';
 import type { ProjectList, ProjectsChange, Project, VersionInfo } from '../shared/types';
+import type { InitInput, InitOutcome, ProjectCheck, SystemStatus, UsageRange, UsageRow } from '../shared/project';
 import type { ConfigChange as ConfigPatch, ConfigPreview, ConfigView, PathDecisionView, RunHistoryEntry, ScheduleView } from '../shared/config';
 import type { LockState, StartOutcome } from '../shared/run';
 import type { DayIndex, DayView, EvidenceGroup, FileRef, FinalFileView, JournalDraftView, OverviewView, ReferenceIndex, RemoveResult, WorkLogView } from '../shared/views';
@@ -12,6 +13,9 @@ import { createAppStateStore, type AppStateStore } from './app-state';
 import { loadCliLib, type CliLib } from './cli-lib';
 import { AppError, toIpaError } from './cli/errors';
 import { noShell, type ShellPort } from './shell';
+import { checkProjectFolder, systemCheck } from './project-check';
+import { runGit } from './git';
+import { readUsage } from './reader/usage';
 import { configPreviewOf, emptySchedule, readConfigView, readRunHistory, scheduleViewOf, workspaceInsideRepository } from './reader/config-view';
 import { createJournalFiles } from './reader/journal-files';
 import { createWorkspaceReader, type WorkspaceReader } from './reader/workspace';
@@ -60,6 +64,15 @@ export interface Services {
   loadWorkLog(repositoryId: string, snapshotId: string): Promise<ReaderResult<WorkLogView | null>>;
   loadJournal(repositoryId: string, file: string): Promise<ReaderResult<JournalDraftView | null>>;
   loadFinals(repositoryId: string, day: string): Promise<ReaderResult<FinalFileView[]>>;
+  /** Opens the folder dialog; the chosen folder stays here and is the only one that `checkChosenFolder` and `initChosenFolder` use. */
+  chooseFolder(): Promise<{ path: string | null }>;
+  checkChosenFolder(): Promise<ReaderResult<ProjectCheck | null>>;
+  /** `init` for the chosen folder (spec §8.12); the CLI decides, the app only sets the time zone and the workspace. */
+  initChosenFolder(input: InitInput): Promise<ReaderResult<InitOutcome>>;
+  systemStatus(): Promise<ReaderResult<SystemStatus>>;
+  loadUsage(range: UsageRange): Promise<ReaderResult<UsageRow[]>>;
+  openDataRoot(): Promise<{ opened: boolean }>;
+  copyDataRoot(): Promise<{ copied: boolean }>;
   loadConfig(repositoryId: string): Promise<ReaderResult<ConfigView>>;
   /** `config set --dry-run`: an automatic call that writes nothing and never calls Claude (spec §12.1, AD-09). */
   previewConfig(repositoryId: string, changes: { path: string; value: string }[]): Promise<ReaderResult<ConfigPreview>>;
@@ -143,6 +156,8 @@ export async function createServices(options: ServicesOptions): Promise<Services
   }
 
   let entries: RegistryEntry[] = [];
+  /** The folder the user chose in the wizard; the renderer never names a path (spec §8.12). */
+  let chosenFolder: string | null = null;
   const registry = createRunRegistry();
   const queue = createRunQueue({
     runner: runner ?? failingRunner(),
@@ -296,6 +311,74 @@ export async function createServices(options: ServicesOptions): Promise<Services
     loadDayIndex: (repositoryId) => withReader(repositoryId, (reader) => reader.dayIndex()),
     loadWorkLog: (repositoryId, snapshotId) => withReader(repositoryId, (reader) => reader.workLog(snapshotId)),
     loadJournal: (repositoryId, file) => withReader(repositoryId, (reader) => reader.journal(file)),
+    async chooseFolder() {
+      const picked = await shell.chooseFolder();
+      if (picked !== null) chosenFolder = picked;
+      return { path: picked };
+    },
+    async checkChosenFolder() {
+      if (chosenFolder === null) return { ok: true, value: null };
+      if (validator === null || runtimeProblem !== null) return unknownProject;
+      if (dataRoot !== null) entries = (await readRegistry(dataRoot, validator)).repositories;
+      return { ok: true, value: await checkProjectFolder({ repoPath: chosenFolder, dataRoot, entries, validator, git: runGit }) };
+    },
+    async initChosenFolder(settings) {
+      if (chosenFolder === null || validator === null || runtimeProblem !== null) return unknownProject;
+      // The checklist is made again: the folder must still be a main folder that is not set up yet.
+      if (dataRoot !== null) entries = (await readRegistry(dataRoot, validator)).repositories;
+      const check = await checkProjectFolder({ repoPath: chosenFolder, dataRoot, entries, validator, git: runGit });
+      if (!check.repository.isMainFolder) return { ok: false, error: { code: 'init_refused', message: 'Dieser Ordner ist kein Git-Repository.' } };
+      if (check.existing !== null) return { ok: false, error: { code: 'init_refused', message: 'Dieses Repository ist bereits eingerichtet.' } };
+      const started = queue.startInit(chosenFolder, { name: 'init', timezone: settings.timezone, ...(settings.workspace === 'repository' ? { workspace: '.ipa' } : {}) });
+      if (!started.ok) return { ok: false, error: { code: 'init_busy', message: started.message } };
+      const done = await started.done;
+      const result = done.envelope?.result ?? null;
+      const claude = result !== null && typeof result['claude'] === 'object' && result['claude'] !== null ? (result['claude'] as Record<string, unknown>) : null;
+      return {
+        ok: true,
+        value: {
+          exitCode: done.exitCode,
+          errors: done.envelope?.errors ?? [],
+          warnings: done.envelope?.warnings ?? [],
+          failure: done.failure,
+          result:
+            result === null || typeof result['repositoryId'] !== 'string'
+              ? null
+              : {
+                  created: result['created'] === true,
+                  repositoryId: result['repositoryId'],
+                  workspacePath: String(result['workspacePath'] ?? ''),
+                  workspaceMode: result['workspaceMode'] === 'explicit' ? 'explicit' : 'default',
+                  timezone: String(result['timezone'] ?? settings.timezone),
+                  baselineSnapshotId: typeof result['baselineSnapshotId'] === 'string' ? result['baselineSnapshotId'] : null,
+                  claude: {
+                    checked: claude?.['checked'] === true,
+                    ok: typeof claude?.['ok'] === 'boolean' ? claude['ok'] : null,
+                    cliVersion: typeof claude?.['cliVersion'] === 'string' ? claude['cliVersion'] : null,
+                    problems: typeof claude?.['problems'] === 'string' ? claude['problems'] : null,
+                  },
+                },
+        },
+      };
+    },
+    async systemStatus() {
+      if (validator === null || runtimeProblem !== null) return unknownProject;
+      if (dataRoot !== null) entries = (await readRegistry(dataRoot, validator)).repositories;
+      return { ok: true, value: await systemCheck(entries, validator, dataRoot) };
+    },
+    async loadUsage(range) {
+      if (validator === null || runtimeProblem !== null) return unknownProject;
+      if (dataRoot !== null) entries = (await readRegistry(dataRoot, validator)).repositories;
+      return { ok: true, value: await readUsage(entries, validator, range) };
+    },
+    async openDataRoot() {
+      return { opened: dataRoot !== null && (await shell.openPath(dataRoot)) === '' };
+    },
+    async copyDataRoot() {
+      if (dataRoot === null) return { copied: false };
+      shell.writeClipboard(dataRoot);
+      return { copied: true };
+    },
     async loadConfig(repositoryId) {
       const found = await readerOf(repositoryId);
       if (found === null || validator === null) return unknownProject;

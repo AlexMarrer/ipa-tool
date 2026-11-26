@@ -9,6 +9,8 @@ export interface ShellPort {
   trashItem(file: string): Promise<void>;
   /** System file dialog; resolves to the chosen file or `null` if the user cancelled. */
   chooseFile(defaultPath: string): Promise<string | null>;
+  /** System folder dialog; resolves to the chosen folder or `null` if the user cancelled. */
+  chooseFolder(): Promise<string | null>;
 }
 
 /** Used where no operating system is available (tests that do not care). Nothing is opened. */
@@ -19,4 +21,5 @@ export const noShell: ShellPort = {
   openExternal: async () => undefined,
   trashItem: async () => undefined,
   chooseFile: async () => null,
+  chooseFolder: async () => null,
 };

@@ -7,7 +7,9 @@ import { DialogHost } from '../dialogs/DialogHost';
 import { DayPage } from '../pages/day/DayPage';
 import { PageEnvProvider } from '../pages/env';
 import { OverviewPage } from '../pages/overview/OverviewPage';
+import { AddProjectWizard } from '../pages/add/AddProjectWizard';
 import { ConfigPage } from '../pages/config/ConfigPage';
+import { SystemPage } from '../pages/system/SystemPage';
 import { SchedulePage } from '../pages/schedule/SchedulePage';
 import { PlaceholderPage } from '../pages/pages';
 import type { AppStore } from '../store/appStore';
@@ -80,8 +82,10 @@ export function AppShell({ app, api }: AppShellProps) {
           <ErrorBoundary area="Dieser Bereich" key={`${selection.page}:${selection.repositoryId ?? ''}`}>
             {loading ? (
               <LoadingSkeleton loading />
-            ) : selection.page === 'system' || selection.page === 'add-project' ? (
-              <PlaceholderPage page={selection.page} />
+            ) : selection.page === 'system' ? (
+              <SystemPage api={api} actions={actions} projects={projects} selectedId={selection.repositoryId} locks={locks} dataVersion={state.dataVersion} />
+            ) : selection.page === 'add-project' ? (
+              <AddProjectWizard api={api} actions={actions} projectName={(id) => id} />
             ) : project === null ? (
               <EmptyState
                 title="Noch kein Projekt"

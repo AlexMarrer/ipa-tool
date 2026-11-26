@@ -56,6 +56,8 @@ export interface RunQueue {
   onEvent(listener: (event: RunEvent) => void): () => void;
   /** Sends an event to all listeners; used for the live lines of a run (spec §3.5). */
   emit(event: RunEvent): void;
+  /** `init` for a folder that is not in the registry yet (the wizard); at most one at a time, no lock of a workspace exists yet. */
+  startInit(repoPath: string, request: Extract<CommandRequest, { name: 'init' }>): { ok: true; done: Promise<CliRunResult> } | { ok: false; message: string };
   /** Foreign lock of a project, ignoring runs the app started itself. */
   foreignLock(repositoryId: string): Promise<ForeignLock | null>;
   /** Entries since the app started (for tests and the log file). */
@@ -72,6 +74,7 @@ export function createRunQueue(options: RunQueueOptions): RunQueue {
     { run: CliRun; repositoryId: string; label: string; ai: boolean; cancellable: boolean; kind: CommandClass['kind']; releaseKey: () => void }
   >();
   let counter = 0;
+  let initActive = false;
 
   const record = (entry: Omit<InvocationEntry, 'at'>): void => {
     const full: InvocationEntry = { at: clock().toISOString(), ...entry };
@@ -189,6 +192,19 @@ export function createRunQueue(options: RunQueueOptions): RunQueue {
       return () => void listeners.delete(listener);
     },
     emit,
+    startInit(repoPath, request) {
+      if (initActive) return { ok: false, message: 'Ein Projekt wird gerade eingerichtet.' };
+      initActive = true;
+      const label = describeCommand(request);
+      record({ event: 'started', repositoryId: '(neu)', command: label, trigger: 'user', ai: false });
+      const run = options.runner.start(repoPath, request);
+      const done = run.result.then((result) => {
+        initActive = false;
+        record({ event: 'finished', repositoryId: '(neu)', command: label, trigger: 'user', ai: false, exitCode: result.exitCode, runId: result.envelope?.runId ?? null, ...(result.failure !== null ? { errorCode: result.failure.code } : {}) });
+        return result;
+      });
+      return { ok: true, done };
+    },
     foreignLock,
     log: () => entries,
   };

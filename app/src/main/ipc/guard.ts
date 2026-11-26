@@ -95,6 +95,23 @@ export const input = {
       return { path: target, value: json };
     });
   },
+  /** `init` settings of the wizard: a time zone name that the runtime knows, and where the workspace goes. */
+  initInput(value: unknown): { timezone: string; workspace: 'default' | 'repository' } {
+    const v = input.fields(value, ['timezone', 'workspace']);
+    const timezone = v['timezone'];
+    if (typeof timezone !== 'string' || timezone.length > 64 || !/^[A-Za-z0-9_+\-/]+$/.test(timezone)) throw new InvalidInput('Zeitzone erwartet.');
+    try {
+      new Intl.DateTimeFormat('de-CH', { timeZone: timezone });
+    } catch {
+      throw new InvalidInput('Unbekannte Zeitzone.');
+    }
+    if (v['workspace'] !== 'default' && v['workspace'] !== 'repository') throw new InvalidInput('Arbeitsbereich erwartet.');
+    return { timezone, workspace: v['workspace'] };
+  },
+  usageRange(value: unknown): '7' | '30' | 'all' {
+    if (value !== '7' && value !== '30' && value !== 'all') throw new InvalidInput('Zeitraum erwartet.');
+    return value;
+  },
   /** A list of glob patterns for the path test: at most 200 non-empty strings of up to 500 characters. */
   patterns(value: unknown): string[] {
     if (!Array.isArray(value) || value.length > 200) throw new InvalidInput('Liste erwartet.');
@@ -192,9 +209,11 @@ export const input = {
         const force = optional('force', flag);
         return { name: 'baseline', reason: text(v['reason'], MAX_REASON), ...(force !== undefined ? { force } : {}) };
       }
-      case 'doctor':
-        allow(['name']);
-        return { name: 'doctor' };
+      case 'doctor': {
+        allow(['name', 'live']);
+        const live = optional('live', flag);
+        return { name: 'doctor', ...(live === true ? { live: true } : {}) };
+      }
       case 'configSet': {
         allow(['name', 'changes', 'confirmPaidUsage']);
         const changes = input.configChanges(v['changes']);

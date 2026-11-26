@@ -14,7 +14,7 @@ describe('Zustandsgalerie (AD-15)', () => {
     for (const theme of GALLERY_THEMES) {
       const panel = screen.getByTestId(`gallery-${theme}`);
       expect(panel).toHaveAttribute('data-theme', theme);
-      for (const section of ['Buttons', 'Split-Button', 'Chips', 'Status-Chips (Analyse)', 'Status-Chips (Lauf)', 'Referenz-Chips', 'Etiketten', 'Chip-Liste', 'Statuspunkte', 'Banner', 'Dialog und Bestätigung', 'Tooltip', 'Tabs', 'Tabelle', 'Felder', 'Laden und leer', 'Icons', 'Halt-Banner', 'Claude-Warnung', 'Tageszusammenfassung', 'Hinweise und Lücken', 'Zeitstrahl', 'Kalender', 'Markdown: Work-Log mit KI', 'Markdown: Journal ohne KI', 'Laufanzeige: läuft', 'Laufanzeige: Ergebnis', 'Dialoge: Ausgangspunkt, Überspringen, Erneut versuchen', 'Notiz-Dialog', 'Prüfen', 'Journal: Fehler', 'Zeitplan: Zustände', 'Zeitplan: Formular und Vorschau', 'Zeitplan: Dialoge und Verlauf', 'Konfiguration: Gruppen', 'Konfiguration: Speichern-Leiste und Dialoge']) {
+      for (const section of ['Buttons', 'Split-Button', 'Chips', 'Status-Chips (Analyse)', 'Status-Chips (Lauf)', 'Referenz-Chips', 'Etiketten', 'Chip-Liste', 'Statuspunkte', 'Banner', 'Dialog und Bestätigung', 'Tooltip', 'Tabs', 'Tabelle', 'Felder', 'Laden und leer', 'Icons', 'Halt-Banner', 'Claude-Warnung', 'Tageszusammenfassung', 'Hinweise und Lücken', 'Zeitstrahl', 'Kalender', 'Markdown: Work-Log mit KI', 'Markdown: Journal ohne KI', 'Laufanzeige: läuft', 'Laufanzeige: Ergebnis', 'Dialoge: Ausgangspunkt, Überspringen, Erneut versuchen', 'Notiz-Dialog', 'Prüfen', 'Journal: Fehler', 'Zeitplan: Zustände', 'Zeitplan: Formular und Vorschau', 'Zeitplan: Dialoge und Verlauf', 'Konfiguration: Gruppen', 'Konfiguration: Speichern-Leiste und Dialoge', 'Projekt hinzufügen: Schritt 1', 'System: Verbrauch und Live-Test']) {
         expect(within(panel).getByRole('region', { name: section }), `${theme}: ${section}`).toBeInTheDocument();
       }
     }
@@ -55,7 +55,7 @@ describe('Zustandsgalerie (AD-15)', () => {
     expect(marked.length).toBeGreaterThan(0);
     for (const button of marked) expect(button).toHaveAccessibleName(/Claude/);
     // Only the actions of spec §12.2 carry the mark; the variant without AI stands next to it, equal and unmarked (AK-10-50).
-    for (const name of ['Laufanzeige: läuft', 'Laufanzeige: Ergebnis', 'Dialoge: Ausgangspunkt, Überspringen, Erneut versuchen', 'Notiz-Dialog', 'Prüfen', 'Journal: Fehler', 'Zeitplan: Zustände', 'Zeitplan: Formular und Vorschau', 'Zeitplan: Dialoge und Verlauf', 'Konfiguration: Gruppen', 'Konfiguration: Speichern-Leiste und Dialoge']) {
+    for (const name of ['Laufanzeige: läuft', 'Laufanzeige: Ergebnis', 'Dialoge: Ausgangspunkt, Überspringen, Erneut versuchen', 'Notiz-Dialog', 'Prüfen', 'Journal: Fehler', 'Zeitplan: Zustände', 'Zeitplan: Formular und Vorschau', 'Zeitplan: Dialoge und Verlauf', 'Konfiguration: Gruppen', 'Konfiguration: Speichern-Leiste und Dialoge', 'Projekt hinzufügen: Schritt 1', 'System: Verbrauch und Live-Test']) {
       for (const region of screen.getAllByRole('region', { name })) {
         for (const button of within(region).queryAllByRole('button').filter((entry) => entry.querySelector('[data-icon="spark"]') !== null)) {
           expect(button.textContent?.trim(), name).toMatch(/^(Jetzt erfassen|Erneut versuchen|Journal erzeugen|Live-Test|Jetzt auslösen)/);
