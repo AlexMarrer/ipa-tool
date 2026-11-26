@@ -173,6 +173,24 @@ describe('Assistent: Schritte 2 und 3 (AK-10-70, AK-10-71)', () => {
     expect(view.app.store.getSnapshot().selection.page).toBe('system');
   });
 
+  it('bleibt beim ersten Projekt im Ergebnis stehen, auch wenn die Projektliste dabei neu geladen wird', async () => {
+    const view = await mount({ projects: [], folder: 'C:/repos/neu', projectCheck: check() });
+    const init = view.api.project.init as ReturnType<typeof vi.fn>;
+    const original = init.getMockImplementation() as ((...args: unknown[]) => unknown) | undefined;
+    init.mockImplementation(async (...args: unknown[]) => {
+      // The CLI has written the registry: the next list contains the project and the selection moves to it.
+      view.setProjects([project({ repositoryId: 'neu-123456' })]);
+      return original?.(...args);
+    });
+    await toStep2(view);
+    await next(view);
+    await view.user.click(screen.getByRole('button', { name: 'Projekt einrichten' }));
+    expect(await screen.findByText('Projekt eingerichtet')).toBeInTheDocument();
+    await waitFor(() => expect(view.app.store.getSnapshot().selection.repositoryId).toBe('neu-123456'));
+    expect(screen.getByText('Schritt 4 von 4: Ergebnis')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Zum Projekt' })).toBeInTheDocument();
+  });
+
   it('bietet den Zeitplan an, ohne ihn einzurichten', async () => {
     const view = await mount({ folder: 'C:/repos/neu', projectCheck: check() });
     await toStep2(view);

@@ -79,7 +79,7 @@ export function AppShell({ app, api }: AppShellProps) {
           </div>
         ) : null}
         <main className="page">
-          <ErrorBoundary area="Dieser Bereich" key={`${selection.page}:${selection.repositoryId ?? ''}`}>
+          <ErrorBoundary area="Dieser Bereich" key={selection.page === 'add-project' || selection.page === 'system' ? selection.page : `${selection.page}:${selection.repositoryId ?? ''}`}>
             {loading ? (
               <LoadingSkeleton loading />
             ) : selection.page === 'system' ? (

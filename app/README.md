@@ -4,7 +4,7 @@ Die Desktop-App ist die grafische Oberfläche für das Kommandozeilenwerkzeug `i
 
 Falls du das Projekt zum ersten Mal siehst: Lies zuerst das [README im Wurzelordner](../README.md). Es erklärt, was der IPA Assistant ist, und wie du `ipa` installierst. Diese Datei beschreibt nur die App.
 
-**Stand: Paket 13 von 14 (App Zeitplan und Konfiguration).** Die App ist noch nicht fertig, aber du kannst mit ihr lesen, was `ipa` gesammelt hat, und die täglichen Aktionen auslösen:
+**Stand: Paket 14 von 14 (App Projekte, System, Installer): alle Seiten sind umgesetzt.** Die App ist noch nicht fertig, aber du kannst mit ihr lesen, was `ipa` gesammelt hat, und die täglichen Aktionen auslösen:
 
 - **Übersicht** eines Projekts: letzter Lauf, Analyse-Stand, offene und zurückgehaltene Inhalte, Zeitplan-Kurzstatus, die letzten Tage, ein roter Banner bei einem Halt (mit **Neuen Ausgangspunkt setzen**) und eine Warnung, wenn Claude nicht bereit ist (mit **Prüfen**).
 - **Tag** mit Kalender, Zusammenfassung, Hinweisen und vier Tabs: Zeitstrahl, **Work-Logs** (mit Etiketten `KI-Entwurf`, `ohne KI`, `vom Tool`), **Notizen** und **Journal-Entwürfe**. Verweise wie `[S000002:E003]` oder Notiz-IDs sind klickbar.
@@ -13,9 +13,11 @@ Falls du das Projekt zum ersten Mal siehst: Lies zuerst das [README im Wurzelord
 - **Journal erzeugen** und **Ohne KI erzeugen** für den angezeigten Tag, danach **Als Endfassung übernehmen** und **Löschen** (Papierkorb) für Entwürfe und Endfassungen, **Erneut versuchen** (nur bei erschöpften Analysen) und **Überspringen** mit Pflichtgrund.
 - **Zeitplan**: Zustand der Windows-Aufgabe (nicht eingerichtet, aktiv, pausiert, veraltet, Fehler), Formular für Arbeitstage, Zeitfenster, Intervall und Zusatzläufe mit Vorschau der Startzeiten und der Obergrenze der Claude-Aufrufe pro Arbeitstag (die Vorschau rechnet das CLI, die App rechnet nichts selbst), Einrichten, Aktualisieren, Pausieren, Fortsetzen, **Jetzt auslösen** (ruft Claude auf), Löschen mit Rückfrage und der Lauf-Verlauf.
 - **Konfiguration** in acht Gruppen (Claude, Kostenschutz, Zeitplan, Dateifilter mit „Pfad testen“, Secrets, Kontext, Limits, Info). Jede Änderung wird vor dem Speichern vom CLI geprüft; gespeichert wird mit `ipa config set`, die App schreibt `config.json` nie selbst. Kostenpflichtige Nutzung lässt sich nur in zwei Schritten einschalten. Wird die Datei von Hand geändert, fragt die App nach.
+- **Projekt hinzufügen** in vier Schritten (Ordner wählen und prüfen, Zeitzone und Arbeitsbereich, Bestätigen, Ergebnis mit dem Angebot, einen Zeitplan einzurichten). Den Ordner wählst du im Systemdialog; die App richtet genau diesen ein und verändert das Repository nie.
+- **System** für alle Projekte: Claude (**Prüfen** ohne Modellaufruf, **Live-Test** mit zwei kurzen Modellaufrufen nach zweistufiger Bestätigung), Git, Kostenschutz (erkannte kostenpflichtige Wege, nur Namen), Verbrauch (Claude-Aufrufe pro Tag und Projekt mit geschätztem Richtwert), Datenordner und Version.
 - Änderungen aus dem Terminal erscheinen ohne Neustart (gemessen: gut eine Sekunde). Läuft gerade ein Lauf (auch ein geplanter oder einer aus dem Terminal), sind die Schaltflächen, die Claude aufrufen oder schreiben, gesperrt und sagen im Tooltip warum.
 
-Noch leere Rahmen sind System und Projekt hinzufügen; sie kommen mit Paket 14. Die Windows-Aufgabe der Zeitplan-Seite ist von Hand an der echten Aufgabenplanung noch nicht geprüft; die automatischen Tests nutzen ein Ersatzprogramm für `schtasks`. Die App ruft Claude **nur auf, wenn du eine Schaltfläche mit dem Funken-Symbol drückst**, und ändert das Repository nie. Einen Installer kannst du bauen (unsigniert, siehe [Als Programm installieren](#als-programm-installieren-mit-desktop-link)); er ist noch nicht auf einem sauberen Windows abgenommen.
+Die App ist fertig umgesetzt, aber noch nicht abgenommen: Die Windows-Aufgabe der Zeitplan-Seite, die Sichtprüfung gegen das Design, die Bedienung per Tastatur, der Installer auf einem sauberen Windows und ein echter Lauf mit Claude sind von Hand zu prüfen. Die Schritte stehen im [Abnahmeprotokoll](../docs/abnahme/app-abnahmeprotokoll.md); die automatischen Tests nutzen ein Ersatzprogramm für `schtasks` und ein gespieltes Claude. Die App ruft Claude **nur auf, wenn du eine Schaltfläche mit dem Funken-Symbol drückst**, und ändert das Repository nie. Einen Installer kannst du bauen (unsigniert, siehe [Als Programm installieren](#als-programm-installieren-mit-desktop-link)); er ist noch nicht auf einem sauberen Windows abgenommen.
 
 ## Inhalt
 
@@ -61,6 +63,8 @@ Damit du die App ohne Terminal öffnen kannst, baust du einen Windows-Installer.
 ```powershell
 npm run app:dist
 ```
+
+Starte das in **PowerShell** oder der Eingabeaufforderung, nicht in Git Bash: Dort steht das `tar` von Git vor dem von Windows und liest die Pfade nicht (Fehler `gzip: stdin: unexpected end of file`).
 
 Das baut CLI und App, lädt beim ersten Mal die passende `node.exe` und die Installer-Werkzeuge herunter und erzeugt:
 
@@ -225,5 +229,5 @@ Neue Abhängigkeiten ausser den hier genannten brauchen eine Begründung in dies
 - Die App zeigt keine Diffs und bearbeitet keine Texte: Journal-Entwürfe lassen sich öffnen und kopieren. **Als Endfassung übernehmen** kopiert einen Entwurf auf Klick nach `journal/final/<Tag>.md` (ersetzt nie eine Datei), die Überarbeitung machst du in deinem Editor. **Löschen** (Entwurf oder Endfassung) verschiebt nach Rückfrage in den Windows-Papierkorb; endgültig löscht die App nie. Das ist die einzige Stelle, an der die App selbst Dateien im Arbeitsbereich anlegt; das CLI schreibt nie nach `journal/final/`.
 - Zurückgehaltene Notizen (möglicher Zugangswert) erscheinen mit Detektor, aber ohne den betroffenen Text.
 - Der Installer ist unsigniert (Windows-SmartScreen-Warnung), hat das Standard-Icon von Electron und wurde noch nicht auf einem sauberen Windows installiert. Die Abnahme (AK-10-80) und der Test der CLI-Testsuite mit der mitgelieferten `node.exe` (AK-10-76) gehören zu Paket 14.
-- Ein Playwright-Test gegen die gepackte App ist nicht möglich: Die Fuses schalten das Debugging ab, das Playwright zum Verbinden braucht. Geprüft wird die gepackte App deshalb von Hand.
+- Ein Playwright-Test gegen die gepackte App ist nicht möglich: Die Fuses schalten das Debugging ab, das Playwright zum Verbinden braucht. Der Ende-zu-Ende-Test (`test/e2e/full-flow.e2e.ts`) startet deshalb die App aus `out/` und gibt ihr dasselbe gestagte CLI und dieselbe `node.exe`, die der Installer ausliefert (`npm run dist --prefix app` legt sie unter `app/stage/` ab). Die gepackte App selbst wird von Hand geprüft.
 - Die Zustandsgalerie ist nur in Entwicklung und Tests erreichbar (`#/gallery`), nicht im gebauten Paket.
