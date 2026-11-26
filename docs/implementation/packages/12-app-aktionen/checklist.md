@@ -26,7 +26,7 @@ Einen Punkt erst abhaken, wenn er umgesetzt und geprüft ist. Den Nachweis (Test
 - [x] KI-Markierung an genau den richtigen Buttons (AK-10-50) — `actions.test.tsx`, `gallery.test.tsx` (nur die Aktionen aus §12.2)
 - [x] Abbrechen-Fluss (AK-10-51) — `cancel.test.ts`, `actions.test.ts` (Abbrechen und Fortsetzen), e2e (Rückfrage, Weiterlaufen lassen, Abbrechen); Rückfrage beim Beenden aus Paket 10
 
-- [x] Nachtrag: Endfassung übernehmen und Journal-Dateien in den Papierkorb löschen (AD-17, AK-10-52) — `journal-files.test.ts`, `actions.test.tsx`, `ipc.test.ts`, e2e mit echtem Papierkorb
+- [x] Nachtrag: Endfassung übernehmen und Journal-Dateien in den Papierkorb löschen (AD-17, AK-10-51a) — `journal-files.test.ts`, `actions.test.tsx`, `ipc.test.ts`, e2e mit echtem Papierkorb
 
 ## Integration
 

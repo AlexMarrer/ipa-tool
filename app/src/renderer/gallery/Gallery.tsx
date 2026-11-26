@@ -24,6 +24,7 @@ import {
 } from '../components';
 import { StatusDot } from '../layout/Sidebar';
 import { ActionStates } from './ActionStates';
+import { ConfigStates } from './ConfigStates';
 import { PageStates } from './PageStates';
 
 /**
@@ -202,6 +203,7 @@ export function GalleryContent() {
       </Section>
       <PageStates />
       <ActionStates />
+      <ConfigStates />
     </div>
   );
 }

@@ -2,6 +2,7 @@
  * What the renderer may ask the main process to run, and what comes back (app spec §4.1, §8.7). The result carries
  * only whitelisted fields: no paths, no file contents, no reasons and no note texts (I-12, spec §12.6).
  */
+import type { ConfigChange, ConfigFinding, ScheduleState } from './config';
 import type { IpaError } from './types';
 
 export interface NoteInput {
@@ -27,7 +28,14 @@ export type RunInput =
   | { name: 'skip'; snapshotId: string; reason: string }
   | { name: 'baseline'; reason: string; force?: boolean }
   | { name: 'doctor' }
-  | ({ name: 'note' } & NoteInput);
+  | ({ name: 'note' } & NoteInput)
+  /** Saves changes with `ipa config set`; `confirmPaidUsage` only together with `claude.allowPaidUsage = true`. */
+  | { name: 'configSet'; changes: ConfigChange[]; confirmPaidUsage?: boolean }
+  | { name: 'scheduleInstall'; update?: boolean }
+  | { name: 'schedulePause' }
+  | { name: 'scheduleResume' }
+  | { name: 'scheduleRemove' }
+  | { name: 'scheduleRun' };
 
 export const MAX_NOTE_TEXT = 8_000;
 
@@ -58,6 +66,8 @@ export type RunResultView =
       /** Detector and field only, never the value. */
       secretFindings: { detector: string; field: string }[];
     }
+  | { kind: 'config'; valid: boolean | null; findings: ConfigFinding[]; /** Paths only, never the values. */ changedPaths: string[]; written: boolean }
+  | { kind: 'schedule'; action: string; changed: boolean; state: ScheduleState | null; differences: string[]; detail: string | null; running: boolean; insideWindow: boolean | null }
   | { kind: 'skip'; snapshotId: string; previousStatus: string }
   | { kind: 'baseline'; snapshotId: string; forced: boolean; endedHalt: 'branch_changed' | 'history_rewritten' | 'head_missing' | null }
   | {

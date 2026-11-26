@@ -7,6 +7,8 @@ import { DialogHost } from '../dialogs/DialogHost';
 import { DayPage } from '../pages/day/DayPage';
 import { PageEnvProvider } from '../pages/env';
 import { OverviewPage } from '../pages/overview/OverviewPage';
+import { ConfigPage } from '../pages/config/ConfigPage';
+import { SchedulePage } from '../pages/schedule/SchedulePage';
 import { PlaceholderPage } from '../pages/pages';
 import type { AppStore } from '../store/appStore';
 import { useStoreState } from '../store/createStore';
@@ -102,6 +104,10 @@ export function AppShell({ app, api }: AppShellProps) {
                   <OverviewPage />
                 ) : selection.page === 'day' ? (
                   <DayPage day={selection.day} tab={state.dayTab} />
+                ) : selection.page === 'schedule' ? (
+                  <SchedulePage />
+                ) : selection.page === 'config' ? (
+                  <ConfigPage key={state.configGroup} initialGroup={state.configGroup} />
                 ) : (
                   <PlaceholderPage page={selection.page} />
                 )}

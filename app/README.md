@@ -4,16 +4,18 @@ Die Desktop-App ist die grafische Oberfläche für das Kommandozeilenwerkzeug `i
 
 Falls du das Projekt zum ersten Mal siehst: Lies zuerst das [README im Wurzelordner](../README.md). Es erklärt, was der IPA Assistant ist, und wie du `ipa` installierst. Diese Datei beschreibt nur die App.
 
-**Stand: Paket 12 von 14 (App Aktionen).** Die App ist noch nicht fertig, aber du kannst mit ihr lesen, was `ipa` gesammelt hat, und die täglichen Aktionen auslösen:
+**Stand: Paket 13 von 14 (App Zeitplan und Konfiguration).** Die App ist noch nicht fertig, aber du kannst mit ihr lesen, was `ipa` gesammelt hat, und die täglichen Aktionen auslösen:
 
 - **Übersicht** eines Projekts: letzter Lauf, Analyse-Stand, offene und zurückgehaltene Inhalte, Zeitplan-Kurzstatus, die letzten Tage, ein roter Banner bei einem Halt (mit **Neuen Ausgangspunkt setzen**) und eine Warnung, wenn Claude nicht bereit ist (mit **Prüfen**).
 - **Tag** mit Kalender, Zusammenfassung, Hinweisen und vier Tabs: Zeitstrahl, **Work-Logs** (mit Etiketten `KI-Entwurf`, `ohne KI`, `vom Tool`), **Notizen** und **Journal-Entwürfe**. Verweise wie `[S000002:E003]` oder Notiz-IDs sind klickbar.
 - **Neue Notiz** (`Strg+N`, speichern mit `Strg+Enter`): sechs Arten, Tag, Zeit als Dauer oder Von–bis, Verzögerung, Belege. Die Bestätigung zeigt Art, Tag und Zeit, nie den Text.
 - **Jetzt erfassen** (mit dem Funken-Symbol: ruft Claude auf) und **Nur aufnehmen** (ohne Claude). Die Laufanzeige am unteren Rand zeigt Laufzeit, die Live-Ausgabe aus den Dateien des Laufs und das Ergebnis in Klartext. Ein Lauf lässt sich mit Rückfrage abbrechen.
 - **Journal erzeugen** und **Ohne KI erzeugen** für den angezeigten Tag, danach **Als Endfassung übernehmen** und **Löschen** (Papierkorb) für Entwürfe und Endfassungen, **Erneut versuchen** (nur bei erschöpften Analysen) und **Überspringen** mit Pflichtgrund.
+- **Zeitplan**: Zustand der Windows-Aufgabe (nicht eingerichtet, aktiv, pausiert, veraltet, Fehler), Formular für Arbeitstage, Zeitfenster, Intervall und Zusatzläufe mit Vorschau der Startzeiten und der Obergrenze der Claude-Aufrufe pro Arbeitstag (die Vorschau rechnet das CLI, die App rechnet nichts selbst), Einrichten, Aktualisieren, Pausieren, Fortsetzen, **Jetzt auslösen** (ruft Claude auf), Löschen mit Rückfrage und der Lauf-Verlauf.
+- **Konfiguration** in acht Gruppen (Claude, Kostenschutz, Zeitplan, Dateifilter mit „Pfad testen“, Secrets, Kontext, Limits, Info). Jede Änderung wird vor dem Speichern vom CLI geprüft; gespeichert wird mit `ipa config set`, die App schreibt `config.json` nie selbst. Kostenpflichtige Nutzung lässt sich nur in zwei Schritten einschalten. Wird die Datei von Hand geändert, fragt die App nach.
 - Änderungen aus dem Terminal erscheinen ohne Neustart (gemessen: gut eine Sekunde). Läuft gerade ein Lauf (auch ein geplanter oder einer aus dem Terminal), sind die Schaltflächen, die Claude aufrufen oder schreiben, gesperrt und sagen im Tooltip warum.
 
-Noch leere Rahmen sind Zeitplan, Konfiguration, System und Projekt hinzufügen; sie kommen mit den Paketen 13 und 14. Die App ruft Claude **nur auf, wenn du eine Schaltfläche mit dem Funken-Symbol drückst**, und ändert das Repository nie. Einen Installer kannst du bauen (unsigniert, siehe [Als Programm installieren](#als-programm-installieren-mit-desktop-link)); er ist noch nicht auf einem sauberen Windows abgenommen.
+Noch leere Rahmen sind System und Projekt hinzufügen; sie kommen mit Paket 14. Die Windows-Aufgabe der Zeitplan-Seite ist von Hand an der echten Aufgabenplanung noch nicht geprüft; die automatischen Tests nutzen ein Ersatzprogramm für `schtasks`. Die App ruft Claude **nur auf, wenn du eine Schaltfläche mit dem Funken-Symbol drückst**, und ändert das Repository nie. Einen Installer kannst du bauen (unsigniert, siehe [Als Programm installieren](#als-programm-installieren-mit-desktop-link)); er ist noch nicht auf einem sauberen Windows abgenommen.
 
 ## Inhalt
 
@@ -147,7 +149,7 @@ src/main/       Main-Prozess: Fenster und Sicherheit, Protokoll app://, IPC, Die
 src/preload/    window.ipa: die einzige Schnittstelle des Renderers
 src/renderer/   React: Tokens (Hell/Dunkel), Basiskomponenten, Layout, Store, Zustandsgalerie
   markdown/     Darstellung von Work-Logs und Journalen: sicher, mit Etiketten und Referenz-Chips
-  pages/        Übersicht und Tag (Zeitstrahl, Work-Logs, Notizen, Journal)
+  pages/        Übersicht, Tag (Zeitstrahl, Work-Logs, Notizen, Journal), Zeitplan und Konfiguration
   dialogs/      Notiz-Dialog (Formularlogik in noteForm.ts), Ausgangspunkt, Überspringen, Erneut versuchen, Prüfen
 test/           unit, reader, components (jsdom), e2e (Playwright), helpers
 scripts/        write-cli-version, stage-cli, fetch-node, after-pack (Fuses)
@@ -189,7 +191,7 @@ Läufe: Pro Projekt läuft höchstens ein Schreib-Lauf und ein Journal-Lauf; `no
 - Der Renderer kommt aus dem eigenen Protokoll `app://` mit Content-Security-Policy (`default-src 'none'`, `connect-src 'none'`, keine Inline-Skripte). Navigation und neue Fenster werden verweigert, Berechtigungsanfragen abgelehnt, es gibt nur eine Instanz.
 - Der Main-Prozess prüft bei jeder IPC-Nachricht Absender (nur Hauptframe des Hauptfensters) und Eingabe. Kein Kanal liefert Pfade zum Öffnen, Umgebungsvariablen oder rohe Befehle.
 - Fuses (`RunAsNode`, `EnableNodeCliInspectArguments`, `EnableNodeOptionsEnvironmentVariable` aus, `OnlyLoadAppFromAsar` ein) setzt der Build-Schritt `after-pack`. In einem Entwicklungsstart (`electron .`) gelten sie nicht.
-- Die Testhaken `IPA_APP_USER_DATA`, `IPA_APP_NODE` und `IPA_APP_CLI_ROOT` wirken nur im nicht installierten Betrieb (`app.isPackaged` ist falsch).
+- Die Testhaken `IPA_APP_USER_DATA`, `IPA_APP_NODE`, `IPA_APP_CLI_ROOT` und `IPA_APP_CLI_NODE_OPTIONS` (Node-Optionen nur für die CLI-Prozesse, für das Ersatzprogramm der Aufgabenplanung) wirken nur im nicht installierten Betrieb (`app.isPackaged` ist falsch).
 - Das Protokoll der App (`%APPDATA%\IPA Assistant\logs\app.log`, höchstens 1 MiB, einmal rotiert) enthält Zeitpunkt, Ereignisart, Befehlsname, Auslöser, Lauf-ID, Exit-Code und Fehlercode, nie Argumentwerte, Ausgaben oder Dateiinhalte.
 - Die Live-Zeilen eines Laufs entstehen aus Dateinamen und Zählern, nie aus Dateiinhalten, Notizen oder Gründen.
 

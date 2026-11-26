@@ -23,10 +23,11 @@ describe('Preload: window.ipa (AK-10-04)', () => {
 
   it('stellt genau window.ipa mit den Gruppen aus §3.9 bereit und sonst nichts', () => {
     expect(Object.keys(exposed)).toEqual(['ipa']);
-    expect(Object.keys(api()).sort()).toEqual(['app', 'config', 'day', 'journal', 'notes', 'overview', 'projects', 'run', 'shell', 'snapshot', 'system']);
+    expect(Object.keys(api()).sort()).toEqual(['app', 'config', 'day', 'journal', 'notes', 'overview', 'projects', 'run', 'schedule', 'shell', 'snapshot', 'system']);
     expect(Object.keys(api()['projects'] ?? {}).sort()).toEqual(['list', 'onChanged', 'status']);
     expect(Object.keys(api()['run'] ?? {}).sort()).toEqual(['cancel', 'onEvent', 'start', 'state']);
-    expect(Object.keys(api()['config'] ?? {})).toEqual(['scanText']);
+    expect(Object.keys(api()['config'] ?? {}).sort()).toEqual(['chooseFile', 'preview', 'read', 'scanText', 'testPath']);
+    expect(Object.keys(api()['schedule'] ?? {}).sort()).toEqual(['runs', 'status']);
     expect(Object.keys(api()['system'] ?? {}).sort()).toEqual(['dataRoot', 'versions']);
     expect(Object.keys(api()['app'] ?? {}).sort()).toEqual(['getState', 'setState']);
     expect(Object.keys(api()['day'] ?? {}).sort()).toEqual(['index', 'load']);
@@ -46,6 +47,12 @@ describe('Preload: window.ipa (AK-10-04)', () => {
     await a['run']?.['start']?.('p-123456', { name: 'doctor' });
     await a['run']?.['state']?.('p-123456');
     await a['config']?.['scanText']?.('p-123456', 'Text');
+    await a['config']?.['read']?.('p-123456');
+    await a['config']?.['preview']?.('p-123456', [{ path: 'claude.maxTurns', value: 3 }]);
+    await a['config']?.['testPath']?.('p-123456', { include: ['**'], exclude: [], path: 'a.ts' });
+    await a['config']?.['chooseFile']?.('p-123456');
+    await a['schedule']?.['status']?.('p-123456');
+    await a['schedule']?.['runs']?.('p-123456');
     await a['snapshot']?.['evidenceList']?.('p-123456');
     await a['system']?.['versions']?.();
     await a['system']?.['dataRoot']?.();

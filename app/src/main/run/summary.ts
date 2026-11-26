@@ -100,6 +100,39 @@ export function resultView(request: CommandRequest, result: Json | null): RunRes
         findings: Array.isArray(result['findings']) ? (result['findings'] as unknown[]).flatMap((finding) => str(finding) ?? []) : [],
       };
     }
+    case 'configSet':
+    case 'configCheck': {
+      return {
+        kind: 'config',
+        valid: typeof result['valid'] === 'boolean' ? result['valid'] : null,
+        findings: list(result['findings']).map((finding) => ({
+          severity: finding['severity'] === 'warning' ? ('warning' as const) : ('error' as const),
+          code: str(finding['code']) ?? 'unbekannt',
+          path: str(finding['path']) ?? '',
+          message: str(finding['message']) ?? '',
+        })),
+        changedPaths: list(result['changes']).flatMap((change) => str(change['path']) ?? []),
+        written: result['written'] === true,
+      };
+    }
+    case 'scheduleInstall':
+    case 'schedulePause':
+    case 'scheduleResume':
+    case 'scheduleRemove':
+    case 'scheduleRun':
+    case 'scheduleStatus': {
+      const state = str(result['state']);
+      return {
+        kind: 'schedule',
+        action: str(result['action']) ?? '',
+        changed: result['changed'] === true,
+        state: state === 'not_installed' || state === 'active' || state === 'paused' || state === 'stale' || state === 'error' ? state : null,
+        differences: Array.isArray(result['differences']) ? (result['differences'] as unknown[]).flatMap((entry) => str(entry) ?? []) : [],
+        detail: str(result['detail']),
+        running: result['running'] === true,
+        insideWindow: typeof result['insideWindow'] === 'boolean' ? result['insideWindow'] : null,
+      };
+    }
     default:
       return null;
   }

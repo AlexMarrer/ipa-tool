@@ -184,7 +184,7 @@ Weitere Fehler erklärt die Meldung des Werkzeugs meist mit dem nächsten Schrit
 Die Umsetzung erfolgt in Paketen, geplant in [`docs/implementation/`](docs/implementation/README.md).
 
 - **Das CLI** ist mit allen Befehlen von Version 1 umgesetzt (Pakete 01 bis 09): `ipa init`, `capture`, `skip`, `baseline`, `note`, `journal`, `schedule` (inklusive Verwaltung der Windows-Aufgabe), `config`, `status` und `doctor`, dazu maschinenlesbare Ergebnisse mit `--json`. Offen sind die Live-Abnahme mit echtem Claude und die manuelle Prüfung der Aufgabenplanung, siehe [Abnahmeprotokoll](docs/abnahme/v1-abnahmeprotokoll.md).
-- **Die Desktop-App** ist bei Paket 12 von 14 (Lesen und Aktionen: Notizen, Erfassen, Journal, Ausgangspunkt; Zeitplan, Konfiguration und Installer-Abnahme folgen). Fortschritt: [`docs/implementation/checklist.md`](docs/implementation/checklist.md).
+- **Die Desktop-App** ist bei Paket 13 von 14 (Lesen, Aktionen, Zeitplan und Konfiguration; Projekt hinzufügen, System und Installer-Abnahme folgen). Fortschritt: [`docs/implementation/checklist.md`](docs/implementation/checklist.md).
 
 Wo was steht:
 

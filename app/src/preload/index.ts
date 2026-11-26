@@ -24,6 +24,14 @@ const api: IpaApi = {
   },
   config: {
     scanText: (repositoryId, text) => ipcRenderer.invoke(IPC_CHANNELS.configScanText, { repositoryId, text }),
+    read: (repositoryId) => ipcRenderer.invoke(IPC_CHANNELS.configRead, repositoryId),
+    preview: (repositoryId, changes) => ipcRenderer.invoke(IPC_CHANNELS.configPreview, { repositoryId, changes }),
+    testPath: (repositoryId, input) => ipcRenderer.invoke(IPC_CHANNELS.configTestPath, { repositoryId, ...input }),
+    chooseFile: (repositoryId) => ipcRenderer.invoke(IPC_CHANNELS.configChooseFile, repositoryId),
+  },
+  schedule: {
+    status: (repositoryId) => ipcRenderer.invoke(IPC_CHANNELS.scheduleStatus, repositoryId),
+    runs: (repositoryId) => ipcRenderer.invoke(IPC_CHANNELS.scheduleRuns, repositoryId),
   },
   system: {
     versions: () => ipcRenderer.invoke(IPC_CHANNELS.systemVersions),

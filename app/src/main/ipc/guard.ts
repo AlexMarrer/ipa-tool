@@ -1,4 +1,5 @@
 import { isDay } from '../../shared/dates';
+import { EDITABLE_PATHS } from '../../shared/config';
 import { MAX_NOTE_TEXT } from '../../shared/run';
 import type { FileRef } from '../../shared/views';
 import type { CommandRequest, NoteFields } from '../cli/commands';
@@ -28,6 +29,18 @@ export function isTrustedSender(sender: SenderInfo, mainWebContentsId: number | 
 
 /** A reason for `skip` or `baseline`; the CLI keeps its own limits. */
 const MAX_REASON = 2000;
+const MAX_CHANGES = 30;
+const MAX_VALUE_JSON = 50_000;
+
+/** A JSON value without functions, `undefined` or cycles, at most four levels deep. */
+function isJsonValue(value: unknown, depth = 0): boolean {
+  if (depth > 4) return false;
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return true;
+  if (typeof value === 'number') return Number.isFinite(value);
+  if (Array.isArray(value)) return value.length <= 500 && value.every((item) => isJsonValue(item, depth + 1));
+  if (typeof value === 'object') return Object.values(value as Record<string, unknown>).every((item) => isJsonValue(item, depth + 1));
+  return false;
+}
 
 export class InvalidInput extends Error {
   constructor(message: string) {
@@ -61,6 +74,35 @@ export const input = {
     if (typeof value !== 'string' || value.length > max) throw new InvalidInput('Text erwartet.');
     return value;
   },
+  /**
+   * Changes of `config.json` as path and value. Only the paths of the configuration groups may be named, the value is
+   * JSON and goes to `ipa config set` as JSON text (spec §8.11, AK-10-68).
+   */
+  configChanges(value: unknown): { path: string; value: string }[] {
+    if (!Array.isArray(value) || value.length === 0 || value.length > MAX_CHANGES) throw new InvalidInput('Änderungen erwartet.');
+    const seen = new Set<string>();
+    return (value as unknown[]).map((entry) => {
+      if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) throw new InvalidInput('Änderung erwartet.');
+      const change = entry as Record<string, unknown>;
+      if (Object.keys(change).some((key) => key !== 'path' && key !== 'value')) throw new InvalidInput('Unerwartete Felder in der Änderung.');
+      const target = change['path'];
+      if (typeof target !== 'string' || !EDITABLE_PATHS.includes(target)) throw new InvalidInput('Dieses Feld lässt sich in der App nicht ändern.');
+      if (seen.has(target)) throw new InvalidInput('Ein Feld nur einmal ändern.');
+      seen.add(target);
+      if (!isJsonValue(change['value'])) throw new InvalidInput('Ungültiger Wert.');
+      const json = JSON.stringify(change['value']);
+      if (json === undefined || json.length > MAX_VALUE_JSON) throw new InvalidInput('Ungültiger Wert.');
+      return { path: target, value: json };
+    });
+  },
+  /** A list of glob patterns for the path test: at most 200 non-empty strings of up to 500 characters. */
+  patterns(value: unknown): string[] {
+    if (!Array.isArray(value) || value.length > 200) throw new InvalidInput('Liste erwartet.');
+    return (value as unknown[]).map((item) => {
+      if (typeof item !== 'string' || item === '' || item.length > 500) throw new InvalidInput('Muster erwartet.');
+      return item;
+    });
+  },
   /** A reference to a file by kind and id; the renderer never passes a path (spec §3.8). */
   fileRef(value: unknown): FileRef {
     if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new InvalidInput('Verweis erwartet.');
@@ -79,6 +121,9 @@ export const input = {
       case 'journalFinal':
         only(['kind', 'file']);
         return { kind: 'journalFinal', file: input.string(v['file'], 120) };
+      case 'config':
+        only(['kind']);
+        return { kind: 'config' };
       case 'journalFinalFolder':
         only(['kind']);
         return { kind: 'journalFinalFolder' };
@@ -150,6 +195,27 @@ export const input = {
       case 'doctor':
         allow(['name']);
         return { name: 'doctor' };
+      case 'configSet': {
+        allow(['name', 'changes', 'confirmPaidUsage']);
+        const changes = input.configChanges(v['changes']);
+        const confirm = optional('confirmPaidUsage', flag);
+        // The flag only goes with the switch it confirms; it is never sent on its own (spec §8.11).
+        if (confirm === true && !changes.some((change) => change.path === 'claude.allowPaidUsage' && change.value === 'true')) {
+          throw new InvalidInput('Die Bestätigung gehört nur zu «Kostenpflichtige Nutzung erlauben».');
+        }
+        return { name: 'configSet', changes, ...(confirm === true ? { confirmPaidUsage: true } : {}) };
+      }
+      case 'scheduleInstall': {
+        allow(['name', 'update']);
+        const update = optional('update', flag);
+        return { name: 'scheduleInstall', ...(update === true ? { update: true } : {}) };
+      }
+      case 'schedulePause':
+      case 'scheduleResume':
+      case 'scheduleRemove':
+      case 'scheduleRun':
+        allow(['name']);
+        return { name: v['name'] as 'schedulePause' | 'scheduleResume' | 'scheduleRemove' | 'scheduleRun' };
       case 'note': {
         allow(['name', 'text', 'type', 'day', 'minutes', 'start', 'end', 'timeKind', 'delay', 'reason', 'alternatives', 'cause', 'solution', 'refs']);
         const out: NoteFields & { name: 'note' } = { name: 'note', text: text(v['text'], MAX_NOTE_TEXT) };

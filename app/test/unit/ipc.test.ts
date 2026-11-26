@@ -99,7 +99,8 @@ describe('Registrierung der Kanäle (AK-10-04)', () => {
 
   it('liefert keinen Kanal für Pfade, Umgebungsvariablen oder rohe Befehle', () => {
     // `shell` opens by kind and id and the app opens only links after confirmation; neither takes a path.
-    const names = Object.values(IPC_CHANNELS).join(' ').replace(/ipa:shell:(open|reveal|copyPath|copy|openExternal)/g, '');
+    // `config:testPath` takes a repository path to test against the filter, and only answers allowed or not.
+    const names = Object.values(IPC_CHANNELS).join(' ').replace(/ipa:shell:(open|reveal|copyPath|copy|openExternal)/g, '').replace(/ipa:config:testPath/, '');
     expect(names).not.toMatch(/env|path|open|exec|spawn|readFile|shell/i);
     expect(Object.values(IPC_CHANNELS).some((channel) => /spawn|exec|command/i.test(channel))).toBe(false);
   });
@@ -177,6 +178,53 @@ describe('Registrierung der Kanäle (AK-10-04)', () => {
     expect(await send(IPC_CHANNELS.configScanText, { repositoryId: 'p-123456', text: 'ein Grund' })).toMatchObject({ ok: true });
     expect(await send(IPC_CHANNELS.configScanText, { repositoryId: 'p-123456', text: 'x'.repeat(20_001) })).toMatchObject({ ok: false });
     expect(await send(IPC_CHANNELS.configScanText, { repositoryId: 'p-123456', text: 'x', extra: 1 })).toMatchObject({ ok: false });
+  });
+
+  it('prüft Konfiguration und Zeitplan: nur freigegebene Felder, JSON-Werte, keine Pfade des Systems', async () => {
+    const send = (channel: string, argument: unknown) => ipcMain.listeners.get(channel)?.(trusted('app://app/index.html'), argument);
+    const fake = services as unknown as Record<string, unknown>;
+    for (const name of ['loadConfig', 'previewConfig', 'testPath', 'chooseFile', 'loadSchedule', 'loadRunHistory']) fake[name] = vi.fn(async () => ({ ok: true, value: {} }));
+    expect(await send(IPC_CHANNELS.configRead, 'p-123456')).toMatchObject({ ok: true });
+    expect(await send(IPC_CHANNELS.configRead, 42)).toMatchObject({ ok: false });
+    expect(await send(IPC_CHANNELS.scheduleStatus, 'p-123456')).toMatchObject({ ok: true });
+    expect(await send(IPC_CHANNELS.scheduleRuns, 'p-123456')).toMatchObject({ ok: true });
+    expect(await send(IPC_CHANNELS.configChooseFile, 'p-123456')).toMatchObject({ ok: true });
+    const preview = (changes: unknown) => send(IPC_CHANNELS.configPreview, { repositoryId: 'p-123456', changes });
+    expect(await preview([{ path: 'schedule.intervalMinutes', value: 60 }])).toMatchObject({ ok: true });
+    expect(await preview([{ path: 'claude.model', value: null }, { path: 'paths.include', value: ['src/**'] }])).toMatchObject({ ok: true });
+    for (const bad of [[], 'x', [{ path: 'timezone', value: 'UTC' }], [{ path: 'repository.path', value: 'C:/x' }], [{ path: 'claude.command', value: ['x'] }], [{ path: 'schemaVersion', value: 2 }], [{ path: 'claude', value: {} }], [{ path: 'claude.maxTurns', value: 1 }, { path: 'claude.maxTurns', value: 2 }], [{ path: 'claude.maxTurns', value: 1, extra: 1 }], [{ path: 'claude.maxTurns', value: () => 1 }], [{ path: 'claude.maxTurns', value: undefined }], [{ path: 'claude.maxTurns', value: Number.NaN }], [{ path: 'claude.model', value: 'x'.repeat(60_000) }], [{ path: 'paths.include', value: [[[[[['tief']]]]]] }], new Array(31).fill({ path: 'claude.maxTurns', value: 1 })]) {
+      expect(await preview(bad), JSON.stringify(bad)).toMatchObject({ ok: false, error: { code: 'invalid_request' } });
+    }
+    const test = (extra: Record<string, unknown>) => send(IPC_CHANNELS.configTestPath, { repositoryId: 'p-123456', include: ['**'], exclude: ['*.log'], path: 'src/a.ts', ...extra });
+    expect(await test({})).toMatchObject({ ok: true });
+    for (const bad of [{ include: 'x' }, { exclude: [''] }, { exclude: [42] }, { include: new Array(201).fill('a') }, { path: 'x'.repeat(1001) }, { cwd: 'C:/' }]) expect(await test(bad), JSON.stringify(bad)).toMatchObject({ ok: false });
+  });
+
+  it('startet Konfiguration und Zeitplan nur als getippte Aktion; die Bestätigung nur zum Schalter', async () => {
+    const send = (argument: unknown) => ipcMain.listeners.get(IPC_CHANNELS.runStart)?.(trusted('app://app/index.html'), { repositoryId: 'p-123456', input: argument });
+    (services as unknown as Record<string, unknown>)['startRun'] = vi.fn(async () => ({ ok: true, value: { ok: true, runKey: 'k1' } }));
+    for (const good of [
+      { name: 'configSet', changes: [{ path: 'claude.maxTurns', value: 3 }] },
+      { name: 'configSet', changes: [{ path: 'claude.allowPaidUsage', value: true }], confirmPaidUsage: true },
+      { name: 'configSet', changes: [{ path: 'claude.allowPaidUsage', value: false }] },
+      { name: 'scheduleInstall' },
+      { name: 'scheduleInstall', update: true },
+      { name: 'schedulePause' },
+      { name: 'scheduleResume' },
+      { name: 'scheduleRemove' },
+      { name: 'scheduleRun' },
+    ]) expect(await send(good), JSON.stringify(good)).toMatchObject({ ok: true });
+    for (const bad of [
+      { name: 'configSet', changes: [{ path: 'claude.maxTurns', value: 3 }], confirmPaidUsage: true },
+      { name: 'configSet', changes: [{ path: 'claude.allowPaidUsage', value: false }], confirmPaidUsage: true },
+      { name: 'configSet', changes: [{ path: 'claude.allowPaidUsage', value: true }], confirmPaidUsage: 'ja' },
+      { name: 'configSet', changes: [{ path: 'claude.allowPaidUsage', value: true }], dryRun: false },
+      { name: 'configSet' },
+      { name: 'scheduleInstall', update: 'ja' },
+      { name: 'scheduleRun', os: 'linux' },
+      { name: 'schedulePause', args: ['--force'] },
+      { name: 'configCheck' },
+    ]) expect(await send(bad), JSON.stringify(bad)).toMatchObject({ ok: false, error: { code: 'invalid_request' } });
   });
 
   it('prüft Endfassung und Löschen: nur Entwurf oder Endfassung, nie ein Pfad', async () => {

@@ -53,6 +53,29 @@ function successText(result: RunResultView | null): { text: string; tone: RunTex
       return { text: `Neuer Ausgangspunkt ${result.snapshotId} gesetzt.`, tone: 'neutral', chip: 'Erfolg' };
     case 'doctor':
       return { text: 'Die Voraussetzungen sind erfüllt.', tone: 'neutral', chip: 'Erfolg' };
+    case 'config':
+      return { text: result.written ? 'Konfiguration gespeichert. Die Änderung gilt ab dem nächsten Lauf.' : 'Die Konfiguration ist gültig. Es wurde nichts geschrieben.', tone: 'neutral', chip: 'Erfolg' };
+    case 'schedule':
+      return { text: describeSchedule(result), tone: 'neutral', chip: result.changed ? 'Erfolg' : 'Schon so' };
+  }
+}
+
+/** The sentence after a schedule command; `changed: false` is "Schon so", never an error (spec §8.10). */
+export function describeSchedule(result: Extract<RunResultView, { kind: 'schedule' }>): string {
+  if (!result.changed && result.action !== 'status') return 'Schon so. Es gab nichts zu ändern.';
+  switch (result.action) {
+    case 'install':
+      return 'Die Windows-Aufgabe ist eingerichtet.';
+    case 'pause':
+      return 'Der Zeitplan ist pausiert. Es werden keine Läufe ausgelöst, bis du fortsetzt.';
+    case 'resume':
+      return 'Der Zeitplan läuft wieder.';
+    case 'remove':
+      return 'Die Windows-Aufgabe ist gelöscht. Konfiguration, Snapshots und Notizen bleiben erhalten.';
+    case 'run':
+      return result.insideWindow === false ? 'Die Aufgabe wurde gestartet. Sie liegt ausserhalb des Zeitfensters und endet ohne Aufnahme.' : 'Die Aufgabe wurde gestartet.';
+    default:
+      return 'Der Zustand wurde gelesen.';
   }
 }
 

@@ -1,6 +1,8 @@
 import { vi } from 'vitest';
 import type { IpaApi } from '../../src/shared/ipc';
 import type { AppState, IpaResult, Project, ProjectList, ProjectsChange, RunEvent } from '../../src/shared/types';
+import type { ConfigChange, ConfigFile, ConfigPreview, ConfigView, RunHistoryEntry, ScheduleView } from '../../src/shared/config';
+import { CLAUDE_DEFAULTS, LIMIT_DEFAULTS, SCHEDULE_DEFAULTS } from '../../src/shared/config';
 import type { LockState, StartOutcome } from '../../src/shared/run';
 import type { DayIndex, DayView, EvidenceGroup, FinalFileView, JournalDraftView, OverviewView, ReferenceIndex, RemoveResult, WorkLogView } from '../../src/shared/views';
 
@@ -47,11 +49,37 @@ export interface FakeApiOptions {
   references?: ReferenceIndex;
   overview?: OverviewView;
   lock?: LockState;
+  /** `config.json` as the page reads it; defaults of the CLI otherwise. */
+  config?: Partial<ConfigView>;
+  schedule?: Partial<ScheduleView>;
+  scheduleRuns?: RunHistoryEntry[];
+  /** Answer of the check of a draft (`config set --dry-run`). */
+  preview?: (changes: ConfigChange[]) => ConfigPreview;
+  /** Answer of "Pfad testen". */
+  testPath?: (input: { include: string[]; exclude: string[]; path: string }) => { allowed: boolean; rule: string | null };
+  chosenFile?: string | null;
   finals?: Record<string, FinalFileView[]>;
   evidence?: EvidenceGroup[];
   /** Detector names a text hits; default none. */
   detectors?: (text: string) => string[];
 }
+
+export const defaultConfig = (overrides: Partial<ConfigFile> = {}): ConfigFile => ({
+  schemaVersion: 1,
+  repositoryId: 'alpha-111111',
+  repository: { path: 'C:/repos/alpha' },
+  timezone: 'Europe/Zurich',
+  paths: { include: ['**'], exclude: ['**/node_modules/**', '*.log'] },
+  secrets: { extraPatterns: [], disabledDetectors: [] },
+  limits: { ...LIMIT_DEFAULTS },
+  context: { files: [] },
+  testReports: [],
+  claude: { command: ['claude'], model: null, ...CLAUDE_DEFAULTS },
+  schedule: { ...SCHEDULE_DEFAULTS },
+  ...overrides,
+});
+
+export const defaultPlan = { workdays: ['mon', 'tue', 'wed', 'thu', 'fri'] as const, runTimes: ['08:00', '10:00', '12:00', '14:00', '16:00', '17:45', '18:00'], skippedRunTimes: [], runsPerDay: 7, includesWindowEndRun: true, maxAnalysesPerRun: 5, maxClaudeCallsPerDay: 35 };
 
 export function createFakeApi(options: FakeApiOptions = {}) {
   const changed = new Set<(change: ProjectsChange) => void>();
@@ -102,7 +130,45 @@ export function createFakeApi(options: FakeApiOptions = {}) {
       load: vi.fn((_id: string, day: string) => ok(days[day] ?? emptyDay(day))),
       index: vi.fn(() => ok(index)),
     },
-    config: { scanText: vi.fn((_id: string, text: string) => ok({ detectors: options.detectors?.(text) ?? [] })) },
+    config: {
+      scanText: vi.fn((_id: string, text: string) => ok({ detectors: options.detectors?.(text) ?? [] })),
+      read: vi.fn(() =>
+        ok<ConfigView>({
+          state: 'ok',
+          config: defaultConfig(),
+          findings: [],
+          signature: '1:1',
+          workspaceInRepository: null,
+          repoPath: 'C:/repos/alpha',
+          workspacePath: 'C:/daten/workspaces/alpha-111111',
+          claude: { checkedAt: '2026-11-26T07:52:00Z', ok: true, found: true, version: '2.1.4', loggedIn: true, authMethod: 'claude.ai' },
+          ...options.config,
+        }),
+      ),
+      preview: vi.fn((_id: string, changes: ConfigChange[]) => ok<ConfigPreview>(options.preview?.(changes) ?? { valid: true, findings: [], schedulePlan: { ...defaultPlan, workdays: [...defaultPlan.workdays] }, failure: null })),
+      testPath: vi.fn((_id: string, input: { include: string[]; exclude: string[]; path: string }) => ok(options.testPath?.(input) ?? { allowed: true, rule: null })),
+      chooseFile: vi.fn(() => ok({ path: options.chosenFile ?? null })),
+    },
+    schedule: {
+      status: vi.fn(() =>
+        ok<ScheduleView>({
+          state: 'not_installed',
+          taskName: 'ipa-assistant-alpha-111111',
+          enabled: null,
+          differences: [],
+          detail: null,
+          nextRun: null,
+          lastRun: null,
+          lastResult: null,
+          running: false,
+          insideWindow: true,
+          plan: { ...defaultPlan, workdays: [...defaultPlan.workdays] },
+          problem: null,
+          ...options.schedule,
+        }),
+      ),
+      runs: vi.fn(() => ok(options.scheduleRuns ?? [])),
+    },
     snapshot: {
       workLog: vi.fn((_id: string, snapshotId: string) => ok(options.workLogs?.[snapshotId] ?? null)),
       evidenceList: vi.fn(() => ok(options.evidence ?? [])),

@@ -40,12 +40,14 @@ if (!app.requestSingleInstanceLock()) {
 
     const nodeExe = testHooks ? process.env['IPA_APP_NODE'] : undefined;
     const cliRoot = testHooks ? process.env['IPA_APP_CLI_ROOT'] : undefined;
+    // Test hook: node options for the CLI processes only (the stand-in of the Task Scheduler), never for the app itself.
+    const cliNodeOptions = testHooks ? process.env['IPA_APP_CLI_NODE_OPTIONS'] : undefined;
     services = await createServices({
       appRoot,
       packaged: app.isPackaged,
       resourcesPath: process.resourcesPath,
       userDataDir: userData,
-      env: process.env,
+      env: cliNodeOptions === undefined ? process.env : { ...process.env, NODE_OPTIONS: cliNodeOptions },
       appVersion: await readPackageVersion(appRoot),
       electronVersion: process.versions.electron,
       shell: {
@@ -54,6 +56,11 @@ if (!app.requestSingleInstanceLock()) {
         writeClipboard: (text) => clipboard.writeText(text),
         openExternal: (url) => shell.openExternal(url),
         trashItem: (file) => shell.trashItem(file),
+        chooseFile: async (defaultPath) => {
+          const options = { defaultPath, properties: ['openFile' as const] };
+          const chosen = mainWindow !== null && !mainWindow.isDestroyed() ? await dialog.showOpenDialog(mainWindow, options) : await dialog.showOpenDialog(options);
+          return chosen.canceled || chosen.filePaths[0] === undefined ? null : chosen.filePaths[0];
+        },
       },
       ...(nodeExe !== undefined ? { nodeExe } : {}),
       ...(cliRoot !== undefined ? { cliRoot } : {}),

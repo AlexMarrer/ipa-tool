@@ -66,3 +66,27 @@
 .evidence-group { border: 0; margin: 0 0 8px; padding: 0; }
 .evidence-group legend { font-weight: 500; padding: 0; margin-bottom: 4px; }
 .evidence-row { display: flex; gap: 8px; align-items: center; padding: 2px 0; }
+.schedule-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.schedule-stale { margin: 8px 0 0; color: var(--warn); }
+.schedule-field { border: 0; margin: 0; padding: 0; display: grid; gap: 6px; }
+.schedule-field legend { padding: 0; font-weight: 500; margin-bottom: 4px; }
+.schedule-field--err .day-chip { border-color: var(--err); }
+.day-chip { min-width: 40px; min-height: 34px; border: 1px solid var(--line); border-radius: 8px; background: var(--dlg-surface); font: inherit; color: inherit; cursor: pointer; }
+.day-chip[aria-pressed='true'] { background: var(--accsoft); border-color: var(--acctx); font-weight: 600; }
+.chip__remove { border: 0; background: transparent; color: inherit; cursor: pointer; padding: 0 0 0 4px; display: inline-flex; }
+.advanced > summary { cursor: pointer; font-weight: 500; }
+@media (max-width: 1100px) { .schedule-grid { grid-template-columns: 1fr; } }
+.config-page { display: grid; gap: 12px; padding-bottom: 72px; }
+.config-layout { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 20px; align-items: start; }
+.config-nav { display: grid; gap: 2px; position: sticky; top: 0; }
+.config-nav button { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 10px; border: 0; border-radius: 8px; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.config-nav button:hover { background: var(--chip); }
+.config-nav button[aria-current='true'] { background: var(--accsoft); font-weight: 600; }
+.config-nav__mark { font-size: 11px; color: var(--mut); }
+.config-body { min-width: 0; }
+.savebar { position: sticky; bottom: 0; display: flex; align-items: center; gap: 8px; padding: 10px 14px; border: 1px solid var(--line); border-radius: var(--radius-card); background: var(--surface); box-shadow: var(--shadow-run); }
+.savebar__text { flex: 1; font-weight: 500; }
+.savebar__text--err { color: var(--err); }
+.card--danger { border-color: var(--err); }
+.switch { gap: 10px; align-items: flex-start; }
+.chip--locked { opacity: 0.85; }

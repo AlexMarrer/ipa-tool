@@ -716,6 +716,9 @@ export function createWorkspaceReader(options: WorkspaceReaderOptions): Workspac
         if (!DRAFT_FILE.test(ref.file)) return null;
         target = path.join(ws, 'journal', 'drafts', `${ref.file}.md`);
         break;
+      case 'config':
+        target = path.join(ws, 'config.json');
+        break;
       case 'journalFinal':
         if (!FINAL_NAME.test(ref.file) || ref.file.includes('..')) return null;
         target = path.join(ws, 'journal', 'final', ref.file);

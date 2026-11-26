@@ -21,6 +21,8 @@ export interface RunView {
 
 export type DayTab = 'timeline' | 'workLogs' | 'notes' | 'journal';
 
+export type ConfigGroupId = 'claude' | 'cost' | 'schedule' | 'filter' | 'secrets' | 'context' | 'limits' | 'info';
+
 /** Where a reference chip or a link wants the day page to look (spec §11.4). */
 export interface Focus {
   noteId: string | null;
@@ -47,6 +49,8 @@ export interface AppSnapshot {
   selection: { repositoryId: string | null; page: Page; section: Section; day: string | null };
   dayTab: DayTab;
   focus: Focus | null;
+  /** Group the configuration page opens on, for jumps such as "Zur Konfiguration" from a blocked analysis. */
+  configGroup: ConfigGroupId;
   /** Increases whenever the observed files or the project list changed; pages load again (spec AK-10-34). */
   dataVersion: number;
   /** Per project: the latest run shown in the panel. */
@@ -69,6 +73,8 @@ export interface AppActions {
   /** Opens the day page on a given day and tab, as from the overview or a reference chip. */
   openDay(day: string, tab?: DayTab, focus?: Partial<Focus>): void;
   clearFocus(): void;
+  /** Opens the configuration page on a group (AK-10-25: "Zur Konfiguration" leads to the limits). */
+  openConfig(group?: ConfigGroupId): void;
   /** `←` and `→` in the day view. */
   shiftDay(delta: number): void;
   requestNewNote(day?: string): void;
@@ -112,6 +118,7 @@ export function createAppStore(api: IpaApi, options: AppStoreOptions = {}): { st
     selection: { repositoryId: null, page: 'overview', section: 'overview', day: null },
     dayTab: 'timeline',
     focus: null,
+    configGroup: 'claude',
     dataVersion: 0,
     runs: {},
     locks: {},
@@ -244,6 +251,10 @@ export function createAppStore(api: IpaApi, options: AppStoreOptions = {}): { st
         dayTab: tab,
         focus: { noteId: focus.noteId ?? null, snapshotId: focus.snapshotId ?? null, evidence: focus.evidence ?? null },
       }));
+      persist();
+    },
+    openConfig(group = 'claude') {
+      store.setState((state) => ({ ...state, configGroup: group, selection: { ...state.selection, page: 'config', section: 'config' } }));
       persist();
     },
     clearFocus() {

@@ -58,6 +58,18 @@ export function createHandlers(services: Services): Record<Exclude<IpcChannel, t
       const v = input.fields(argument, ['repositoryId', 'text']);
       return unwrap(await services.scanText(input.string(v['repositoryId'], 80), input.text(v['text'], 20_000)));
     },
+    [IPC_CHANNELS.configRead]: async (argument) => unwrap(await services.loadConfig(input.string(argument, 80))),
+    [IPC_CHANNELS.configPreview]: async (argument) => {
+      const v = input.fields(argument, ['repositoryId', 'changes']);
+      return unwrap(await services.previewConfig(input.string(v['repositoryId'], 80), input.configChanges(v['changes'])));
+    },
+    [IPC_CHANNELS.configTestPath]: async (argument) => {
+      const v = input.fields(argument, ['repositoryId', 'include', 'exclude', 'path']);
+      return unwrap(await services.testPath(input.string(v['repositoryId'], 80), input.patterns(v['include']), input.patterns(v['exclude']), input.string(v['path'], 1000)));
+    },
+    [IPC_CHANNELS.configChooseFile]: async (argument) => unwrap(await services.chooseFile(input.string(argument, 80))),
+    [IPC_CHANNELS.scheduleStatus]: async (argument) => unwrap(await services.loadSchedule(input.string(argument, 80))),
+    [IPC_CHANNELS.scheduleRuns]: async (argument) => unwrap(await services.loadRunHistory(input.string(argument, 80))),
     [IPC_CHANNELS.dayLoad]: async (argument) => {
       const v = input.fields(argument, ['repositoryId', 'day']);
       return unwrap(await services.loadDay(input.string(v['repositoryId'], 80), input.day(v['day'])));

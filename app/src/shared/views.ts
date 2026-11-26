@@ -270,7 +270,7 @@ export type FileRef =
   | { kind: 'workLog'; snapshotId: string }
   | { kind: 'journalDraft'; file: string }
   | { kind: 'journalFinal'; file: string }
-  | { kind: 'journalFinal'; file: string }
+  | { kind: 'config' }
   | { kind: 'journalFinalFolder' }
   | { kind: 'workspaceFolder' }
   | { kind: 'evidence'; snapshotId: string; evidenceId: string };

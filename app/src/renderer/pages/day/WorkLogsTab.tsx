@@ -84,7 +84,7 @@ export function WorkLogsTab({ view, references }: WorkLogsTabProps) {
             highlight={env.focus?.evidence ?? null}
             onOpen={(reveal) => void run(reveal, log.data as WorkLogView)}
             onReference={(ref) => jumpToReference(env, references, ref)}
-            onConfig={() => env.actions.selectPage('config')}
+            onConfig={() => env.actions.openConfig('limits')}
             retryReason={actionReason(env, 'retry')}
             skipReason={actionReason(env, 'skip')}
             onRetry={() => env.actions.openDialog({ kind: 'retry', snapshot: (log.data as WorkLogView).snapshot })}

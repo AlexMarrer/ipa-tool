@@ -1,4 +1,5 @@
 import type { AppState, IpaResult, Project, ProjectList, ProjectsChange, RunEvent, VersionInfo } from './types';
+import type { ConfigChange, ConfigPreview, ConfigView, PathDecisionView, RunHistoryEntry, ScheduleView } from './config';
 import type { LockState, RunInput, StartOutcome } from './run';
 import type { DayIndex, DayView, EvidenceGroup, FileRef, FinalFileView, JournalDraftView, OverviewView, ReferenceIndex, RemoveResult, WorkLogView } from './views';
 
@@ -17,6 +18,12 @@ export const IPC_CHANNELS = {
   runEvent: 'ipa:run:event',
   snapshotEvidenceList: 'ipa:snapshot:evidenceList',
   configScanText: 'ipa:config:scanText',
+  configRead: 'ipa:config:read',
+  configPreview: 'ipa:config:preview',
+  configTestPath: 'ipa:config:testPath',
+  configChooseFile: 'ipa:config:chooseFile',
+  scheduleStatus: 'ipa:schedule:status',
+  scheduleRuns: 'ipa:schedule:runs',
   systemVersions: 'ipa:system:versions',
   systemDataRoot: 'ipa:system:dataRoot',
   appGetState: 'ipa:app:getState',
@@ -47,6 +54,12 @@ export const INVOKE_CHANNELS: readonly IpcChannel[] = [
   IPC_CHANNELS.runState,
   IPC_CHANNELS.snapshotEvidenceList,
   IPC_CHANNELS.configScanText,
+  IPC_CHANNELS.configRead,
+  IPC_CHANNELS.configPreview,
+  IPC_CHANNELS.configTestPath,
+  IPC_CHANNELS.configChooseFile,
+  IPC_CHANNELS.scheduleStatus,
+  IPC_CHANNELS.scheduleRuns,
   IPC_CHANNELS.runCancel,
   IPC_CHANNELS.systemVersions,
   IPC_CHANNELS.systemDataRoot,
@@ -91,6 +104,20 @@ export interface IpaApi {
   config: {
     /** Detector names that hit in a text, never the value; used before a reason is sent (spec §8.9). */
     scanText(repositoryId: string, text: string): Promise<IpaResult<{ detectors: string[] }>>;
+    /** `config.json` read directly (schema `config`); an invalid file comes with the findings of `config check`. */
+    read(repositoryId: string): Promise<IpaResult<ConfigView>>;
+    /** `config set … --dry-run`: checks a draft and returns the findings and the plan of runs; writes nothing (AD-09). */
+    preview(repositoryId: string, changes: ConfigChange[]): Promise<IpaResult<ConfigPreview>>;
+    /** "Pfad testen": the path filter of the CLI applied to a draft of the lists. */
+    testPath(repositoryId: string, input: { include: string[]; exclude: string[]; path: string }): Promise<IpaResult<PathDecisionView>>;
+    /** System file dialog for context files; the path comes back relative to the repository where possible, `null` if cancelled. */
+    chooseFile(repositoryId: string): Promise<IpaResult<{ path: string | null }>>;
+  };
+  schedule: {
+    /** `schedule status --json`; never calls Claude. */
+    status(repositoryId: string): Promise<IpaResult<ScheduleView>>;
+    /** The newest runs from `runs.jsonl`, newest first. */
+    runs(repositoryId: string): Promise<IpaResult<RunHistoryEntry[]>>;
   };
   system: {
     versions(): Promise<IpaResult<VersionInfo>>;

@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { StatusReport } from '../shared/cli-types';
 import type { ProjectList, ProjectsChange, Project, VersionInfo } from '../shared/types';
+import type { ConfigChange as ConfigPatch, ConfigPreview, ConfigView, PathDecisionView, RunHistoryEntry, ScheduleView } from '../shared/config';
 import type { LockState, StartOutcome } from '../shared/run';
 import type { DayIndex, DayView, EvidenceGroup, FileRef, FinalFileView, JournalDraftView, OverviewView, ReferenceIndex, RemoveResult, WorkLogView } from '../shared/views';
 import type { CommandRequest } from './cli/commands';
@@ -11,6 +12,7 @@ import { createAppStateStore, type AppStateStore } from './app-state';
 import { loadCliLib, type CliLib } from './cli-lib';
 import { AppError, toIpaError } from './cli/errors';
 import { noShell, type ShellPort } from './shell';
+import { configPreviewOf, emptySchedule, readConfigView, readRunHistory, scheduleViewOf, workspaceInsideRepository } from './reader/config-view';
 import { createJournalFiles } from './reader/journal-files';
 import { createWorkspaceReader, type WorkspaceReader } from './reader/workspace';
 import { assertCliVersion, createRunner, readExpectedCliVersion, type Runner } from './cli/runner';
@@ -58,6 +60,13 @@ export interface Services {
   loadWorkLog(repositoryId: string, snapshotId: string): Promise<ReaderResult<WorkLogView | null>>;
   loadJournal(repositoryId: string, file: string): Promise<ReaderResult<JournalDraftView | null>>;
   loadFinals(repositoryId: string, day: string): Promise<ReaderResult<FinalFileView[]>>;
+  loadConfig(repositoryId: string): Promise<ReaderResult<ConfigView>>;
+  /** `config set --dry-run`: an automatic call that writes nothing and never calls Claude (spec §12.1, AD-09). */
+  previewConfig(repositoryId: string, changes: { path: string; value: string }[]): Promise<ReaderResult<ConfigPreview>>;
+  testPath(repositoryId: string, include: string[], exclude: string[], path: string): Promise<ReaderResult<PathDecisionView>>;
+  chooseFile(repositoryId: string): Promise<ReaderResult<{ path: string | null }>>;
+  loadSchedule(repositoryId: string): Promise<ReaderResult<ScheduleView>>;
+  loadRunHistory(repositoryId: string): Promise<ReaderResult<RunHistoryEntry[]>>;
   /** On the user's request: copies a draft to `journal/final/` (spec §4.3). */
   finalizeDraft(repositoryId: string, draft: string): Promise<ReaderResult<{ file: string }>>;
   /** On the user's request: draft or final file to the recycle bin. */
@@ -287,6 +296,60 @@ export async function createServices(options: ServicesOptions): Promise<Services
     loadDayIndex: (repositoryId) => withReader(repositoryId, (reader) => reader.dayIndex()),
     loadWorkLog: (repositoryId, snapshotId) => withReader(repositoryId, (reader) => reader.workLog(snapshotId)),
     loadJournal: (repositoryId, file) => withReader(repositoryId, (reader) => reader.journal(file)),
+    async loadConfig(repositoryId) {
+      const found = await readerOf(repositoryId);
+      if (found === null || validator === null) return unknownProject;
+      const view = await readConfigView({ workspacePath: found.entry.workspacePath, repoPath: found.entry.repoPath, validator });
+      if (view.state !== 'invalid') return { ok: true, value: view };
+      // An invalid file comes with the findings of the CLI, which knows the rules (spec §9.6).
+      const check = await queue.start(repositoryId, { name: 'configCheck' }, 'auto');
+      const result = check.ok ? (await check.done).envelope?.result : null;
+      return { ok: true, value: { ...view, findings: configPreviewOf(result ?? null, null).findings } };
+    },
+    async previewConfig(repositoryId, changes) {
+      if ((await readerOf(repositoryId)) === null) return unknownProject;
+      const started = await queue.start(repositoryId, { name: 'configSet', changes, dryRun: true }, 'auto');
+      if (!started.ok) return { ok: true, value: { valid: null, findings: [], schedulePlan: null, failure: started.message } };
+      const done = await started.done;
+      return { ok: true, value: configPreviewOf(done.envelope?.result ?? null, done.failure?.message ?? (done.envelope === null ? 'Das CLI hat keine Antwort geliefert.' : null)) };
+    },
+    async testPath(repositoryId, include, exclude, target) {
+      const found = await readerOf(repositoryId);
+      if (found === null || cliLib === null) return unknownProject;
+      const workspace = workspaceInsideRepository(found.entry.repoPath, found.entry.workspacePath);
+      const filter = cliLib.createPathFilter({ include, exclude, workspace });
+      const decision = filter.decide(target.replace(/\\/g, '/').replace(/^\.\//, '').replace(/^\/+/, ''));
+      return { ok: true, value: { allowed: decision.allowed, rule: decision.allowed ? null : decision.rule } };
+    },
+    async chooseFile(repositoryId) {
+      const found = await readerOf(repositoryId);
+      if (found === null) return unknownProject;
+      const chosen = await shell.chooseFile(found.entry.repoPath);
+      if (chosen === null) return { ok: true, value: { path: null } };
+      const relative = path.relative(found.entry.repoPath, chosen);
+      const inside = relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative);
+      return { ok: true, value: { path: (inside ? relative : chosen).split(path.sep).join('/') } };
+    },
+    async loadSchedule(repositoryId) {
+      if ((await readerOf(repositoryId)) === null) return unknownProject;
+      const started = await queue.start(repositoryId, { name: 'scheduleStatus' }, 'auto');
+      if (!started.ok) return { ok: true, value: emptySchedule({ kind: 'failed', message: started.message }) };
+      const done = await started.done;
+      const result = done.envelope?.result ?? null;
+      if (result === null) {
+        const unsupported = done.envelope?.errors.some((error) => error.code === 'schedule_platform_unsupported') === true;
+        const message = done.envelope?.errors[0]?.message ?? done.failure?.message ?? 'Der Zeitplan konnte nicht gelesen werden.';
+        return { ok: true, value: emptySchedule({ kind: unsupported ? 'unsupported' : 'failed', message }) };
+      }
+      return { ok: true, value: scheduleViewOf(result) };
+    },
+    async loadRunHistory(repositoryId) {
+      const found = await readerOf(repositoryId);
+      if (found === null || validator === null) return unknownProject;
+      const view = await readConfigView({ workspacePath: found.entry.workspacePath, repoPath: found.entry.repoPath, validator });
+      const timezone = view.config?.timezone ?? timezones.get(repositoryId) ?? 'UTC';
+      return { ok: true, value: await readRunHistory({ workspacePath: found.entry.workspacePath, repoPath: found.entry.repoPath, validator }, timezone) };
+    },
     loadFinals: (repositoryId, day) => withReader(repositoryId, async (_reader, entry) => createJournalFiles(entry.workspacePath, shell).finals(day)),
     async finalizeDraft(repositoryId, draft) {
       const found = await readerOf(repositoryId);
