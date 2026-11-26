@@ -1,0 +1,36 @@
+# Keys checked against node_modules/app-builder-lib/scheme.json of electron-builder 26.18.0 (spec AO-07).
+# The installer itself is built and accepted in package 14; this file exists so the build stages are testable.
+appId: ipa-assistant.app
+productName: IPA Assistant
+directories:
+  output: release
+files:
+  - out/**
+  - package.json
+asar: true
+npmRebuild: false
+afterPack: scripts/after-pack.mjs
+# CLI and node.exe stay outside the ASAR archive so that node.exe can read the files (spec §6.3).
+extraResources:
+  # electron-builder always drops the node_modules folder directly below `from` (app-builder-lib/out/util/filter.js),
+  # and the CLI would then resolve commander and ajv from a parent folder or not at all. With `from: stage`,
+  # cli/node_modules is a nested node_modules and is kept (the pattern naming it lifts the default exclusion).
+  # Result: resources/cli and resources/node.
+  - from: stage
+    to: .
+    filter:
+      - "cli/**/*"
+      - "cli/node_modules/**/*"
+      - "node/**/*"
+win:
+  target:
+    - target: nsis
+      arch: x64
+  # icon: assets/icon.ico   (placeholder until AO-06 decides name and icon)
+nsis:
+  oneClick: true
+  perMachine: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  deleteAppDataOnUninstall: false
+publish: null

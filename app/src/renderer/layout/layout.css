@@ -1,0 +1,46 @@
+/* Frame: sidebar 232 px, content with header, section bar, page and run panel (spec §8.1). */
+.shell { display: grid; grid-template-columns: 232px minmax(0, 1fr); height: 100%; min-width: 1100px; min-height: 700px; }
+.sidebar { display: flex; flex-direction: column; background: var(--side); border-right: 1px solid var(--line); padding: 16px 8px; gap: 8px; overflow: auto; }
+.sidebar__heading { margin: 0 8px; color: var(--mut); font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+.sidebar__list { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.project-row { display: grid; grid-template-columns: 12px minmax(0, 1fr); column-gap: 8px; width: 100%; padding: 8px; border: 0; border-radius: var(--radius-field); background: transparent; text-align: left; cursor: pointer; }
+.project-row:hover { background: var(--chip); }
+.project-row[aria-current='true'] { background: var(--chip); font-weight: 600; }
+.project-row__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.project-row__hint { grid-column: 2; color: var(--mut); font-size: 12.5px; font-weight: 400; }
+.dot { width: 8px; height: 8px; margin-top: 7px; border-radius: 50%; background: var(--mut); }
+.dot--warning { background: var(--warn); }
+.dot--error, .dot--halt { background: var(--err); }
+.sidebar__spacer { flex: 1; }
+.sidebar__foot { display: grid; gap: 2px; }
+.sidebar__link { display: flex; align-items: center; gap: 8px; padding: 8px; border: 0; border-radius: var(--radius-field); background: transparent; color: var(--fg); text-align: left; cursor: pointer; }
+.sidebar__link:hover, .sidebar__link[aria-current='page'] { background: var(--chip); }
+.sidebar__note { margin: 0 8px; color: var(--mut); }
+
+.content { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.header { display: flex; align-items: center; gap: 12px; padding: 14px 24px 0; }
+.header__title { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; font-size: 18px; }
+.header__title .dot { margin-top: 0; }
+.header__actions { display: flex; align-items: center; gap: 8px; }
+.header__banners { display: grid; gap: 8px; padding: 12px 24px 0; }
+.sectionbar { display: flex; gap: 4px; padding: 8px 24px 0; border-bottom: 1px solid var(--line); }
+.sectionbar .tab { margin-bottom: -1px; }
+.page { flex: 1; overflow: auto; padding: 24px; min-height: 0; }
+.kbd { margin-left: 4px; color: inherit; opacity: 0.8; font-size: 12px; }
+
+.runpanel { margin: 0 24px 16px; border: 1px solid var(--line); border-radius: var(--radius-card); background: var(--surface); box-shadow: var(--shadow-run); }
+.runpanel__head { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 12px; border: 0; background: transparent; text-align: left; cursor: pointer; }
+.runpanel__title { font-weight: 600; flex: 1; }
+.runpanel__body { padding: 4px 12px 12px; display: grid; gap: 8px; }
+.runpanel__lines { margin: 0; padding: 0; list-style: none; max-height: 160px; overflow: auto; }
+.runpanel__lines li { display: flex; gap: 10px; }
+.runpanel__lines time { color: var(--mut); font-family: var(--font-mono); font-size: 12.5px; }
+.runpanel__lines .muted { color: var(--mut); }
+.runpanel__text { margin: 0; }
+.runpanel__meta { color: var(--mut); font-size: 13px; }
+.runpanel__toggle { display: inline-flex; align-items: center; gap: 4px; padding: 2px 0; border: 0; background: transparent; color: inherit; cursor: pointer; font: inherit; }
+.runpanel__lines { font-family: var(--font-mono); font-size: 12.5px; margin-top: 6px; }
+.runpanel__output { margin: 6px 0 0; max-height: 160px; overflow: auto; font-family: var(--font-mono); font-size: 12.5px; white-space: pre-wrap; }
+.theme-switch { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; margin-top: 8px; padding: 2px; border: 1px solid var(--line); border-radius: 8px; background: var(--chip); }
+.theme-switch button { min-height: 28px; border: 0; border-radius: 6px; background: transparent; color: inherit; font: inherit; font-size: 12.5px; cursor: pointer; }
+.theme-switch button[aria-checked='true'] { background: var(--surface); font-weight: 600; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18); }

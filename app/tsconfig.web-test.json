@@ -1,0 +1,8 @@
+{
+  "extends": "./tsconfig.web.json",
+  "compilerOptions": {
+    // Tests need Node (temporary folders, helpers); the renderer sources are checked without it in tsconfig.web.json.
+    "types": ["vite/client", "node"]
+  },
+  "include": ["src/renderer/**/*.ts", "src/renderer/**/*.tsx", "src/shared/**/*.ts", "test/components/**/*.ts", "test/components/**/*.tsx", "test/helpers/env.ts"]
+}

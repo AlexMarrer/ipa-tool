@@ -1,0 +1,48 @@
+{
+  "name": "ipa-assistant-app",
+  "version": "0.1.0",
+  "description": "Desktop-Oberfläche für das CLI ipa (IPA Assistant).",
+  "private": true,
+  "type": "module",
+  "main": "out/main/index.js",
+  "author": "IPA Assistant",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build && node scripts/write-cli-version.mjs",
+    "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit && tsc -p tsconfig.web-test.json --noEmit && tsc -p tsconfig.e2e.json --noEmit",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "stage-cli": "node scripts/stage-cli.mjs",
+    "fetch-node": "node scripts/fetch-node.mjs",
+    "dist": "node scripts/stage-cli.mjs && node scripts/fetch-node.mjs && electron-builder --win nsis"
+  },
+  "dependencies": {
+    "ajv": "^8.20.0"
+  },
+  "devDependencies": {
+    "@electron/fuses": "^2.1.3",
+    "@playwright/test": "^1.65.1",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/jest-dom": "^8.0.0",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.13",
+    "@types/node": "^24.19.0",
+    "@types/react": "^19.3.3",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.3.0",
+    "electron": "45.5.0",
+    "electron-builder": "^26.18.0",
+    "electron-vite": "^6.0.0",
+    "jsdom": "^31.0.1",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8",
+    "vitest": "^5.1.2"
+  }
+}

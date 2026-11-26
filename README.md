@@ -1,23 +1,57 @@
 # IPA Assistant
 
-Lokales Kommandozeilenwerkzeug für die IPA. Es soll den Arbeitsstand eines beliebigen lokalen Git-Repositorys in gefilterten Snapshots sichern und daraus belegte Arbeitsprotokolle und Journal-Entwürfe vorbereiten. Das untersuchte Repository verändert es nie.
+Der IPA Assistant hilft dir, während einer IPA (oder eines anderen Projekts) nachvollziehbar festzuhalten, was du wann gemacht hast. Er sichert den Arbeitsstand eines lokalen Git-Repositorys in Momentaufnahmen, lässt Claude Code daraus **belegte** Arbeitsprotokolle schreiben und bereitet einen Journal-Entwurf pro Tag vor. Dein Repository verändert er dabei nie.
 
-Die Umsetzung erfolgt in Paketen, geplant in [`docs/implementation/`](docs/implementation/README.md).
+Es gibt zwei Teile:
 
-**Stand: Paket 09 (App-Schnittstelle) auf Paket 08 (Zeitsteuerung und Abnahme), alle Befehle von Version 1.** Paket 09 bereitet eine Desktop-App vor: [maschinenlesbare Ergebnisse](#maschinenlesbare-ergebnisse---json) mit `--json`, [`ipa config`](#ipa-config-get--check--set) und die [Verwaltung der Windows-Aufgabe](#ipa-schedule-install--status--pause--resume--remove--run). Die App selbst gehört nicht dazu. Verfügbar sind `ipa init` mit Ausgangs-Snapshot, `ipa capture` mit Zuordnung der Änderungen zum Vorgänger-Snapshot und anschliessender Analyse durch Claude Code zu belegten Work-Logs, auch als geplanter Lauf mit `--scheduled`, `ipa skip`, `ipa baseline`, `ipa note`, `ipa journal` für belegte Journal-Entwürfe eines Tages, `ipa schedule` für eine Vorlage der Windows-Aufgabenplanung, `ipa status` und `ipa doctor`, das Git und Claude Code prüft. Offen sind die Live-Abnahme mit echtem Claude und die manuelle Prüfung der Aufgabenplanung, siehe [Abnahmeprotokoll](docs/abnahme/v1-abnahmeprotokoll.md).
+- **Das Kommandozeilenwerkzeug `ipa`** (dieser Ordner): erfasst, analysiert und schreibt die Entwürfe.
+- **Die Desktop-App** (Ordner [`app/`](app/README.md), in Arbeit): eine grafische Oberfläche, die `ipa` im Hintergrund startet und anzeigt, was gesammelt wurde.
+
+Du kannst `ipa` allein benutzen. Die App ist optional und braucht `ipa`.
+
+**Wichtig zu wissen:** Das Journal ist immer nur ein **Entwurf**. Prüfen, korrigieren und die Endfassung schreibst du selbst. Das Werkzeug erfindet keine Arbeitszeit: Zeiten stehen nur im Journal, wenn du sie selbst in einer Notiz angegeben hast.
+
+## Inhalt
+
+- [Begriffe](#begriffe)
+- [Voraussetzungen](#voraussetzungen)
+- [Installation](#installation)
+- [Schnellstart](#schnellstart)
+- [Desktop-App](#desktop-app)
+- [Fehlerbehebung](#fehlerbehebung)
+- [Projektstand und Dokumentation](#projektstand-und-dokumentation)
+- Referenz: [Speicherort der Daten](#speicherort-der-daten), [Befehle](#befehle), [Analyse und Work-Logs](#analyse-und-work-logs), [Tagesjournal](#tagesjournal), [Zeitsteuerung](#zeitsteuerung), [Notizen](#notizen), [Filter und vertrauliche Inhalte](#filter-und-vertrauliche-inhalte), [Claude Code](#claude-code-aufruf-schutzwirkung-und-grenzen), [Entwicklung](#entwicklung)
+
+## Begriffe
+
+| Begriff | Bedeutung |
+| --- | --- |
+| Repository | Dein Git-Projekt, an dem du arbeitest. Wird nie verändert. |
+| Snapshot | Eine Momentaufnahme deines Arbeitsstands (Commits, geänderte und neue Dateien), gefiltert und ohne Passwörter oder Schlüssel. `S000001` ist der Ausgangs-Snapshot beim Start. |
+| Work-Log | Ein Protokoll zu einem Snapshot: was geändert wurde, jede Aussage mit Beleg. Entsteht mit Claude Code (`KI-Entwurf`) oder, ohne Claude, rein aus den Fakten. |
+| Notiz | Ein eigener Eintrag von dir (Tätigkeit, Problem, Entscheidung, Erkenntnis, Planung), auf Wunsch mit Zeitaufwand. |
+| Journal | Ein Entwurf pro Tag aus Work-Logs, Commits und Notizen. |
+| Arbeitsbereich | Der Ordner, in dem das Werkzeug alles zu einem Repository ablegt, standardmässig ausserhalb des Repositorys. |
+| Datenwurzel | Der Ordner mit allen Arbeitsbereichen und der Projektliste (`registry.json`), unter Windows `%LOCALAPPDATA%\ipa-assistant`. |
 
 ## Voraussetzungen
 
-- Windows 11. Das ist die einzige geprüfte Plattform. Linux und macOS sind nicht geprüft.
-- Node.js 24 oder neuer
-- Git 2.31 oder neuer (geprüft mit 2.51)
-- Für `ipa doctor`, die Analyse und `ipa journal` ohne `--no-ai`: eine installierte Claude-Code-CLI, angemeldet mit einem Claude-Abo (`claude auth login`). API-Schlüssel und externe Anbieter sind standardmässig gesperrt, siehe [Kostenschutz](#kostenschutz). Geprüft mit Version 2.1.201 unter Windows 11, einschliesslich [`ipa doctor --live`](#ipa-doctor---live). Ein Update auf mindestens 2.1.205 wird empfohlen: Ältere Versionen ignorieren ein ungültiges Ausgabeschema still (das Tool prüft seine Schemas deshalb selbst).
+| Was | Version | Prüfen mit |
+| --- | --- | --- |
+| Windows | 11 (die einzige geprüfte Plattform; Linux und macOS sind nicht geprüft) | |
+| Node.js | 24 oder neuer | `node --version` |
+| Git | 2.31 oder neuer (geprüft mit 2.51) | `git --version` |
+| Claude Code (optional) | angemeldet mit einem Claude-Abo, empfohlen ab 2.1.205 | `claude --version`, `claude auth login` |
+
+**Claude Code ist nur für die KI-Analyse nötig.** Ohne Claude funktionieren `ipa init`, `ipa note`, `ipa capture --no-analysis`, `ipa journal --no-ai` und `ipa status`. API-Schlüssel und externe Anbieter sind standardmässig gesperrt, damit nichts Kosten verursacht, siehe [Kostenschutz](#kostenschutz). Geprüft mit Version 2.1.201 unter Windows 11, einschliesslich [`ipa doctor --live`](#ipa-doctor---live). Ältere Versionen als 2.1.205 ignorieren ein ungültiges Ausgabeschema still (das Tool prüft seine Schemas deshalb selbst).
+
+Für die Desktop-App brauchst du zusätzlich Internet beim ersten Start (Electron lädt dann einmalig rund 100 MB nach).
 
 ## Installation
 
-Das Tool wird einmal separat installiert. Das untersuchte Projekt braucht dafür weder eine Abhängigkeit noch eine Datei oder Konfiguration.
+Das Tool wird einmal separat installiert. Das untersuchte Projekt braucht dafür weder eine Abhängigkeit noch eine Datei oder Konfiguration. In einem Terminal (PowerShell):
 
-```bash
+```powershell
 git clone <tool-repository> ipa-tool
 cd ipa-tool
 npm ci
@@ -25,9 +59,13 @@ npm run build
 npm install --global .
 ```
 
-Danach steht `ipa` im PATH zur Verfügung. Prüfen lässt sich das mit `ipa --version`.
+1. `npm ci` installiert die Abhängigkeiten des Werkzeugs.
+2. `npm run build` übersetzt den Quellcode nach `dist/`.
+3. `npm install --global .` macht den Befehl `ipa` überall verfügbar.
 
-`npm install --global .` verknüpft den globalen Befehl mit diesem Ordner. Nach einer Aktualisierung des Tools genügt `npm ci` und `npm run build`. Deinstallieren lässt es sich mit `npm uninstall --global ipa-assistant`.
+Prüfen: Öffne ein **neues** Terminal und gib `ipa --version` ein. Es sollte eine Versionsnummer erscheinen.
+
+`npm install --global .` verknüpft den globalen Befehl mit diesem Ordner. Lösche oder verschiebe ihn also nicht. Nach einer Aktualisierung (`git pull`) genügt `npm ci` und `npm run build`. Deinstallieren lässt es sich mit `npm uninstall --global ipa-assistant`.
 
 ### Mehrere Repositories
 
@@ -40,6 +78,124 @@ ipa --repo C:/GIT/projekt-a capture
 ```
 
 Für geplante Läufe erzeugt `ipa schedule` je Repository eine eigene Aufgabe `ipa-assistant-<repositoryId>`.
+
+## Schnellstart
+
+Ein erster Durchlauf in zehn Minuten, zuerst **ohne Claude**. Wechsle in das Repository, an dem du arbeitest (hier `C:\GIT\mein-projekt`):
+
+```powershell
+cd C:\GIT\mein-projekt
+```
+
+**1. Projekt einrichten** (einmal pro Repository):
+
+```powershell
+ipa init
+```
+
+Das legt den Arbeitsbereich an und nimmt den Ausgangs-Snapshot `S000001` auf. Er hält fest, was schon da war, und zählt nie als geleistete Arbeit. Am Ende erscheint vermutlich eine **Warnung**, dass Claude Code nicht angemeldet ist. Das ist in Ordnung: Der Arbeitsbereich ist trotzdem vollständig, und Claude brauchst du erst in Schritt 5.
+
+**2. Arbeiten und eine Notiz festhalten.** Ändere oder erstelle Dateien wie sonst auch, dann:
+
+```powershell
+ipa note "Recherche zu Electron-Sicherheit, Sandbox und Kontext-Isolation verstanden"
+```
+
+Eine Notiz braucht keinen Snapshot und geht jederzeit. Zeiten, Probleme, Entscheidungen und Verweise gehören auch dazu, siehe [Notizen](#notizen).
+
+**3. Arbeitsstand erfassen:**
+
+```powershell
+ipa capture --no-analysis
+```
+
+Das nimmt einen Snapshot auf (`S000002`) und ruft Claude **nicht** auf. Gibt es seit dem letzten Snapshot nichts Neues, meldet `capture` das und speichert nichts.
+
+**4. Zustand ansehen und einen Journal-Entwurf erzeugen:**
+
+```powershell
+ipa status
+ipa journal --no-ai
+```
+
+`status` zeigt Snapshots, Analysen und Notizen. `journal --no-ai` schreibt einen Entwurf für heute aus Notizen und Fakten, ohne Claude. Den Pfad der Datei nennt der Befehl; öffne sie und prüfe sie.
+
+**5. Mit Claude (optional).** Melde Claude Code einmal an und prüfe die Voraussetzungen:
+
+```powershell
+claude auth login
+ipa doctor
+```
+
+Danach analysiert `ipa capture` (ohne `--no-analysis`) offene Snapshots mit Claude Code und schreibt belegte Work-Logs, und `ipa journal` (ohne `--no-ai`) erzeugt den Journal-Entwurf mit Claude. Beides verbraucht Kontingent deines Claude-Abos, deshalb startet das Werkzeug Claude nie von selbst. `ipa doctor --live` macht zusätzlich zwei kleine echte Modellaufrufe. Ablauf und Schutz sind unter [Analyse und Work-Logs](#analyse-und-work-logs) beschrieben.
+
+Wo liegen die Ergebnisse? `ipa status` nennt den Arbeitsbereich. Darin liegen `logs/` (Work-Logs), `notes/`, `journal/drafts/` (Entwürfe) und `journal/final/` für deine Endfassung, die das Werkzeug nie anfasst. Mehr dazu unter [Speicherort der Daten](#speicherort-der-daten).
+
+## Desktop-App
+
+Die Desktop-App zeigt dieselben Daten grafisch an und startet `ipa` im Hintergrund. Sie liegt im Ordner [`app/`](app/README.md) mit eigenem `package.json`, damit `ipa` auch ohne App installierbar bleibt.
+
+**Stand:** Die App ist in Arbeit, aber **lesen kannst du schon**: Sie zeigt die Projekte mit Statuspunkt, die Projektübersicht (mit rotem Banner bei einem Halt), den Tag mit Kalender, Zeitstrahl, Work-Logs, Notizen und Journal-Entwürfen und passt sich dem Hell- oder Dunkelmodus von Windows an. Änderungen aus dem Terminal erscheinen ohne Neustart. Zeitplan, Konfiguration, System und alle Aktionen wie „Neue Notiz“ oder „Jetzt erfassen“ folgen in den nächsten Paketen und sind noch gesperrt oder leer. Die App ändert beim Lesen nichts. Einen Installer kannst du bauen (siehe unten), er ist aber noch nicht abgenommen.
+
+**Starten (Entwicklung):** im Ordner des Werkzeugs, nachdem du die [Installation](#installation) des CLI gemacht hast.
+
+```powershell
+npm run app:install    # einmalig: installiert die App
+npm run app:dev        # baut das CLI und startet die App
+```
+
+Die App nutzt dabei `node` aus dem PATH und das gebaute `dist/` dieses Ordners. Richtest du in diesem Betrieb mit `ipa schedule install` eine Windows-Aufgabe ein, zeigt sie auf diesen Entwicklungsordner. Später liefert ein Installer ein eigenes Node und das CLI mit.
+
+Beim allerersten Start lädt Electron einmalig seine Programmdatei herunter (rund 100 MB, Internet nötig). Das kann einen Moment dauern.
+
+**Als normales Programm mit Desktop-Link:** `npm run app:install` installiert nur die Entwicklungs-Abhängigkeiten und erzeugt keine `.exe`. Für ein Programm zum Doppelklicken baust du den Installer:
+
+```powershell
+npm run app:dist
+```
+
+Das erzeugt `app\release\IPA Assistant Setup 0.1.0.exe` (rund 140 MB). Ein Doppelklick installiert die App ohne Administratorrechte nach `%LOCALAPPDATA%\Programs\IPA Assistant` und legt einen Desktop-Link und einen Startmenü-Eintrag an. Windows kann beim Start vor dem unsignierten Installer warnen („Weitere Informationen“ › „Trotzdem ausführen“). Einzelheiten stehen in [`app/README.md`](app/README.md#als-programm-installieren-mit-desktop-link).
+
+**Was du siehst:** Links die Projekte, die du mit `ipa init` eingerichtet hast; ein Klick zeigt die Übersicht, im Reiter „Tag“ die Arbeit eines Tages. Ein neues Projekt legst du vorerst im Terminal mit `ipa init` an, die App liest die Projektliste daraus. Die App und das Terminal benutzen dieselben Daten (dieselbe Datenwurzel). Die App ändert nie selbst etwas an Arbeitsbereich oder Repository und ruft Claude nie von selbst auf.
+
+Aufbau, Tests, Sicherheit und Versionen der App stehen in [`app/README.md`](app/README.md).
+
+## Fehlerbehebung
+
+| Problem | Ursache und Lösung |
+| --- | --- |
+| `ipa` wird nicht gefunden | Öffne ein **neues** Terminal (der PATH wird erst dort neu gelesen). Hilft das nicht, wiederhole `npm install --global .` im Ordner des Werkzeugs. |
+| `ipa` meldet, das Repository sei „nicht initialisiert“ (Exit-Code 2) | Führe einmal `ipa init` im Repository aus, oder gib es mit `--repo <pfad>` an. |
+| Warnung „Claude Code ist nicht angemeldet“ bei `ipa init` | Nur eine Warnung. Ohne Claude arbeiten: `--no-analysis` und `--no-ai`. Mit Claude: `claude auth login`, danach `ipa doctor`. |
+| `ipa capture` meldet „Ein anderer Lauf hält den Lock“ (Exit-Code 3) | Gleichzeitig läuft schon ein Lauf, etwa ein geplanter oder in einem anderen Terminal. Warte, bis er endet. Es wurde nichts verändert. |
+| `ipa capture` meldet keine neue Arbeit | Seit dem letzten Snapshot hat sich nichts geändert. Das ist normal. |
+| `ipa capture` hält an (Exit-Code 4) | Du hast den Branch gewechselt oder die Historie umgeschrieben. Mit `ipa baseline --reason "<Grund>"` setzt du einen neuen Ausgangspunkt. |
+| Die Analyse scheitert (Exit-Code 6) | Claude war nicht erreichbar oder die Antwort war ungültig. Der Snapshot bleibt gespeichert, der nächste `capture` versucht es erneut. Journal ohne Claude: `ipa journal --no-ai`. |
+| `npm ci` oder `npm run build` scheitert | Prüfe `node --version`: Node 24 oder neuer ist nötig. |
+| Die App startet nicht oder meldet „Die mitgelieferte CLI-Laufzeit fehlt“ | Starte sie mit `npm run app:dev` aus dem Ordner des Werkzeugs (das baut das CLI zuerst) und prüfe `node --version` (24 oder neuer, im PATH). |
+| Die App zeigt „Noch kein Projekt“ | Es gibt noch kein eingerichtetes Projekt, oder die Datenwurzel ist eine andere (Umgebungsvariable `IPA_ASSISTANT_HOME` gesetzt?). Richte ein Projekt mit `ipa init` ein. |
+| Beim ersten Start der App erscheint „Downloading Electron binary…“ und es hängt | Der Download braucht Internet. Prüfe die Verbindung (Firmennetz, Proxy) und starte `npm run app:dev` erneut. |
+| `npm test` zeigt 2 fehlgeschlagene Tests (`schedule-task`, `config`) | Bekannt und nur ein Testproblem: Windows meldet deine Zeitzone als `Europe/Berlin`, die Tests erwarten `Europe/Zurich`. Das Werkzeug selbst ist nicht betroffen, Einzelheiten in [`docs/app/spec.md` §19](docs/app/spec.md). |
+
+Weitere Fehler erklärt die Meldung des Werkzeugs meist mit dem nächsten Schritt. Die Bedeutung der Exit-Codes steht unter [Exit-Codes](#exit-codes).
+
+## Projektstand und Dokumentation
+
+Die Umsetzung erfolgt in Paketen, geplant in [`docs/implementation/`](docs/implementation/README.md).
+
+- **Das CLI** ist mit allen Befehlen von Version 1 umgesetzt (Pakete 01 bis 09): `ipa init`, `capture`, `skip`, `baseline`, `note`, `journal`, `schedule` (inklusive Verwaltung der Windows-Aufgabe), `config`, `status` und `doctor`, dazu maschinenlesbare Ergebnisse mit `--json`. Offen sind die Live-Abnahme mit echtem Claude und die manuelle Prüfung der Aufgabenplanung, siehe [Abnahmeprotokoll](docs/abnahme/v1-abnahmeprotokoll.md).
+- **Die Desktop-App** ist mit Paket 14 von 14 vollständig umgesetzt (Lesen, Aktionen, Zeitplan, Konfiguration, Projekt hinzufügen, System, Installer). Offen ist die Abnahme von Hand, siehe [`docs/abnahme/app-abnahmeprotokoll.md`](docs/abnahme/app-abnahmeprotokoll.md). Fortschritt: [`docs/implementation/checklist.md`](docs/implementation/checklist.md).
+
+Wo was steht:
+
+| Ort | Inhalt |
+| --- | --- |
+| diese Datei | Einrichtung, Befehle, Datenablage, Kostenschutz |
+| [`app/README.md`](app/README.md) | Desktop-App: Aufbau, Befehle, Tests, Sicherheit |
+| [`docs/implementation/`](docs/implementation/README.md) | Pakete, Verträge des CLI (`spec.md`) und Fortschritt (`checklist.md`) |
+| [`docs/app/spec.md`](docs/app/spec.md) | Spezifikation der Desktop-App |
+| [`schemas/`](schemas/) | JSON-Schemas der Dateien und der `--json`-Ausgabe |
+| [`CLAUDE.md`](CLAUDE.md) | Arbeitsregeln für Claude Code in diesem Repository |
 
 ## Speicherort der Daten
 
@@ -1006,6 +1162,10 @@ Grenzen des Schutzes (keine Garantie):
 | `npm run build` | TypeScript nach `dist/` übersetzen |
 | `npm run typecheck` | Typprüfung von Quellcode, Tests und Skripten |
 | `npm test` | alle automatischen Tests (Vitest) |
+| `npm run app:install` | Abhängigkeiten der Desktop-App installieren (`npm ci --prefix app`, lädt Electron) |
+| `npm run app:dev` | CLI bauen und die App im Entwicklungsbetrieb starten |
+| `npm run app:typecheck`, `npm run app:test` | Typprüfung und Tests der App, Einzelheiten in [`app/README.md`](app/README.md) |
+| `npm run app:build` | CLI und App bauen (Ausgabe in `app/out/`) |
 | `npm run test:live` | Live-Tests mit dem installierten Claude Code: `ipa doctor --live` (zwei kleine Modellaufrufe), eine Analyse (ein Aufruf), ein Journal (ein Aufruf) und die Abnahme von V1 (`test/live/acceptance.live.ts`, etwa zehn Aufrufe, siehe [Abnahmeprotokoll](docs/abnahme/v1-abnahmeprotokoll.md)). Einzeln etwa mit `npm run test:live -- test/live/acceptance.live.ts`. Läuft nur mit `IPA_LIVE_CLAUDE=1` und ist nicht Teil von `npm test`. |
 
 Zu den Tests:
@@ -1034,6 +1194,7 @@ src/analysis/       Status, Eingabepaket, Prüfung der Antwort, Work-Log, Wartes
 src/journal/        Tageseingabe, Tageszuordnung, Zeitübersicht, Prüfung der Antwort, Markdown-Entwurf, ipa journal
 src/schedule/       Fensterprüfung für capture --scheduled, Läufeplan, Vorlagen für die Windows-Aufgabenplanung und cron, Zugriff auf schtasks mit austauschbarem Runner
 src/config/         Befunde und Änderungen von config.json (ipa config)
+app/                Desktop-App (Electron, eigenes Paket, siehe app/README.md)
 prompts/            Prompts der Analyse (analyze-work.md) und des Journals (journal.md)
 schemas/            JSON Schemas (draft-07)
 test/               Tests und Test-Helfer, test/acceptance/ für das Abnahmeszenario, test/live/ für die Live-Tests

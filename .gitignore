@@ -3,3 +3,8 @@ dist/
 coverage/
 *.tsbuildinfo
 *.log
+app/out/
+app/stage/
+app/release/
+app/playwright-report/
+app/test-results/

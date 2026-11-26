@@ -20,7 +20,13 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
-    "test:live": "vitest run --config vitest.live.config.ts"
+    "test:live": "vitest run --config vitest.live.config.ts",
+    "app:install": "npm ci --prefix app",
+    "app:dev": "npm run build && npm run dev --prefix app",
+    "app:typecheck": "npm run typecheck --prefix app",
+    "app:test": "npm test --prefix app",
+    "app:build": "npm run build && npm run build --prefix app",
+    "app:dist": "npm run app:build && npm run dist --prefix app"
   },
   "dependencies": {
     "ajv": "^8.20.0",
