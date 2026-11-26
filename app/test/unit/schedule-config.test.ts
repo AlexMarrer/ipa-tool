@@ -20,7 +20,7 @@ describe('Zeitplan und Konfiguration mit dem echten CLI', () => {
   let configFile: string;
   let schedulerLog: string;
   const events: RunEvent[] = [];
-  const shell: ShellPort = { openPath: async () => '', showItemInFolder: () => undefined, writeClipboard: () => undefined, openExternal: async () => undefined, trashItem: async () => undefined, chooseFile: async () => null, chooseFolder: async () => null };
+  const shell: ShellPort = { openPath: async () => '', showItemInFolder: () => undefined, writeClipboard: () => undefined, openExternal: async () => undefined, trashItem: async () => undefined, chooseFile: async () => null, chooseFolder: async () => null, setTheme: () => undefined };
 
   beforeAll(async () => {
     env = await createTestEnv();

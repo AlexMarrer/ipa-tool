@@ -32,10 +32,15 @@ export type Section = 'overview' | 'day' | 'schedule' | 'config';
 export type Page = Section | 'system' | 'add-project';
 
 /** Window state and last selection only; never project configuration (spec §12.4, AK-10-14). */
+/** Look of the app: follow Windows (default), or light, or dark (spec §10.1). */
+export type ThemeChoice = 'system' | 'light' | 'dark';
+export const THEME_CHOICES: readonly ThemeChoice[] = ['system', 'light', 'dark'];
+
 export interface AppState {
   schemaVersion: 1;
   window: { x: number | null; y: number | null; width: number; height: number; maximized: boolean };
   selection: { repositoryId: string | null; section: Section; day: string | null };
+  theme: ThemeChoice;
 }
 
 export interface VersionInfo {

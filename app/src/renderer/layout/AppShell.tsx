@@ -58,6 +58,8 @@ export function AppShell({ app, api }: AppShellProps) {
         page={selection.page}
         onSelectProject={actions.selectProject}
         onSelectPage={actions.selectPage}
+        theme={state.theme}
+        onTheme={actions.setTheme}
       />
       <div className="content">
         {project !== null && onProjectPage ? (

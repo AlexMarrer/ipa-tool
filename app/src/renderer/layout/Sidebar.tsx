@@ -1,5 +1,5 @@
 import { PROJECT_STATUS_LABEL } from '../../shared/messages';
-import type { Page, Project } from '../../shared/types';
+import { THEME_CHOICES, type Page, type Project, type ThemeChoice } from '../../shared/types';
 import { Button } from '../components';
 import { Icon } from '../theme/icons/Icon';
 
@@ -9,6 +9,23 @@ export interface SidebarProps {
   page: Page;
   onSelectProject: (repositoryId: string) => void;
   onSelectPage: (page: Page) => void;
+  theme?: ThemeChoice;
+  onTheme?: (theme: ThemeChoice) => void;
+}
+
+const THEME_LABEL: Record<ThemeChoice, string> = { system: 'System', light: 'Hell', dark: 'Dunkel' };
+
+/** Look of the app: follow Windows (default), light or dark (spec §10.1). One of three, always visible. */
+export function ThemeSwitch({ theme, onTheme }: { theme: ThemeChoice; onTheme: (theme: ThemeChoice) => void }) {
+  return (
+    <div className="theme-switch" role="radiogroup" aria-label="Darstellung">
+      {THEME_CHOICES.map((choice) => (
+        <button key={choice} type="button" role="radio" aria-checked={theme === choice} title={choice === 'system' ? 'Wie die Windows-Einstellung' : THEME_LABEL[choice]} onClick={() => onTheme(choice)}>
+          {THEME_LABEL[choice]}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 /** Status dot with a text alternative; the hint line repeats the state in words (spec §5.1). */
@@ -16,7 +33,7 @@ export function StatusDot({ status }: { status: Project['status'] }) {
   return <span className={`dot dot--${status}`} role="img" aria-label={PROJECT_STATUS_LABEL[status]} />;
 }
 
-export function Sidebar({ projects, selectedId, page, onSelectProject, onSelectPage }: SidebarProps) {
+export function Sidebar({ projects, selectedId, page, onSelectProject, onSelectPage, theme = 'system', onTheme }: SidebarProps) {
   return (
     <aside className="sidebar" aria-label="Seitenleiste">
       <h2 className="sidebar__heading">Projekte</h2>
@@ -57,6 +74,7 @@ export function Sidebar({ projects, selectedId, page, onSelectProject, onSelectP
         <button type="button" className="sidebar__link" aria-current={page === 'system' ? 'page' : undefined} onClick={() => onSelectPage('system')}>
           <Icon name="settings" /> System
         </button>
+        {onTheme !== undefined ? <ThemeSwitch theme={theme} onTheme={onTheme} /> : null}
       </div>
     </aside>
   );

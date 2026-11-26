@@ -11,6 +11,8 @@ export interface ShellPort {
   chooseFile(defaultPath: string): Promise<string | null>;
   /** System folder dialog; resolves to the chosen folder or `null` if the user cancelled. */
   chooseFolder(): Promise<string | null>;
+  /** Sets the look of the whole window: `nativeTheme.themeSource`, so `prefers-color-scheme` of the page follows. */
+  setTheme(theme: 'system' | 'light' | 'dark'): void;
 }
 
 /** Used where no operating system is available (tests that do not care). Nothing is opened. */
@@ -22,4 +24,5 @@ export const noShell: ShellPort = {
   trashItem: async () => undefined,
   chooseFile: async () => null,
   chooseFolder: async () => null,
+  setTheme: () => undefined,
 };

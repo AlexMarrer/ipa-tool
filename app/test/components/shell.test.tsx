@@ -261,6 +261,40 @@ describe('Kopfzeile und Laufanzeige', () => {
   });
 });
 
+describe('Darstellung: System, Hell, Dunkel', () => {
+  it('zeigt drei Möglichkeiten, vorgewählt ist die Einstellung von Windows', async () => {
+    await mount({ projects: [project()], state: { repositoryId: 'alpha-111111' } });
+    const group = screen.getByRole('radiogroup', { name: 'Darstellung' });
+    expect(within(group).getAllByRole('radio').map((radio) => radio.textContent)).toEqual(['System', 'Hell', 'Dunkel']);
+    expect(within(group).getByRole('radio', { name: 'System' })).toHaveAttribute('aria-checked', 'true');
+    expect(within(group).getByRole('radio', { name: 'Hell' })).toHaveAttribute('aria-checked', 'false');
+  });
+
+  it('speichert die Wahl über die Schnittstelle und zeigt sie an', async () => {
+    const user = userEvent.setup();
+    const view = await mount({ projects: [project()], state: { repositoryId: 'alpha-111111' } });
+    await user.click(screen.getByRole('radio', { name: 'Dunkel' }));
+    expect(view.api.app.setState).toHaveBeenCalledWith({ theme: 'dark' });
+    expect(screen.getByRole('radio', { name: 'Dunkel' })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('radio', { name: 'System' })).toHaveAttribute('aria-checked', 'false');
+    await user.click(screen.getByRole('radio', { name: 'System' }));
+    expect(view.api.app.setState).toHaveBeenLastCalledWith({ theme: 'system' });
+  });
+
+  it('übernimmt die gespeicherte Wahl beim Start', async () => {
+    await mount({ projects: [project()], state: { repositoryId: 'alpha-111111' }, theme: 'light' });
+    expect(screen.getByRole('radio', { name: 'Hell' })).toHaveAttribute('aria-checked', 'true');
+  });
+
+  it('ist mit der Tastatur erreichbar', async () => {
+    const user = userEvent.setup();
+    const view = await mount({ projects: [project()], state: { repositoryId: 'alpha-111111' } });
+    screen.getByRole('radio', { name: 'Hell' }).focus();
+    await user.keyboard('{Enter}');
+    expect(view.api.app.setState).toHaveBeenCalledWith({ theme: 'light' });
+  });
+});
+
 describe('Fehlerrand um jede Seite (AK-10-13)', () => {
   it('zeigt Ladefehler der Projektliste als Banner', async () => {
     await mount({ listResult: { ok: false, error: { code: 'internal', message: 'Unerwarteter Fehler in der App.' } } });

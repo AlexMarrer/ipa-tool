@@ -1,6 +1,6 @@
 import { APP_ERROR_MESSAGES } from '../../shared/messages';
 import { IPC_CHANNELS, type IpcChannel } from '../../shared/ipc';
-import type { AppState } from '../../shared/types';
+import { THEME_CHOICES, type AppState, type ThemeChoice } from '../../shared/types';
 import { sanitizeAppState } from '../app-state';
 import { AppError } from '../cli/errors';
 import type { ReaderResult, Services } from '../services';
@@ -20,9 +20,13 @@ function onlyKeys(value: unknown, allowed: string[]): Record<string, unknown> {
 }
 
 /** Validates a state patch; only window and selection can change (spec AD-08). */
-export function parseStatePatch(value: unknown): { window?: Partial<AppState['window']>; selection?: Partial<AppState['selection']> } {
-  const patch = onlyKeys(value, ['window', 'selection']);
-  const result: { window?: Partial<AppState['window']>; selection?: Partial<AppState['selection']> } = {};
+export function parseStatePatch(value: unknown): { window?: Partial<AppState['window']>; selection?: Partial<AppState['selection']>; theme?: ThemeChoice } {
+  const patch = onlyKeys(value, ['window', 'selection', 'theme']);
+  const result: { window?: Partial<AppState['window']>; selection?: Partial<AppState['selection']>; theme?: ThemeChoice } = {};
+  if (patch['theme'] !== undefined) {
+    if (typeof patch['theme'] !== 'string' || !(THEME_CHOICES as readonly string[]).includes(patch['theme'])) throw new InvalidInput('Darstellung erwartet.');
+    result.theme = patch['theme'] as ThemeChoice;
+  }
   if (patch['window'] !== undefined) {
     const raw = onlyKeys(patch['window'], WINDOW_KEYS);
     const clean = sanitizeAppState({ window: raw }).window;
@@ -170,6 +174,7 @@ export function createHandlers(services: Services): Record<Exclude<IpcChannel, t
       const patch = parseStatePatch(argument);
       const state = await services.appState.update(patch);
       if (patch.selection?.repositoryId !== undefined) services.watchProject(state.selection.repositoryId);
+      if (patch.theme !== undefined) services.applyTheme(state.theme);
       return state;
     },
   };

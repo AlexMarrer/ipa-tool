@@ -65,6 +65,8 @@ export interface Services {
   loadJournal(repositoryId: string, file: string): Promise<ReaderResult<JournalDraftView | null>>;
   loadFinals(repositoryId: string, day: string): Promise<ReaderResult<FinalFileView[]>>;
   /** Opens the folder dialog; the chosen folder stays here and is the only one that `checkChosenFolder` and `initChosenFolder` use. */
+  /** Applies the saved look at once (after start and after a change). */
+  applyTheme(theme: 'system' | 'light' | 'dark'): void;
   chooseFolder(): Promise<{ path: string | null }>;
   checkChosenFolder(): Promise<ReaderResult<ProjectCheck | null>>;
   /** `init` for the chosen folder (spec §8.12); the CLI decides, the app only sets the time zone and the workspace. */
@@ -133,6 +135,7 @@ export async function createServices(options: ServicesOptions): Promise<Services
   let cliVersion: string | null = null;
   let cliLib: CliLib | null = null;
   const shell = options.shell ?? noShell;
+  shell.setTheme(appState.get().theme);
 
   try {
     runtime = await resolveRuntime({
@@ -311,6 +314,7 @@ export async function createServices(options: ServicesOptions): Promise<Services
     loadDayIndex: (repositoryId) => withReader(repositoryId, (reader) => reader.dayIndex()),
     loadWorkLog: (repositoryId, snapshotId) => withReader(repositoryId, (reader) => reader.workLog(snapshotId)),
     loadJournal: (repositoryId, file) => withReader(repositoryId, (reader) => reader.journal(file)),
+    applyTheme: (theme) => shell.setTheme(theme),
     async chooseFolder() {
       const picked = await shell.chooseFolder();
       if (picked !== null) chosenFolder = picked;

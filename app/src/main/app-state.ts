@@ -1,7 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { isDay } from '../shared/dates';
-import type { AppState, Section } from '../shared/types';
+import { THEME_CHOICES, type AppState, type Section, type ThemeChoice } from '../shared/types';
 
 const SECTIONS: readonly Section[] = ['overview', 'day', 'schedule', 'config'];
 export const MIN_WIDTH = 1100;
@@ -12,6 +12,7 @@ export function defaultAppState(): AppState {
     schemaVersion: 1,
     window: { x: null, y: null, width: 1280, height: 800, maximized: false },
     selection: { repositoryId: null, section: 'overview', day: null },
+    theme: 'system',
   };
 }
 
@@ -48,13 +49,14 @@ export function sanitizeAppState(value: unknown): AppState {
     }
     if (isDay(s['day'])) result.selection.day = s['day'];
   }
+  if (typeof v['theme'] === 'string' && (THEME_CHOICES as readonly string[]).includes(v['theme'])) result.theme = v['theme'] as ThemeChoice;
   return result;
 }
 
 export interface AppStateStore {
   load(): Promise<AppState>;
   get(): AppState;
-  update(patch: { window?: Partial<AppState['window']>; selection?: Partial<AppState['selection']> }): Promise<AppState>;
+  update(patch: { window?: Partial<AppState['window']>; selection?: Partial<AppState['selection']>; theme?: ThemeChoice }): Promise<AppState>;
 }
 
 /** `app-state.json` in the user data folder (spec AD-08). */
@@ -84,6 +86,7 @@ export function createAppStateStore(dir: string): AppStateStore {
         ...state,
         window: { ...state.window, ...patch.window },
         selection: { ...state.selection, ...patch.selection },
+        theme: patch.theme ?? state.theme,
       });
       await save();
       return state;

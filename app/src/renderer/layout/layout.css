@@ -41,3 +41,6 @@
 .runpanel__toggle { display: inline-flex; align-items: center; gap: 4px; padding: 2px 0; border: 0; background: transparent; color: inherit; cursor: pointer; font: inherit; }
 .runpanel__lines { font-family: var(--font-mono); font-size: 12.5px; margin-top: 6px; }
 .runpanel__output { margin: 6px 0 0; max-height: 160px; overflow: auto; font-family: var(--font-mono); font-size: 12.5px; white-space: pre-wrap; }
+.theme-switch { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; margin-top: 8px; padding: 2px; border: 1px solid var(--line); border-radius: 8px; background: var(--chip); }
+.theme-switch button { min-height: 28px; border: 0; border-radius: 6px; background: transparent; color: inherit; font: inherit; font-size: 12.5px; cursor: pointer; }
+.theme-switch button[aria-checked='true'] { background: var(--surface); font-weight: 600; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18); }

@@ -56,6 +56,9 @@ if (!app.requestSingleInstanceLock()) {
         writeClipboard: (text) => clipboard.writeText(text),
         openExternal: (url) => shell.openExternal(url),
         trashItem: (file) => shell.trashItem(file),
+        setTheme: (theme) => {
+          nativeTheme.themeSource = theme;
+        },
         chooseFolder: async () => {
           const options = { properties: ['openDirectory' as const] };
           const chosen = mainWindow !== null && !mainWindow.isDestroyed() ? await dialog.showOpenDialog(mainWindow, options) : await dialog.showOpenDialog(options);

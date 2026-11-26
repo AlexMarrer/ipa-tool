@@ -298,6 +298,8 @@ describe('Zustand patchen (AD-08)', () => {
   it('lässt nur Fenster und Auswahl zu und bereinigt Werte', () => {
     expect(parseStatePatch({ selection: { section: 'day', day: '2026-11-26' } })).toEqual({ selection: { section: 'day', day: '2026-11-26' } });
     expect(parseStatePatch({ window: { width: 10 } })).toEqual({ window: { width: 1100 } });
+    for (const theme of ['system', 'light', 'dark']) expect(parseStatePatch({ theme })).toEqual({ theme });
+    for (const bad of ['Dunkel', '', 'auto', 1, null, ['dark']]) expect(() => parseStatePatch({ theme: bad }), String(bad)).toThrow();
     expect(() => parseStatePatch({ config: {} })).toThrow();
     expect(() => parseStatePatch({ window: { evil: 1 } })).toThrow();
   });

@@ -38,7 +38,7 @@ describe('app-state.json (AK-10-14)', () => {
       JSON.stringify({ ...defaultAppState(), projects: { x: { claude: { allowPaidUsage: true } } }, config: { limits: 1 }, selection: { repositoryId: 'a', section: 'overview', day: null, limits: 5 } }),
     );
     const state = await createAppStateStore(dir).load();
-    expect(Object.keys(state).sort()).toEqual(['schemaVersion', 'selection', 'window']);
+    expect(Object.keys(state).sort()).toEqual(['schemaVersion', 'selection', 'theme', 'window']);
     expect(Object.keys(state.selection).sort()).toEqual(['day', 'repositoryId', 'section']);
     const store = createAppStateStore(dir);
     await store.load();
@@ -52,5 +52,33 @@ describe('app-state.json (AK-10-14)', () => {
     expect(state.selection).toEqual({ repositoryId: null, section: 'overview', day: null });
     expect(sanitizeAppState('text')).toEqual(defaultAppState());
     expect(sanitizeAppState(null)).toEqual(defaultAppState());
+  });
+});
+
+describe('Darstellung (System, Hell, Dunkel)', () => {
+  it('beginnt mit der Einstellung von Windows und kennt nur drei Werte', () => {
+    expect(defaultAppState().theme).toBe('system');
+    for (const theme of ['system', 'light', 'dark']) expect(sanitizeAppState({ theme }).theme).toBe(theme);
+    for (const bad of ['', 'Dunkel', 'auto', 'DARK', 1, null, {}, ['dark']]) expect(sanitizeAppState({ theme: bad }).theme, String(bad)).toBe('system');
+  });
+
+  it('übernimmt eine alte Datei ohne Darstellung mit dem Standard', () => {
+    expect(sanitizeAppState({ schemaVersion: 1, window: {}, selection: {} }).theme).toBe('system');
+  });
+
+  it('speichert die Wahl und liest sie beim nächsten Start', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'ipa-theme-'));
+    try {
+      const store = createAppStateStore(dir);
+      await store.load();
+      await store.update({ theme: 'dark' });
+      expect(JSON.parse(await readFile(path.join(dir, 'app-state.json'), 'utf8')).theme).toBe('dark');
+      expect((await createAppStateStore(dir).load()).theme).toBe('dark');
+      // A patch without a theme keeps it.
+      await store.update({ selection: { repositoryId: 'a-111111' } });
+      expect(store.get().theme).toBe('dark');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });

@@ -128,7 +128,28 @@ test('speichert nur Fenster und Auswahl in app-state.json (AK-10-14)', async () 
     }
   }).toBe('schedule');
   const saved = JSON.parse(await readFile(path.join(env.userData, 'app-state.json'), 'utf8')) as Record<string, unknown>;
-  expect(Object.keys(saved).sort()).toEqual(['schemaVersion', 'selection', 'window']);
+  expect(Object.keys(saved).sort()).toEqual(['schemaVersion', 'selection', 'theme', 'window']);
+});
+
+test('wechselt mit dem Schalter zwischen System, Hell und Dunkel und merkt sich die Wahl (AK-10-11)', async () => {
+  await page.goto('app://app/index.html');
+  const group = page.getByRole('radiogroup', { name: 'Darstellung' });
+  const look = async () => page.evaluate(() => ({ theme: document.documentElement.dataset['theme'], background: getComputedStyle(document.body).backgroundColor }));
+  const saved = async (): Promise<unknown> => JSON.parse(await readFile(path.join(env.userData, 'app-state.json'), 'utf8')).theme;
+
+  await group.getByRole('radio', { name: 'Dunkel' }).click();
+  await expect.poll(look).toEqual({ theme: 'dark', background: 'rgb(18, 19, 22)' });
+  await expect.poll(saved).toBe('dark');
+  await group.getByRole('radio', { name: 'Hell' }).click();
+  await expect.poll(look).toEqual({ theme: 'light', background: 'rgb(255, 255, 255)' });
+  await expect.poll(saved).toBe('light');
+
+  // "System" gives the decision back to Windows: the page follows its setting again.
+  await group.getByRole('radio', { name: 'System' }).click();
+  await expect.poll(saved).toBe('system');
+  await expect(group.getByRole('radio', { name: 'System' })).toHaveAttribute('aria-checked', 'true');
+  expect(['light', 'dark']).toContain((await look()).theme);
+  await app.evaluate(({ nativeTheme }) => void (nativeTheme.themeSource = 'system'));
 });
 
 test('folgt der Windows-Einstellung Hell und Dunkel zur Laufzeit (AK-10-11)', async () => {

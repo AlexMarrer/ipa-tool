@@ -153,7 +153,7 @@ export interface IpaApi {
   };
   app: {
     getState(): Promise<IpaResult<AppState>>;
-    setState(patch: Partial<Pick<AppState, 'window' | 'selection'>>): Promise<IpaResult<AppState>>;
+    setState(patch: Partial<Pick<AppState, 'window' | 'selection' | 'theme'>>): Promise<IpaResult<AppState>>;
   };
   day: {
     load(repositoryId: string, day: string): Promise<IpaResult<DayView>>;

@@ -23,6 +23,7 @@ import {
   Tooltip,
 } from '../components';
 import { StatusDot } from '../layout/Sidebar';
+import { ThemeSwitch } from '../layout/Sidebar';
 import { ActionStates } from './ActionStates';
 import { ConfigStates } from './ConfigStates';
 import { WizardStates } from './WizardStates';
@@ -201,6 +202,11 @@ export function GalleryContent() {
             <Icon name={name} />
           </span>
         ))}
+      </Section>
+      <Section title="Darstellung">
+        <ThemeSwitch theme="system" onTheme={() => undefined} />
+        <ThemeSwitch theme="light" onTheme={() => undefined} />
+        <ThemeSwitch theme="dark" onTheme={() => undefined} />
       </Section>
       <PageStates />
       <ActionStates />

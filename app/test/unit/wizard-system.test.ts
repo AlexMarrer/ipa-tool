@@ -24,6 +24,7 @@ describe('Assistent und System mit dem echten CLI', () => {
     trashItem: async () => undefined,
     chooseFile: async () => null,
     chooseFolder: async () => picked,
+    setTheme: () => undefined,
   };
   const folder = async (target: string) => {
     picked = target;

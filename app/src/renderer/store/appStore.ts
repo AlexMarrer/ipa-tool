@@ -1,7 +1,7 @@
 import { shiftDay, todayIn } from '../../shared/dates';
 import type { IpaApi } from '../../shared/ipc';
 import type { LockState, RunInput, RunSummary } from '../../shared/run';
-import type { AppState, IpaError, LiveLine, Page, Project, ProjectList, RunEvent, Section } from '../../shared/types';
+import type { AppState, IpaError, LiveLine, Page, Project, ProjectList, RunEvent, Section, ThemeChoice } from '../../shared/types';
 import type { SnapshotView } from '../../shared/views';
 import { createStore, type Store } from './createStore';
 
@@ -60,6 +60,8 @@ export interface AppSnapshot {
   /** Counts Ctrl+N presses. */
   newNoteRequests: number;
   dialog: DialogRequest | null;
+  /** Look of the app; the window follows it through the main process (spec §10.1). */
+  theme: ThemeChoice;
   loadError: string | null;
 }
 
@@ -80,6 +82,7 @@ export interface AppActions {
   requestNewNote(day?: string): void;
   openDialog(dialog: DialogRequest): void;
   closeDialog(): void;
+  setTheme(theme: ThemeChoice): void;
   dismissRun(repositoryId: string): void;
   /**
    * Starts an action on the user's request and resolves when it ended. Locked starts resolve at once with the
@@ -124,6 +127,7 @@ export function createAppStore(api: IpaApi, options: AppStoreOptions = {}): { st
     locks: {},
     newNoteRequests: 0,
     dialog: null,
+    theme: 'system',
     loadError: null,
   });
   const unsubscribers: (() => void)[] = [];
@@ -213,6 +217,7 @@ export function createAppStore(api: IpaApi, options: AppStoreOptions = {}): { st
         const { selection } = saved.value;
         store.setState((state) => ({
           ...state,
+          theme: saved.value.theme ?? 'system',
           selection: { repositoryId: selection.repositoryId, page: selection.section, section: selection.section, day: selection.day },
         }));
       }
@@ -271,6 +276,10 @@ export function createAppStore(api: IpaApi, options: AppStoreOptions = {}): { st
     },
     openDialog(dialog) {
       store.setState((state) => (state.dialog !== null ? state : { ...state, dialog }));
+    },
+    setTheme(theme) {
+      store.setState((state) => ({ ...state, theme }));
+      void api.app.setState({ theme });
     },
     closeDialog() {
       store.setState((state) => (state.dialog === null ? state : { ...state, dialog: null }));

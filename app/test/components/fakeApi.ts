@@ -50,6 +50,7 @@ export interface FakeApiOptions {
   references?: ReferenceIndex;
   overview?: OverviewView;
   lock?: LockState;
+  theme?: AppState['theme'];
   /** `config.json` as the page reads it; defaults of the CLI otherwise. */
   config?: Partial<ConfigView>;
   schedule?: Partial<ScheduleView>;
@@ -96,6 +97,7 @@ export function createFakeApi(options: FakeApiOptions = {}) {
     schemaVersion: 1,
     window: { x: null, y: null, width: 1280, height: 800, maximized: false },
     selection: { repositoryId: null, section: 'overview', day: null, ...options.state },
+    theme: options.theme ?? 'system',
   };
   const ok = <T,>(value: T): Promise<IpaResult<T>> => Promise.resolve({ ok: true, value });
   const days = options.days ?? {};
@@ -133,7 +135,7 @@ export function createFakeApi(options: FakeApiOptions = {}) {
     app: {
       getState: vi.fn(() => ok(state)),
       setState: vi.fn((patch) => {
-        state = { ...state, window: { ...state.window, ...patch.window }, selection: { ...state.selection, ...patch.selection } };
+        state = { ...state, window: { ...state.window, ...patch.window }, selection: { ...state.selection, ...patch.selection }, theme: patch.theme ?? state.theme };
         return ok(state);
       }),
     },
